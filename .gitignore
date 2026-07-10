@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual Environment
+.venv/
+venv/
+env/
+
+# VSCode
+.vscode/
+
+# Logs
+logs/
+*.log
+
+# Test
+.pytest_cache/
+
+# Build
+build/
+dist/
+
+# Sistema Operativo
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Python packaging
+*.egg-info/
+
+# Local configuration (opzionale)
+config/config.local.json
