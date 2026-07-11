@@ -1,0 +1,65 @@
+{
+    "general": {
+        "log_level": "INFO",
+        "dry_run": false,
+        "verify_after_sync": true,
+        "create_destination": true,
+        "max_parallel_jobs": 1
+    },
+
+    "sync": {
+        "startup": {
+            "enabled": true,
+            "direction": "download"
+        },
+
+        "shutdown": {
+            "enabled": true,
+            "direction": "upload"
+        }
+    },
+
+    "robocopy": {
+        "retry_count": 2,
+        "retry_wait_seconds": 2,
+        "multithreading": 16,
+        "copy_subdirectories": true,
+        "copy_empty_directories": true,
+        "exclude_junctions": true,
+        "fat_file_times": true,
+        "monitor_mode": false
+    },
+
+    "folders": [
+        {
+            "id": "elden_ring",
+            "name": "Elden Ring Save",
+            "enabled": true,
+            "local_path": "%APPDATA%\\EldenRing",
+            "onedrive_path": "%OneDrive%\\PCSync\\AppData\\Roaming\\EldenRing",
+            "minimum_sync_percentage": 80,
+            "verify_after_sync": true,
+            "create_destination": true
+        },
+        {
+            "id": "rain_world",
+            "name": "Rain World Save",
+            "enabled": true,
+            "local_path": "%USERPROFILE%\\AppData\\LocalLow\\Videocult\\Rain World",
+            "onedrive_path": "%OneDrive%\\PCSync\\AppData\\LocalLow\\Videocult\\Rain World",
+            "minimum_sync_percentage": 80,
+            "verify_after_sync": true,
+            "create_destination": true
+        },
+        {
+            "id": "cuphead",
+            "name": "Cuphead Save",
+            "enabled": true,
+            "local_path": "%USERPROFILE%\\AppData\\Roaming\\Cuphead",
+            "onedrive_path": "%OneDrive%\\PCSync\\AppData\\Roaming\\Cuphead",
+            "minimum_sync_percentage": 80,
+            "verify_after_sync": true,
+            "create_destination": true
+        }
+    ]
+}

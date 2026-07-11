@@ -1,0 +1,9 @@
+# OneDrive PC Sync
+#
+# This project intentionally relies only on the Python 3.12+ standard
+# library (pathlib, dataclasses, typing, logging, subprocess, json,
+# shutil, os, argparse, enum) and requires no third-party packages.
+#
+# This file is kept for completeness / future extension (e.g. adding
+# a system tray icon or a GUI), and to make `pip install -r requirements.txt`
+# a safe no-op in CI or fresh environments.

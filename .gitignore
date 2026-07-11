@@ -2,33 +2,33 @@
 __pycache__/
 *.py[cod]
 *$py.class
+*.egg-info/
+.eggs/
+build/
+dist/
 
-# Virtual Environment
+# Virtual environments
 .venv/
 venv/
 env/
 
-# VSCode
-.vscode/
-
-# Logs
-logs/
-*.log
-
-# Test
+# Testing
 .pytest_cache/
+.coverage
+htmlcov/
 
-# Build
-build/
-dist/
+# IDE
+.vscode/
+.idea/
 
-# Sistema Operativo
+# Application runtime data - keep the folders, ignore their contents
+logs/*
+!logs/.gitkeep
+backups/*
+!backups/.gitkeep
+data/*
+!data/.gitkeep
+
+# OS noise
 Thumbs.db
-Desktop.ini
 .DS_Store
-
-# Python packaging
-*.egg-info/
-
-# Local configuration (opzionale)
-config/config.local.json
