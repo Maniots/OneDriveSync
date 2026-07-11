@@ -72,8 +72,39 @@ python main.py --mode shutdown
 python main.py --mode startup --dry-run
 ```
 
-Wire these into Windows Task Scheduler with triggers "At log on" and
-"On workstation lock" / "On logoff" respectively.
+## Automated setup (recommended)
+
+Instead of manually configuring Task Scheduler, run the included setup
+script once:
+
+```
+powershell -ExecutionPolicy Bypass -File .\Setup-ScheduledTasks.ps1
+```
+
+(Or right-click `Setup-ScheduledTasks.ps1` in Explorer -> **Run with PowerShell**.)
+
+This registers two Scheduled Tasks under **Task Scheduler Library > OneDrivePCSync**:
+
+- **OneDrivePCSync - Startup (Download)** - fires on logon
+- **OneDrivePCSync - Shutdown (Upload)** - fires on workstation lock (Win+L)
+
+Windows Task Scheduler has no native "log off" trigger, so workstation lock
+is used instead - it reliably fires whenever you step away or before a
+shutdown/restart (Windows locks the session first either way).
+
+The script auto-detects your project-local `.venv` if present, requires no
+admin rights, and is safe to re-run any time (it replaces the existing
+tasks rather than duplicating them - useful after moving the project folder
+or changing Python interpreters). To remove the tasks later:
+
+```
+powershell -ExecutionPolicy Bypass -File .\Setup-ScheduledTasks.ps1 -Uninstall
+```
+
+## Manual setup
+
+If you'd rather not use the script, wire these into Task Scheduler by hand
+with triggers "At log on" and "On workstation lock" / "On logoff" respectively.
 
 ## Configuring folders
 
