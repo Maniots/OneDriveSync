@@ -85,6 +85,63 @@ def test_safety_assertion_rejects_forbidden_flag_defense_in_depth() -> None:
         RobocopyManager._assert_command_is_safe(["robocopy", "C:\\Source", "C:\\Dest", "/MIR"])
 
 
+def test_run_uses_create_no_window_on_windows(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Regression test: robocopy.exe is a console app, so without
+    CREATE_NO_WINDOW, Windows allocates a new console window for it - which
+    can steal focus from an exclusive-fullscreen game even if it closes
+    almost instantly. This must always be suppressed on Windows."""
+    import subprocess
+    import src.robocopy_manager as robocopy_manager_module
+
+    captured_kwargs = {}
+
+    def fake_run(command, **kwargs):
+        captured_kwargs.update(kwargs)
+
+        class FakeCompleted:
+            returncode = 0
+            stdout = ""
+            stderr = ""
+
+        return FakeCompleted()
+
+    monkeypatch.setattr(robocopy_manager_module.sys, "platform", "win32")
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    manager = RobocopyManager(RobocopySettings(), dry_run=True)
+    manager.run(Path(r"C:\Source"), Path(r"C:\Destination"))
+
+    assert captured_kwargs.get("creationflags") == 0x08000000
+
+
+def test_run_omits_create_no_window_flag_value_on_non_windows(monkeypatch: pytest.MonkeyPatch) -> None:
+    """On non-Windows platforms, the Windows-only flag value must not be
+    applied (it would be meaningless/harmless there, but we verify the
+    platform branch explicitly to keep the logic honest)."""
+    import subprocess
+    import src.robocopy_manager as robocopy_manager_module
+
+    captured_kwargs = {}
+
+    def fake_run(command, **kwargs):
+        captured_kwargs.update(kwargs)
+
+        class FakeCompleted:
+            returncode = 0
+            stdout = ""
+            stderr = ""
+
+        return FakeCompleted()
+
+    monkeypatch.setattr(robocopy_manager_module.sys, "platform", "linux")
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    manager = RobocopyManager(RobocopySettings(), dry_run=True)
+    manager.run(Path(r"C:\Source"), Path(r"C:\Destination"))
+
+    assert captured_kwargs.get("creationflags") == 0
+
+
 def test_retry_and_wait_flags_reflect_settings() -> None:
     settings = RobocopySettings(retry_count=5, retry_wait_seconds=10)
     manager = RobocopyManager(settings, dry_run=False)

@@ -27,6 +27,7 @@ Any code with bit 8 or bit 16 set is treated as a failure by this module.
 from __future__ import annotations
 
 import subprocess
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List
@@ -36,6 +37,12 @@ from .exceptions import RobocopyExecutionError
 from .logger import get_logger
 
 logger = get_logger(__name__)
+
+# Windows CREATE_NO_WINDOW process creation flag (0x08000000). Defined as a
+# local constant rather than referencing subprocess.CREATE_NO_WINDOW because
+# that attribute does not exist on non-Windows Python builds, which would
+# break this module on other platforms (including in test/CI environments).
+_CREATE_NO_WINDOW = 0x08000000
 
 # Exit code bits that indicate an actual failure occurred.
 _FAILURE_BITMASK = 0b11000  # bits 8 (copy errors) and 16 (fatal error)
@@ -159,12 +166,20 @@ class RobocopyManager:
         command = self.build_command(source, destination)
         logger.info("Executing: %s", " ".join(command))
 
+        # On Windows, robocopy.exe is a console-mode application, so Python
+        # would otherwise allocate a new (briefly visible) console window for
+        # it - this can steal focus from an exclusive-fullscreen application
+        # (e.g. a game) even when it closes almost instantly. CREATE_NO_WINDOW
+        # suppresses that console entirely. Harmless no-op on other platforms.
+        creationflags = _CREATE_NO_WINDOW if sys.platform == "win32" else 0
+
         try:
             completed = subprocess.run(
                 command,
                 capture_output=True,
                 text=True,
                 check=False,  # we interpret the exit code ourselves
+                creationflags=creationflags,
             )
         except FileNotFoundError as exc:
             raise RobocopyExecutionError(
