@@ -1,20 +1,32 @@
 <#
 .SYNOPSIS
     One-time setup script that registers Windows Scheduled Tasks for
-    OneDrivePCSync: download on logon, upload on workstation lock.
+    OneDrivePCSync: download on logon, upload on lock, and a periodic
+    upload safety net.
 
 .DESCRIPTION
     Run this script once (see instructions below) and OneDrivePCSync will
     run automatically from then on, with no further action required:
 
-        - "OneDrivePCSync - Startup (Download)"  fires when you log on.
-        - "OneDrivePCSync - Shutdown (Upload)"    fires when you lock your
-          workstation (Win+L, or automatic idle lock).
+        - "OneDrivePCSync - Startup (Download)"        fires when you log on.
+        - "OneDrivePCSync - Shutdown (Upload on Lock)" fires when you lock
+          your workstation (Win+L, or automatic idle lock).
+        - "OneDrivePCSync - Periodic Upload"           fires every 15
+          minutes while you're logged on.
 
-    Windows Task Scheduler has no native "log off" trigger, so "workstation
-    lock" is used instead - it reliably fires whenever you step away or are
-    about to shut down/restart (Windows locks the session first in both
-    cases), without requiring elevated audit policy changes.
+    IMPORTANT LIMITATION: Windows Task Scheduler has no native "log off" or
+    "shutdown" trigger, and clicking Start > Shut Down does NOT lock your
+    session first - it ends it directly (and with Fast Startup enabled, a
+    "shutdown" is actually a hibernation that emits no session event at
+    all). This means the lock-triggered upload task will NOT fire if you
+    shut down without first pressing Win+L.
+
+    The periodic upload task exists specifically to cover that gap: instead
+    of trying to catch the exact moment of shutdown (which isn't reliably
+    possible without Group Policy logoff scripts, Pro/Enterprise editions
+    only), it uploads every 15 minutes throughout your session, so you're
+    never more than ~15 minutes of play behind on OneDrive regardless of
+    how the session ends.
 
     This script is idempotent: re-running it safely replaces any previously
     registered OneDrivePCSync tasks rather than duplicating them. This is
@@ -47,9 +59,12 @@ $ErrorActionPreference = "Stop"
 $ProjectRoot      = $PSScriptRoot
 $TaskFolderPath   = "\OneDrivePCSync"
 $StartupTaskName  = "OneDrivePCSync - Startup (Download)"
-$ShutdownTaskName = "OneDrivePCSync - Shutdown (Upload)"
+$ShutdownTaskName = "OneDrivePCSync - Shutdown (Upload on Lock)"
+$PeriodicTaskName = "OneDrivePCSync - Periodic Upload"
+$PeriodicIntervalMinutes = 15
 
 # Task Scheduler COM API constants (see Microsoft's Task Scheduler Schema docs).
+$TASK_TRIGGER_TIME                  = 1
 $TASK_TRIGGER_LOGON                 = 9
 $TASK_TRIGGER_SESSION_STATE_CHANGE  = 11
 $TASK_SESSION_LOCK                  = 7
@@ -92,6 +107,7 @@ if ($Uninstall) {
     Write-Info "Uninstalling OneDrivePCSync scheduled tasks..."
     Remove-ExistingTask -Name $StartupTaskName
     Remove-ExistingTask -Name $ShutdownTaskName
+    Remove-ExistingTask -Name $PeriodicTaskName
     Write-Ok "Uninstall complete. Nothing else was changed (config.json, logs, etc. are untouched)."
     return
 }
@@ -146,6 +162,7 @@ if (-not (Test-Path $ConfigFile -PathType Leaf)) {
 $Folder = Get-OrCreateTaskFolder
 Remove-ExistingTask -Name $StartupTaskName
 Remove-ExistingTask -Name $ShutdownTaskName
+Remove-ExistingTask -Name $PeriodicTaskName
 
 $UserId = "$env:USERDOMAIN\$env:USERNAME"
 
@@ -175,6 +192,13 @@ function New-OneDrivePCSyncTask {
         $Trigger.UserId = $UserId
     } elseif ($TriggerType -eq $TASK_TRIGGER_LOGON) {
         $Trigger.UserId = $UserId
+    } elseif ($TriggerType -eq $TASK_TRIGGER_TIME) {
+        # Start one minute from now, then repeat every $PeriodicIntervalMinutes
+        # indefinitely (empty Duration = repeat forever) for as long as the
+        # user stays logged on.
+        $Trigger.StartBoundary = (Get-Date).AddMinutes(1).ToString("yyyy-MM-ddTHH:mm:ss")
+        $Trigger.Repetition.Interval = "PT${PeriodicIntervalMinutes}M"
+        $Trigger.Repetition.StopAtDurationEnd = $false
     }
 
     $Action = $TaskDef.Actions.Create($TASK_ACTION_EXEC)
@@ -201,11 +225,19 @@ function New-OneDrivePCSyncTask {
 
 New-OneDrivePCSyncTask -Name $StartupTaskName  -Mode "startup"  -TriggerType $TASK_TRIGGER_LOGON
 New-OneDrivePCSyncTask -Name $ShutdownTaskName -Mode "shutdown" -TriggerType $TASK_TRIGGER_SESSION_STATE_CHANGE
+New-OneDrivePCSyncTask -Name $PeriodicTaskName -Mode "shutdown" -TriggerType $TASK_TRIGGER_TIME
 
 Write-Host ""
 Write-Ok "Setup complete. OneDrivePCSync now runs automatically:"
-Write-Host "    - On logon              -> downloads from OneDrive"
-Write-Host "    - On workstation lock   -> uploads to OneDrive"
+Write-Host "    - On logon                    -> downloads from OneDrive"
+Write-Host "    - On workstation lock (Win+L) -> uploads to OneDrive"
+Write-Host "    - Every $PeriodicIntervalMinutes minutes while logged on -> uploads to OneDrive"
+Write-Host ""
+Write-Warn "Note: a direct Shut Down/Restart does NOT reliably trigger the lock-based"
+Write-Warn "upload task (Windows doesn't lock the session first). The periodic task"
+Write-Warn "above is your safety net for that - your last upload will be at most"
+Write-Warn "$PeriodicIntervalMinutes minutes old. Pressing Win+L before shutting down still"
+Write-Warn "gives you an immediate extra upload on top of that."
 Write-Host ""
 Write-Info "View or manage these tasks in Task Scheduler under: Task Scheduler Library > OneDrivePCSync"
 Write-Info "Logs are written to: $(Join-Path $ProjectRoot 'logs\onedrive_pcsync.log')"

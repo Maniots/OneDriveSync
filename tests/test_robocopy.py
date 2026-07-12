@@ -40,6 +40,15 @@ def test_build_command_never_contains_destructive_flags(manager: RobocopyManager
     assert lowered.isdisjoint(FORBIDDEN_FLAGS)
 
 
+def test_build_command_always_excludes_older_source_files(manager: RobocopyManager) -> None:
+    """Regression test: without /XO, robocopy overwrites a newer destination
+    file with an older source file whenever their timestamps merely differ.
+    This previously caused a stale OneDrive save to silently overwrite a
+    newer local save on a download sync. /XO must always be present."""
+    command = manager.build_command(Path(r"C:\Source"), Path(r"C:\Destination"))
+    assert "/XO" in command
+
+
 def test_build_command_includes_source_and_destination(manager: RobocopyManager) -> None:
     source = Path(r"C:\Source")
     destination = Path(r"C:\Destination")

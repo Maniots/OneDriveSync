@@ -6,8 +6,9 @@ Thin, safety-constrained wrapper around the Windows `robocopy` executable.
 Design principle: robocopy is used ONLY as a copy engine. It never makes
 safety decisions - those are made entirely by sync_manager.py BEFORE this
 module is invoked. This module's job is simply to build a command line
-that can NEVER be destructive (no /MIR, /PURGE, /MOVE, /MOV) and to
-correctly interpret robocopy's unusual exit code bitmask.
+that can NEVER be destructive (no /MIR, /PURGE, /MOVE, /MOV) and that
+NEVER overwrites a newer file with an older one (/XO), and to correctly
+interpret robocopy's unusual exit code bitmask.
 
 Robocopy exit code bitmask (values can combine by addition):
     0  - No files copied. No failure.
@@ -93,6 +94,15 @@ class RobocopyManager:
 
         command.append(f"/R:{self._settings.retry_count}")
         command.append(f"/W:{self._settings.retry_wait_seconds}")
+
+        # CRITICAL: exclude source files that are OLDER than the destination
+        # file already there. Without this, robocopy copies any file whose
+        # timestamp merely DIFFERS from the destination - which means an
+        # older, stale copy (e.g. an out-of-date OneDrive backup) can silently
+        # overwrite a newer local file. /XO enforces "newer file wins" on a
+        # per-file basis in both sync directions, which is what this
+        # application's additive/non-destructive design requires.
+        command.append("/XO")
 
         if self._settings.multithreading and self._settings.multithreading > 1:
             command.append(f"/MT:{self._settings.multithreading}")

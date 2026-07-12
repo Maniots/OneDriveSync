@@ -83,14 +83,22 @@ powershell -ExecutionPolicy Bypass -File .\Setup-ScheduledTasks.ps1
 
 (Or right-click `Setup-ScheduledTasks.ps1` in Explorer -> **Run with PowerShell**.)
 
-This registers two Scheduled Tasks under **Task Scheduler Library > OneDrivePCSync**:
+This registers three Scheduled Tasks under **Task Scheduler Library > OneDrivePCSync**:
 
 - **OneDrivePCSync - Startup (Download)** - fires on logon
-- **OneDrivePCSync - Shutdown (Upload)** - fires on workstation lock (Win+L)
+- **OneDrivePCSync - Shutdown (Upload on Lock)** - fires on workstation lock (Win+L)
+- **OneDrivePCSync - Periodic Upload** - fires every 15 minutes while logged on
 
-Windows Task Scheduler has no native "log off" trigger, so workstation lock
-is used instead - it reliably fires whenever you step away or before a
-shutdown/restart (Windows locks the session first either way).
+**Important:** a direct Start Menu **Shut Down/Restart does not reliably trigger
+the lock-based upload** - Windows ends the session directly rather than
+locking it first (and with Fast Startup enabled, "shutdown" is actually a
+hibernation that emits no session event at all). There is no fully robust
+way to catch the exact shutdown instant without Group Policy logoff scripts
+(Pro/Enterprise editions only). The periodic upload task exists specifically
+to cover this: it uploads every 15 minutes throughout your session, so your
+last upload is never more than ~15 minutes old regardless of how the
+session ends. Pressing Win+L before shutting down still gives you an
+immediate extra upload on top of that.
 
 The script auto-detects your project-local `.venv` if present, requires no
 admin rights, and is safe to re-run any time (it replaces the existing
