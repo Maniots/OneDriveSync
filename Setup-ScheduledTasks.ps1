@@ -144,6 +144,22 @@ if (-not $PythonExe) {
     Write-Err "Install Python or create a virtual environment first, then re-run this script."
     exit 1
 }
+
+# If we ended up with python.exe (console-allocating) rather than pythonw.exe
+# (no console window), check whether a pythonw.exe sibling exists right next
+# to it and prefer that instead - this avoids a console window flashing on
+# screen every time a task fires, including the periodic one every 15 minutes.
+if ((Split-Path $PythonExe -Leaf) -ieq "python.exe") {
+    $SiblingPythonw = Join-Path (Split-Path $PythonExe -Parent) "pythonw.exe"
+    if (Test-Path $SiblingPythonw -PathType Leaf) {
+        Write-Info "Found pythonw.exe next to python.exe - using it to avoid console window flashes."
+        $PythonExe = (Resolve-Path $SiblingPythonw).Path
+    } else {
+        Write-Warn "No pythonw.exe found next to python.exe - a console window may briefly"
+        Write-Warn "flash each time a task runs. To fix: ensure pythonw.exe exists at"
+        Write-Warn "$(Split-Path $PythonExe -Parent), then re-run this script."
+    }
+}
 Write-Ok "Using Python interpreter: $PythonExe"
 
 $MainScript = Join-Path $ProjectRoot "main.py"
