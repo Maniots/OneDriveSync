@@ -28,11 +28,13 @@ from pathlib import Path
 from src.config_manager import ConfigManager
 from src.exceptions import OneDrivePCSyncError
 from src.logger import get_logger, setup_logger
+from src.single_instance import acquire_single_instance_lock
 from src.sync_manager import FolderSyncOutcome, SyncManager
 
 APP_ROOT = Path(__file__).resolve().parent
 DEFAULT_CONFIG_PATH = APP_ROOT / "config.json"
 DEFAULT_LOG_DIR = APP_ROOT / "logs"
+LOCK_FILE_PATH = APP_ROOT / "onedrive_pcsync.lock"
 
 
 def parse_arguments(argv: list[str]) -> argparse.Namespace:
@@ -88,6 +90,21 @@ def main(argv: list[str] | None = None) -> int:
 
     logger.info("OneDrive PC Sync starting (mode=%s, config=%s).", args.mode, args.config)
 
+    # Ensure only one sync runs at a time system-wide, regardless of which
+    # scheduled task triggered this run. Two tasks (e.g. the delayed startup
+    # download and the periodic upload) can legitimately fire close together;
+    # without this, they could run robocopy in opposite directions against
+    # the same folder concurrently. If another instance already holds the
+    # lock, this run exits cleanly (not an error) rather than racing it.
+    lock_handle = acquire_single_instance_lock(LOCK_FILE_PATH)
+    if lock_handle is None:
+        logger.info(
+            "Another OneDrivePCSync run is already in progress on this machine "
+            "(this can happen when two triggers fire close together - e.g. the "
+            "periodic upload and the delayed startup download). Skipping this run."
+        )
+        return 0
+
     try:
         config_manager = ConfigManager(config_path=args.config)
         config = config_manager.load()
@@ -118,6 +135,8 @@ def main(argv: list[str] | None = None) -> int:
     except Exception:  # noqa: BLE001 - last line of defense at the top level
         logger.exception("Unexpected fatal error during synchronization.")
         return 2
+    finally:
+        lock_handle.close()
 
     return _exit_code_for_outcomes(outcomes)
 
