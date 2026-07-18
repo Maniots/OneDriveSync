@@ -8,7 +8,9 @@
     Run this script once (see instructions below) and OneDrivePCSync will
     run automatically from then on, with no further action required:
 
-        - "OneDrivePCSync - Startup (Download)"        fires when you log on.
+        - "OneDrivePCSync - Startup (Download)"        fires 2 minutes after
+          you log on (delayed so the OneDrive client has time to start and
+          mount before we try to read from it).
         - "OneDrivePCSync - Shutdown (Upload on Lock)" fires when you lock
           your workstation (Win+L, or automatic idle lock).
         - "OneDrivePCSync - Periodic Upload"           fires every 15
@@ -62,6 +64,7 @@ $StartupTaskName  = "OneDrivePCSync - Startup (Download)"
 $ShutdownTaskName = "OneDrivePCSync - Shutdown (Upload on Lock)"
 $PeriodicTaskName = "OneDrivePCSync - Periodic Upload"
 $PeriodicIntervalMinutes = 15
+$StartupDelayMinutes = 2   # gives the OneDrive client time to start and mount before downloading
 
 # Task Scheduler COM API constants (see Microsoft's Task Scheduler Schema docs).
 $TASK_TRIGGER_TIME                  = 1
@@ -253,6 +256,7 @@ function New-OneDrivePCSyncTask {
         $Trigger.UserId = $UserId
     } elseif ($TriggerType -eq $TASK_TRIGGER_LOGON) {
         $Trigger.UserId = $UserId
+        $Trigger.Delay = "PT${StartupDelayMinutes}M"
     } elseif ($TriggerType -eq $TASK_TRIGGER_TIME) {
         # Start one minute from now, then repeat every $PeriodicIntervalMinutes
         # indefinitely (empty Duration = repeat forever) for as long as the
@@ -290,7 +294,7 @@ New-OneDrivePCSyncTask -Name $PeriodicTaskName -Mode "shutdown" -TriggerType $TA
 
 Write-Host ""
 Write-Ok "Setup complete. OneDrivePCSync now runs automatically:"
-Write-Host "    - On logon                    -> downloads from OneDrive"
+Write-Host "    - On logon ($StartupDelayMinutes min delay)   -> downloads from OneDrive"
 Write-Host "    - On workstation lock (Win+L) -> uploads to OneDrive"
 Write-Host "    - Every $PeriodicIntervalMinutes minutes while logged on -> uploads to OneDrive"
 Write-Host ""

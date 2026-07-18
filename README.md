@@ -85,7 +85,7 @@ powershell -ExecutionPolicy Bypass -File .\Setup-ScheduledTasks.ps1
 
 This registers three Scheduled Tasks under **Task Scheduler Library > OneDrivePCSync**:
 
-- **OneDrivePCSync - Startup (Download)** - fires on logon
+- **OneDrivePCSync - Startup (Download)** - fires 2 minutes after logon (delayed so the OneDrive client has time to start and mount before we try to read from it)
 - **OneDrivePCSync - Shutdown (Upload on Lock)** - fires on workstation lock (Win+L)
 - **OneDrivePCSync - Periodic Upload** - fires every 15 minutes while logged on
 
