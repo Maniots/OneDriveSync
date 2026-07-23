@@ -15,7 +15,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 
 class SyncDirection(str, Enum):
@@ -82,6 +82,28 @@ class RobocopySettings:
 
 
 @dataclass(frozen=True)
+class BackupSettings:
+    """Per-folder pre-upload backup settings.
+
+    When enabled, the CURRENT contents of a folder's OneDrive destination
+    are compressed into a timestamped archive, stored inside OneDrive
+    itself (never on local disk), immediately before every UPLOAD
+    (local -> OneDrive) operation overwrites that destination. This
+    protects against exactly the failure mode where a bad upload silently
+    replaces good OneDrive data with something worse.
+
+    backup_path is stored as an *expanded, resolved* Path by the time this
+    object is constructed (expansion and OneDrive-location validation
+    happen in config_manager.py). Backups are never taken before DOWNLOAD
+    operations, since those don't overwrite OneDrive.
+    """
+
+    enabled: bool
+    backup_path: Path
+    retention_days: int
+
+
+@dataclass(frozen=True)
 class FolderSyncConfig:
     """Configuration for a single folder synchronization pair.
 
@@ -98,6 +120,7 @@ class FolderSyncConfig:
     minimum_sync_percentage: float
     verify_after_sync: bool
     create_destination: bool
+    backup: Optional[BackupSettings] = None
 
 
 @dataclass(frozen=True)
