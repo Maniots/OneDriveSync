@@ -1,7 +1,7 @@
 """
 backup_manager.py
 
-Creates a compressed, timestamped backup of a folder's CURRENT OneDrive
+Creates a DAILY ROLLING ZIP backup of a folder's CURRENT OneDrive
 contents immediately before an UPLOAD (local -> OneDrive) operation
 overwrites them, and prunes backups older than the configured retention
 period.
@@ -21,13 +21,28 @@ Design principles, matching the rest of this application:
       never block an otherwise-successful, already-backed-up upload.
     - dry_run is fully respected: no archive is created and no files are
       deleted, only logged as what "would" happen.
+
+BACKUP FORMAT (daily rolling):
+    One ZIP per calendar day per folder.
+    Naming: <folder_id>_YYYY-MM-DD.zip
+    Example: elden_ring_2026-07-23.zip
+
+    On each UPLOAD:
+        1. Prune expired backups (older than retention_days).
+        2. If today's ZIP exists, delete it.
+        3. Create a fresh ZIP with today's date.
+        4. Proceed with upload.
+
+    This guarantees exactly ONE backup per day, always reflecting the
+    OneDrive state immediately before the most recent upload of that day.
 """
 
 from __future__ import annotations
 
+import re
 import time
 import zipfile
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 from typing import Optional
 
@@ -38,12 +53,12 @@ from .utils import count_files_recursive, format_bytes
 
 logger = get_logger(__name__)
 
-_TIMESTAMP_FORMAT = "%Y%m%d_%H%M%S"
-_SECONDS_PER_DAY = 86400
+# Daily ZIP naming: <folder_id>_YYYY-MM-DD.zip
+_DAILY_ZIP_PATTERN = re.compile(r"^(.+)_(\d{4}-\d{2}-\d{2})\.zip$")
 
 
 class BackupManager:
-    """Creates and prunes pre-upload backups for a single folder."""
+    """Creates and prunes daily rolling pre-upload backups for a single folder."""
 
     def __init__(self, dry_run: bool = False) -> None:
         self._dry_run = dry_run
@@ -51,24 +66,30 @@ class BackupManager:
     def create_backup(
         self, folder_id: str, backup_settings: BackupSettings, onedrive_path: Path
     ) -> Optional[Path]:
-        """Compress the current contents of `onedrive_path` into a
-        timestamped archive under this folder's backup directory.
+        """Create (or replace) today's backup of the OneDrive folder.
+
+        This method implements the daily rolling backup logic:
+        1. Prune expired backups (older than retention_days).
+        2. Delete today's backup if it already exists.
+        3. Create a fresh backup with today's date.
+        4. Return the path to the created backup.
+
+        If the OneDrive folder doesn't exist or is empty, this is treated
+        as a first-time sync and no backup is needed (returns None).
 
         Args:
-            folder_id: The folder's config id, used to namespace backups
-                so multiple folders never collide in the same backup_path.
+            folder_id: The folder's config id, used to namespace backups.
             backup_settings: This folder's validated backup configuration.
             onedrive_path: The OneDrive destination about to be overwritten
                 by the upcoming upload - this is what gets backed up.
 
         Returns:
             The path to the created archive, or None if there was nothing
-            to back up (onedrive_path doesn't exist or is empty) or this
-            is a dry run.
+            to back up (first-time sync) or this is a dry run.
 
         Raises:
-            BackupError: If backup creation fails for any other reason.
-                Callers should treat this as fatal for the folder's upload.
+            BackupError: If backup creation fails for any reason.
+                Callers MUST treat this as fatal for the folder's upload.
         """
         if not onedrive_path.exists() or count_files_recursive(onedrive_path) == 0:
             logger.info(
@@ -79,9 +100,24 @@ class BackupManager:
             return None
 
         backup_dir = backup_settings.backup_path / folder_id
-        timestamp = datetime.now().strftime(_TIMESTAMP_FORMAT)
-        archive_path = backup_dir / f"{folder_id}_{timestamp}.zip"
+        today = date.today()
+        today_str = today.isoformat()  # YYYY-MM-DD
+        archive_path = backup_dir / f"{folder_id}_{today_str}.zip"
 
+        # Step 1: Prune expired backups (based on date in filename)
+        self._prune_expired_backups(folder_id, backup_settings, today)
+
+        # Step 2: Delete today's backup if it already exists (replacement)
+        if archive_path.exists():
+            if self._dry_run:
+                logger.info(
+                    "[DRY RUN] Would replace today's backup: %s", archive_path
+                )
+            else:
+                logger.info("Today's backup already exists. Replacing: %s", archive_path)
+                archive_path.unlink()
+
+        # Step 3: Create fresh backup for today
         if self._dry_run:
             logger.info(
                 "[DRY RUN] Would create backup of '%s' at '%s'.",
@@ -117,35 +153,66 @@ class BackupManager:
                 if file_path.is_file():
                     zf.write(file_path, arcname=file_path.relative_to(source_dir))
 
-    def prune_old_backups(
-        self, folder_id: str, backup_settings: BackupSettings
+    def _prune_expired_backups(
+        self, folder_id: str, backup_settings: BackupSettings, today: date
     ) -> None:
-        """Delete backup archives older than retention_days for this folder.
+        """Delete backup archives older than retention_days.
 
-        Failures here are logged as warnings and never raised - retention
-        cleanup must never block or fail an otherwise-successful upload
-        that already has a fresh backup in place.
+        Retention is calculated based on the DATE ENCODED IN THE FILENAME,
+        not on filesystem mtime. This ensures correct behavior even if
+        files are copied/restored.
+
+        Failures are logged as warnings and never raised.
         """
         backup_dir = backup_settings.backup_path / folder_id
         if not backup_dir.exists():
             return
 
-        cutoff_seconds = time.time() - (backup_settings.retention_days * _SECONDS_PER_DAY)
+        retention_days = backup_settings.retention_days
+        cutoff_date = today - __import__("datetime").timedelta(days=retention_days)
+
+        logger.info("Cleaning expired backups (retention: %d days)...", retention_days)
 
         for archive_path in backup_dir.glob(f"{folder_id}_*.zip"):
             try:
-                if archive_path.stat().st_mtime < cutoff_seconds:
+                match = _DAILY_ZIP_PATTERN.match(archive_path.name)
+                if not match:
+                    # Skip files that don't match our naming convention
+                    logger.warning(
+                        "Folder '%s': skipping unrecognized backup file '%s'.",
+                        folder_id,
+                        archive_path.name,
+                    )
+                    continue
+
+                file_date_str = match.group(2)
+                file_date = date.fromisoformat(file_date_str)
+
+                if file_date < cutoff_date:
                     if self._dry_run:
                         logger.info(
                             "[DRY RUN] Would delete expired backup: %s", archive_path
                         )
                     else:
                         archive_path.unlink()
-                        logger.info("Folder '%s': deleted expired backup '%s'.", folder_id, archive_path)
-            except OSError as exc:
+                        logger.info("Removing expired backup: %s", archive_path.name)
+                # Files from today or within retention window are kept
+
+            except (ValueError, OSError) as exc:
                 logger.warning(
                     "Folder '%s': failed to prune old backup '%s' (non-fatal): %s",
                     folder_id,
-                    archive_path,
+                    archive_path.name,
                     exc,
                 )
+
+    def prune_old_backups(
+        self, folder_id: str, backup_settings: BackupSettings
+    ) -> None:
+        """Public method to prune expired backups.
+
+        This can be called independently (e.g., for testing or manual cleanup).
+        It uses today's date as the reference point.
+        """
+        today = date.today()
+        self._prune_expired_backups(folder_id, backup_settings, today)
