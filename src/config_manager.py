@@ -14,10 +14,11 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from .config import (
     AppConfig,
+    BackupSettings,
     FolderSyncConfig,
     GeneralSettings,
     LogLevel,
@@ -28,7 +29,7 @@ from .config import (
 )
 from .exceptions import ConfigurationError, PathValidationError
 from .logger import get_logger
-from .utils import expand_env_vars, is_dangerous_root_path
+from .utils import expand_env_vars, is_dangerous_root_path, is_under_onedrive_root
 
 logger = get_logger(__name__)
 
@@ -150,6 +151,8 @@ class ConfigManager:
             verify_after_sync = bool(entry.get("verify_after_sync", True))
             create_destination = bool(entry.get("create_destination", True))
 
+            backup = self._parse_backup(folder_id, entry.get("backup"))
+
             # Reject dangerous roots at load time, before any sync ever runs.
             if is_dangerous_root_path(local_path):
                 raise PathValidationError(
@@ -179,10 +182,63 @@ class ConfigManager:
                     minimum_sync_percentage=minimum_sync_percentage,
                     verify_after_sync=verify_after_sync,
                     create_destination=create_destination,
+                    backup=backup,
                 )
             )
 
         return folders
+
+    @staticmethod
+    def _parse_backup(folder_id: str, data: Any) -> Optional[BackupSettings]:
+        """Parse and validate a folder's optional "backup" section.
+
+        Returns None if the section is absent or explicitly disabled -
+        backup is strictly opt-in. When enabled, backup_path MUST resolve
+        to a location inside the user's OneDrive folder (never local
+        disk) - this is enforced here, at config-load time, before any
+        sync ever runs, matching this application's existing pattern of
+        rejecting unsafe configuration as early as possible.
+        """
+        if not data:
+            return None
+
+        enabled = bool(data.get("enabled", False))
+        if not enabled:
+            return None
+
+        backup_path_raw = data.get("backup_path")
+        if not backup_path_raw:
+            raise ConfigurationError(
+                f"Folder '{folder_id}': backup.enabled is true but backup_path is missing."
+            )
+
+        backup_path = Path(expand_env_vars(str(backup_path_raw))).resolve()
+
+        if not is_under_onedrive_root(backup_path):
+            raise ConfigurationError(
+                f"Folder '{folder_id}': backup_path '{backup_path}' is not inside "
+                f"the OneDrive folder (%OneDrive% must be set and backup_path must "
+                f"resolve underneath it). Backups are never permitted on local disk."
+            )
+
+        if is_dangerous_root_path(backup_path):
+            raise PathValidationError(
+                f"Folder '{folder_id}': backup_path '{backup_path}' is a forbidden "
+                f"dangerous root folder."
+            )
+
+        retention_days = int(data.get("retention_days", 7))
+        if retention_days < 1:
+            raise ConfigurationError(
+                f"Folder '{folder_id}': backup.retention_days must be at least 1, "
+                f"got {retention_days}."
+            )
+
+        return BackupSettings(
+            enabled=True,
+            backup_path=backup_path,
+            retention_days=retention_days,
+        )
 
     @staticmethod
     def _validate_folder_uniqueness(folders: List[FolderSyncConfig]) -> None:

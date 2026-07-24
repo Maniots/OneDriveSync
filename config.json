@@ -39,7 +39,12 @@
             "onedrive_path": "%OneDrive%\\PCSync\\AppData\\Roaming\\EldenRing",
             "minimum_sync_percentage": 80,
             "verify_after_sync": true,
-            "create_destination": true
+            "create_destination": true,
+            "backup": {
+                "enabled": true,
+                "backup_path": "%OneDrive%\\PCSync\\Backups",
+                "retention_days": 7
+            }
         },
         {
             "id": "rain_world",
@@ -49,7 +54,12 @@
             "onedrive_path": "%OneDrive%\\PCSync\\AppData\\LocalLow\\Videocult\\Rain World",
             "minimum_sync_percentage": 80,
             "verify_after_sync": true,
-            "create_destination": true
+            "create_destination": true,
+            "backup": {
+                "enabled": true,
+                "backup_path": "%OneDrive%\\PCSync\\Backups",
+                "retention_days": 7
+            }
         },
         {
             "id": "cuphead",
@@ -59,7 +69,12 @@
             "onedrive_path": "%OneDrive%\\PCSync\\AppData\\Roaming\\Cuphead",
             "minimum_sync_percentage": 80,
             "verify_after_sync": true,
-            "create_destination": true
+            "create_destination": true,
+            "backup": {
+                "enabled": true,
+                "backup_path": "%OneDrive%\\PCSync\\Backups",
+                "retention_days": 7
+            }
         }
     ]
 }

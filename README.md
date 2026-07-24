@@ -41,7 +41,9 @@ OneDrivePCSync/
 │   └── utils.py           # Env var expansion, dangerous-path checks, ratios
 │
 ├── logs/                  # Rotating log files (created at runtime)
-├── backups/               # Reserved for future pre-sync backups
+├── backups/               # Reserved (unused) - see "Automatic pre-upload
+│                          #   backups" below; real backups live in OneDrive,
+│                          #   never here, by design
 ├── data/                  # Reserved for local application state/cache
 │
 └── tests/
@@ -113,6 +115,42 @@ powershell -ExecutionPolicy Bypass -File .\Setup-ScheduledTasks.ps1 -Uninstall
 
 If you'd rather not use the script, wire these into Task Scheduler by hand
 with triggers "At log on" and "On workstation lock" / "On logoff" respectively.
+
+## Automatic pre-upload backups
+
+For any folder, you can enable an automatic backup of its CURRENT OneDrive
+contents immediately before every UPLOAD overwrites them - protection
+against exactly the failure mode where a bad or premature upload replaces
+good OneDrive data with something worse.
+
+```json
+"backup": {
+    "enabled": true,
+    "backup_path": "%OneDrive%\\PCSync\\Backups",
+    "retention_days": 7
+}
+```
+
+- **enabled** - opt-in per folder; omit the section entirely or set this
+  to `false` to disable (the default).
+- **backup_path** - where timestamped `.zip` archives are stored, namespaced
+  per folder (`<backup_path>\<folder_id>\<folder_id>_YYYYMMDD_HHMMSS.zip`).
+  **Must resolve inside your OneDrive folder** - the app validates this at
+  config-load time using the `%OneDrive%` environment variable and refuses
+  to start if `backup_path` points anywhere on local disk. Backups only
+  protect you if they survive independently of the machine that made them.
+- **retention_days** - archives older than this are deleted automatically
+  after each backup (failures here are logged as warnings and never block
+  the upload itself, since retention cleanup is housekeeping, not safety).
+
+Backups only ever happen before UPLOAD (local -> OneDrive), never before
+DOWNLOAD - a download doesn't overwrite OneDrive, so there's nothing to
+protect there. If a folder's OneDrive destination is empty (first-time
+sync), there's nothing to back up yet, so this is skipped automatically.
+If backup creation itself fails for any other reason, the upload for that
+folder is aborted rather than proceeding without one - the same
+per-folder isolation used everywhere else in this app means other
+folders are unaffected.
 
 ## Configuring folders
 

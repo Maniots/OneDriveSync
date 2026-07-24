@@ -170,3 +170,32 @@ def format_bytes(num_bytes: int) -> str:
             return f"{value:.1f} {unit}"
         value /= 1024.0
     return f"{value:.1f} PB"
+
+
+def is_under_onedrive_root(path: Path) -> bool:
+    """Determine whether a path is genuinely located inside the user's
+    OneDrive folder, as reported by the %OneDrive% environment variable.
+
+    Used to enforce the backup feature's core safety requirement: backups
+    must only ever be written inside OneDrive, never to local disk. This
+    is a hard requirement, not a preference - if the %OneDrive% variable
+    isn't set, this function cannot confirm safety and returns False
+    (fail closed), which causes config loading to reject the backup
+    configuration rather than silently allow a local-disk backup.
+
+    Args:
+        path: The (already expanded) path to check.
+
+    Returns:
+        True only if `path` resolves to a location inside the directory
+        %OneDrive% points to. False if %OneDrive% is unset, or if `path`
+        falls outside it.
+    """
+    onedrive_root_raw = os.environ.get("OneDrive")
+    if not onedrive_root_raw:
+        return False
+
+    onedrive_root = Path(onedrive_root_raw).resolve()
+    resolved_path = path.resolve()
+
+    return resolved_path.is_relative_to(onedrive_root)
