@@ -16,8 +16,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional
 
+from .backup_manager import BackupManager
 from .config import AppConfig, FolderSyncConfig, SyncDirection
 from .exceptions import (
+    BackupError,
     OneDrivePCSyncError,
     PathValidationError,
     RobocopyExecutionError,
@@ -51,6 +53,7 @@ class SyncManager:
             settings=config.robocopy,
             dry_run=config.general.dry_run,
         )
+        self._backup = BackupManager(dry_run=config.general.dry_run)
 
     def run_startup_sync(self) -> List[FolderSyncOutcome]:
         """Run the configured startup synchronization (typically download)."""
@@ -129,6 +132,10 @@ class SyncManager:
 
         self._validate_paths(folder, source, destination)
         self._enforce_safety_threshold(folder, source, destination)
+
+        if direction == SyncDirection.UPLOAD and folder.backup is not None and folder.backup.enabled:
+            self._backup.create_backup(folder.id, folder.backup, destination)
+            self._backup.prune_old_backups(folder.id, folder.backup)
 
         result = self._robocopy.run(source, destination)
 

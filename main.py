@@ -28,6 +28,7 @@ from pathlib import Path
 from src.config_manager import ConfigManager
 from src.exceptions import OneDrivePCSyncError
 from src.logger import get_logger, setup_logger
+from src.notifications import show_windows_toast
 from src.single_instance import acquire_single_instance_lock
 from src.sync_manager import FolderSyncOutcome, SyncManager
 
@@ -138,7 +139,29 @@ def main(argv: list[str] | None = None) -> int:
     finally:
         lock_handle.close()
 
+    if args.mode == "startup":
+        # Only the download direction gets a notification: it's the one the
+        # user is actually waiting on before they start playing/working.
+        # Uploads happen silently in the background by design.
+        show_windows_toast(
+            "OneDrivePCSync - Download complete",
+            _build_notification_summary(outcomes),
+        )
+
     return _exit_code_for_outcomes(outcomes)
+
+
+def _build_notification_summary(outcomes: list[FolderSyncOutcome]) -> str:
+    """Build a short, human-readable summary line for the toast notification."""
+    if not outcomes:
+        return "No folders were enabled for sync."
+
+    succeeded = sum(1 for o in outcomes if o.succeeded)
+    failed = len(outcomes) - succeeded
+
+    if failed == 0:
+        return f"{succeeded} folder(s) synced successfully."
+    return f"{succeeded} succeeded, {failed} failed - check logs for details."
 
 
 def _with_dry_run_override(config):

@@ -45,3 +45,14 @@ class RobocopyExecutionError(OneDrivePCSyncError):
 
 class VerificationError(OneDrivePCSyncError):
     """Raised when post-sync verification detects an inconsistency."""
+
+
+class BackupError(OneDrivePCSyncError):
+    """Raised when a required pre-upload backup could not be created.
+
+    By design this ABORTS the upload for that folder rather than proceeding
+    without a backup - if backup.enabled is true for a folder, the whole
+    point is that an upload should never happen without one. A failure to
+    prune old backups (retention cleanup) is treated as non-fatal instead
+    and does not raise this exception.
+    """
