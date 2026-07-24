@@ -38,3 +38,7 @@ RunHidden.vbs
 
 # Runtime single-instance lock file
 onedrive_pcsync.lock
+
+# claude APIs
+.claude/
+settings.local.json
