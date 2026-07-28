@@ -1,0 +1,19 @@
+2026-07-26 09:05:59 | INFO     | onedrive_pcsync.__main__ | OneDrivePCSync shutdown monitor starting...
+2026-07-26 09:16:48 | INFO     | onedrive_pcsync.__main__ | OneDrivePCSync shutdown monitor starting...
+2026-07-26 09:16:48 | ERROR    | onedrive_pcsync.__main__ | Another shutdown monitor instance is already running. Exiting.
+2026-07-27 18:45:41 | INFO     | onedrive_pcsync.__main__ | OneDrivePCSync shutdown monitor starting...
+2026-07-27 18:45:58 | INFO     | onedrive_pcsync.__main__ | Received CTRL_C_EVENT (Ctrl+C). Shutting down monitor.
+2026-07-27 18:45:58 | INFO     | onedrive_pcsync.__main__ | Shutdown event received. Running shutdown sync...
+2026-07-27 18:45:58 | INFO     | onedrive_pcsync.src.sync_runner | OneDrive PC Sync running (mode=shutdown, config=C:\Coding\OneDriveSync\src\config.json, dry_run=False).
+2026-07-27 18:45:58 | ERROR    | onedrive_pcsync.src.sync_runner | Fatal error while loading configuration.
+Traceback (most recent call last):
+  File "C:\Coding\OneDriveSync\src\sync_runner.py", line 72, in run_sync
+    config = config_manager.load()
+  File "C:\Coding\OneDriveSync\src\config_manager.py", line 54, in load
+    raw = self._read_json()
+  File "C:\Coding\OneDriveSync\src\config_manager.py", line 82, in _read_json
+    raise ConfigurationError(f"Configuration file not found: {self._config_path}")
+src.exceptions.ConfigurationError: Configuration file not found: C:\Coding\OneDriveSync\src\config.json
+2026-07-27 18:45:58 | WARNING  | onedrive_pcsync.__main__ | Shutdown sync completed with issues (exit code 2).
+2026-07-27 18:45:58 | INFO     | onedrive_pcsync.__main__ | Shutdown monitor exiting.
+2026-07-27 18:46:07 | INFO     | onedrive_pcsync.__main__ | OneDrivePCSync shutdown monitor starting...

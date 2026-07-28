@@ -38,7 +38,9 @@ OneDrivePCSync/
 │   ├── robocopy_manager.py# Safe, non-destructive robocopy wrapper
 │   ├── logger.py          # Centralized logging setup
 │   ├── exceptions.py      # Application exception hierarchy
-│   └── utils.py           # Env var expansion, dangerous-path checks, ratios
+│   ├── utils.py           # Env var expansion, dangerous-path checks, ratios
+│   ├── sync_runner.py     # Centralized sync logic used by main.py and shutdown monitor
+│   └── shutdown_monitor.py   # Resident program that catches Windows shutdown events
 │
 ├── logs/                  # Rotating log files (created at runtime)
 ├── backups/               # Reserved (unused) - see "Automatic pre-upload
@@ -77,44 +79,69 @@ python main.py --mode startup --dry-run
 ## Automated setup (recommended)
 
 Instead of manually configuring Task Scheduler, run the included setup
-script once:
+scripts once:
 
-```
+### For startup/shutdown sync via scheduled tasks:
+```powershell
 powershell -ExecutionPolicy Bypass -File .\Setup-ScheduledTasks.ps1
 ```
 
-(Or right-click `Setup-ScheduledTasks.ps1` in Explorer -> **Run with PowerShell**.)
+### For shutdown monitor (catches actual Windows shutdown events):
+```powershell
+powershell -ExecutionPolicy Bypass -File .\Setup-ShutdownMonitor.ps1
+```
 
-This registers three Scheduled Tasks under **Task Scheduler Library > OneDrivePCSync**:
+(Or right-click the `.ps1` files in Explorer -> **Run with PowerShell**.)
+
+#### Tasks created by `Setup-ScheduledTasks.ps1`:
+These register three Scheduled Tasks under **Task Scheduler Library > OneDrivePCSync**:
 
 - **OneDrivePCSync - Startup (Download)** - fires 2 minutes after logon (delayed so the OneDrive client has time to start and mount before we try to read from it)
 - **OneDrivePCSync - Shutdown (Upload on Lock)** - fires on workstation lock (Win+L)
 - **OneDrivePCSync - Periodic Upload** - fires every 15 minutes while logged on
 
-**Important:** a direct Start Menu **Shut Down/Restart does not reliably trigger
-the lock-based upload** - Windows ends the session directly rather than
-locking it first (and with Fast Startup enabled, "shutdown" is actually a
-hibernation that emits no session event at all). There is no fully robust
-way to catch the exact shutdown instant without Group Policy logoff scripts
-(Pro/Enterprise editions only). The periodic upload task exists specifically
-to cover this: it uploads every 15 minutes throughout your session, so your
-last upload is never more than ~15 minutes old regardless of how the
-session ends. Pressing Win+L before shutting down still gives you an
-immediate extra upload on top of that.
+#### Task created by `Setup-ShutdownMonitor.ps1`:
+- **OneDrivePCSync - Shutdown Monitor** - fires at logon and runs silently in the background, waiting for a Windows shutdown signal to trigger an immediate upload sync
+
+## How the shutdown monitor works
+
+The shutdown monitor is a lightweight resident program that starts at user logon and waits for Windows shutdown signals. When Windows begins shutting down (or restarting), it sends a `CTRL_SHUTDOWN_EVENT` to all console processes. The monitor intercepts this signal and immediately triggers an upload sync using the same safety-checked logic as the manual `shutdown` mode.
+
+This provides a more reliable shutdown-triggered sync than the lock-based task, because it fires at the actual beginning of system shutdown rather than relying on the workstation lock event (which doesn't always precede a shutdown/restart).
+
+**Important timing note:** The Windows shutdown handler only gives applications a limited time (typically ~5 seconds, registry-tunable via `HKEY_LOCAL_SYSTEM\SYSTEM\CurrentControlSet\Control\WaitToKillServiceTimeout`) to complete their shutdown handling before force-terminating the process. For most users with regular periodic syncs (every 15 minutes), the shutdown sync only needs to upload recent changes and completes quickly. If your sync typically takes longer than a few seconds, consider increasing the shutdown timeout via the registry setting mentioned above (requires reboot).
+
+## Important limitation note
+
+Even with the shutdown monitor, a direct Start Menu **Shut Down/Restart** still doesn't guarantee a successful sync if:
+
+1. Your sync takes longer than the Windows shutdown timeout (default ~5 seconds)
+2. You have Fast Startup enabled (where "shutdown" is actually a hybrid hibernation that may not send the shutdown signal to all applications)
+
+The existing **Periodic Upload** task (every 15 minutes) remains an important safety net - it ensures your last upload is never more than ~15 minutes old regardless of how the session ends. For maximum protection, press Win+L before shutting down to trigger both the lock-based upload *and* give the shutdown monitor a chance to run.
 
 The script auto-detects your project-local `.venv` if present, requires no
 admin rights, and is safe to re-run any time (it replaces the existing
 tasks rather than duplicating them - useful after moving the project folder
 or changing Python interpreters). To remove the tasks later:
 
-```
+#### To remove startup/shutdown sync tasks:
+```powershell
 powershell -ExecutionPolicy Bypass -File .\Setup-ScheduledTasks.ps1 -Uninstall
+```
+
+#### To remove the shutdown monitor task:
+```powershell
+powershell -ExecutionPolicy Bypass -File .\Setup-ShutdownMonitor.ps1 -Uninstall
 ```
 
 ## Manual setup
 
-If you'd rather not use the script, wire these into Task Scheduler by hand
-with triggers "At log on" and "On workstation lock" / "On logoff" respectively.
+If you'd rather not use the scripts, wire these into Task Scheduler by hand:
+- Startup sync: Trigger "At log on" (with 2-minute delay), run `python main.py --mode startup`
+- Lock-triggered upload: Trigger "On workstation lock", run `python main.py --mode shutdown`
+- Periodic upload: Trigger "On a schedule" (every 15 minutes), run `python main.py --mode shutdown`
+- Shutdown monitor: Trigger "At log on", run `python src/shutdown_monitor.py` (hidden window)
 
 ## Automatic pre-upload backups
 

@@ -196,23 +196,27 @@ $VbsContent = @"
 ' flash whatsoever. Used to work around a Task Scheduler quirk where even
 ' pythonw.exe can briefly flash a console window when launched directly.
 '
-' Arguments: <python_exe_path> <main_py_path> <mode> <working_directory>
+' Arguments: <python_exe_path> <script_path> [<arg1> [<arg2> ...]] <working_directory>
 Option Explicit
-Dim objShell, strPython, strScript, strMode, strCwd, strCommand
+Dim objShell, strPython, strScript, strCwd, i, strCommand
 
-If WScript.Arguments.Count < 4 Then
+If WScript.Arguments.Count < 3 Then
     WScript.Quit 1
 End If
 
 strPython = WScript.Arguments(0)
 strScript = WScript.Arguments(1)
-strMode   = WScript.Arguments(2)
-strCwd    = WScript.Arguments(3)
+strCwd    = WScript.Arguments(WScript.Arguments.Count - 1)
 
 Set objShell = CreateObject("WScript.Shell")
 objShell.CurrentDirectory = strCwd
 
-strCommand = """" & strPython & """ """ & strScript & """ --mode " & strMode
+' Build command: "python_exe" "script_path" [arg1] [arg2] ...
+strCommand = """" & strPython & """ """ & strScript & """"
+For i = 2 To WScript.Arguments.Count - 2
+    strCommand = strCommand & " " & WScript.Arguments(i)
+Next
+
 objShell.Run strCommand, 0, True
 "@
 Set-Content -Path $RunHiddenVbsPath -Value $VbsContent -Encoding ASCII
@@ -268,7 +272,7 @@ function New-OneDrivePCSyncTask {
 
     $Action = $TaskDef.Actions.Create($TASK_ACTION_EXEC)
     $Action.Path = $WscriptExe
-    $Action.Arguments = "`"$RunHiddenVbsPath`" `"$PythonExe`" `"$MainScript`" $Mode `"$ProjectRoot`""
+    $Action.Arguments = "`"$RunHiddenVbsPath`" `"$PythonExe`" `"$MainScript`" --mode $Mode `"$ProjectRoot`""
     $Action.WorkingDirectory = $ProjectRoot
 
     $Principal = $TaskDef.Principal
