@@ -45,7 +45,7 @@ $ErrorActionPreference = "Stop"
 $ProjectRoot      = $PSScriptRoot
 $TaskFolderPath   = "\OneDrivePCSync"
 $MonitorTaskName  = "OneDrivePCSync - Shutdown Monitor"
-$MonitorTaskDescription = "Runs the OneDrivePCSync shutdown monitor at logon to catch Windows shutdown events."
+$MonitorTaskDescription = "Runs the OneDrivePCSync shutdown monitor at logon to catch Windows session-ending notifications (shutdown, restart, logoff) and trigger an upload sync."
 
 # Task Scheduler COM API constants.
 $TASK_TRIGGER_LOGON                 = 9
@@ -216,11 +216,13 @@ New-OneDrivePCSyncMonitorTask -Name $MonitorTaskName
 Write-Host ""
 Write-Ok "Setup complete. OneDrivePCSync shutdown monitor will now run at logon:"
 Write-Host "    - At logon: starts the shutdown monitor (hidden)"
-Write-Host "    - The monitor waits for a Windows shutdown signal to trigger an upload sync."
+Write-Host "    - The monitor waits for Windows session-ending notifications"
+Write-Host "      (shutdown, restart, or logoff) and triggers an upload sync."
 Write-Host ""
-Write-Warn "Note: the monitor uses a console control handler which has a limited time"
-Write-Warn "to perform the shutdown sync (default ~5 seconds, registry-tunable). If your"
-Write-Warn "shutdown sync takes longer, consider increasing the shutdown timeout via:"
+Write-Warn "Note: Windows gives interactive applications a limited time (default"
+Write-Warn "5 seconds, registry-tunable) to complete shutdown processing before"
+Write-Warn "forcefully terminating the process. If your shutdown sync regularly"
+Write-Warn "exceeds this window, consider increasing the timeout via:"
 Write-Host "    HKLM\SYSTEM\CurrentControlSet\Control\WaitToKillServiceTimeout"
 Write-Host " (requires reboot and affects all services)."
 Write-Host ""

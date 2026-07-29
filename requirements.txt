@@ -1,9 +1,15 @@
-# OneDrive PC Sync
+# OneDrive PC Sync — Third-party dependencies
 #
-# This project intentionally relies only on the Python 3.12+ standard
-# library (pathlib, dataclasses, typing, logging, subprocess, json,
-# shutil, os, argparse, enum) and requires no third-party packages.
+# pywin32 is required for the shutdown monitor (shutdown_monitor.py).
+# The monitor uses win32gui, win32con, and win32api to create a hidden
+# message-only window and run a Windows message loop; this is the
+# Windows-recommended architecture for receiving WM_QUERYENDSESSION /
+# WM_ENDSESSION notifications in interactive applications.  See:
+#   https://learn.microsoft.com/en-us/windows/win32/shutdown/application-responsiveness
 #
-# This file is kept for completeness / future extension (e.g. adding
-# a system tray icon or a GUI), and to make `pip install -r requirements.txt`
-# a safe no-op in CI or fresh environments.
+# Install it with: pip install pywin32
+#
+# All other dependencies (pathlib, dataclasses, typing, logging,
+# subprocess, json, shutil, os, argparse, enum, msvcrt) are part of
+# the Python 3.12+ standard library.
+pywin32

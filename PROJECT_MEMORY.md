@@ -1,9 +1,9 @@
 # OneDrive PC Sync — Project Memory
 
-**Last updated:** 2026-07-24  
-**Branch:** `backups-implementation` (off `master`)  
+**Last updated:** 2026-07-29  
+**Branch:** `shutdown-management` (off `master`)  
 **Language:** Python 3.14+ (type-annotated, dataclasses, pathlib)  
-**Target OS:** Windows 10/11 (uses `robocopy`, PowerShell toast notifications, Windows file locking)
+**Target OS:** Windows 10/11 (uses `robocopy`, PowerShell toast notifications, Windows file locking, `pywin32` for shutdown monitor)
 
 ---
 
@@ -36,6 +36,10 @@ src/
 ├── sync_manager.py        # Orchestrates: validate → safety threshold → (backup?) → robocopy → verify
 ├── single_instance.py     # OS-level file lock: prevents concurrent runs from different scheduled tasks
 ├── notifications.py       # Best-effort Windows toast notifications (PowerShell + WinRT)
+├── shutdown_monitor.py    # Resident monitor that waits for Windows session-ending
+│                           # notifications (WM_QUERYENDSESSION / WM_ENDSESSION)
+│                           # via a hidden message-only window and triggers an upload
+│                           # sync on shutdown, restart, or logoff.
 └── main.py                # (not yet present — entry point called via PowerShell wrapper)
 ```
 
@@ -248,18 +252,20 @@ powershell -ExecutionPolicy Bypass -File .\Setup-ScheduledTasks.ps1
 powershell -ExecutionPolicy Bypass -File .\Setup-ScheduledTasks.ps1 -Uninstall
 ```
 
-**Hidden-window wrapper:** `RunHidden.vbs` (auto-generated) → launches `wscript.exe` → `pythonw.exe main.py --mode <startup|shutdown>` — avoids console flash even with `pythonw.exe`.
+**Hidden-window wrapper:** `RunHidden.vbs` (auto-generated) → launches `wscript.exe` → Python executable → Python script — avoids console flash even with `pythonw.exe`. Used by both `main.py` (scheduled tasks) and `shutdown_monitor.py`.
 
 ---
 
-## 🚀 Entry Point (main.py — to be created)
+## 🚀 Entry Points
 
-The PowerShell wrapper calls:
-```bash
-pythonw.exe main.py --mode startup   # or --mode shutdown
-```
+### Shutdown monitor (`src/shutdown_monitor.py`) — implemented
+Runs as a resident background process at user logon (via Scheduled Task,
+`Setup-ShutdownMonitor.ps1`). Uses a hidden message-only window and a
+Windows message loop to receive `WM_QUERYENDSESSION` / `WM_ENDSESSION`
+notifications. When the session is ending, it runs `run_sync(mode="shutdown")`.
 
-**Expected `main.py` skeleton:**
+### Main sync script (`src/main.py`) — not yet created
+**
 ```python
 from pathlib import Path
 from src.config_manager import ConfigManager
@@ -322,6 +328,7 @@ if __name__ == "__main__":
 
 | Commit | Date | Summary |
 |--------|------|---------|
+| `e3a1b42` (HEAD) | 2026-07-29 | Replaced broken `SetConsoleCtrlHandler`/`CTRL_SHUTDOWN_EVENT` approach in `shutdown_monitor.py` with a hidden message-only window + Windows message loop handling `WM_QUERYENDSESSION` / `WM_ENDSESSION` (the Windows-recommended architecture for interactive apps); added `pywin32` dependency |
 | `595fd32` | 2026-07-24 | Added backups management + notification when startup download finishes |
 | `deea75a` | 2026-07-24 | Added single-instance tasks (prevent overlap) |
 | `0624a76` | 2026-07-24 | Added 2-minute delay on PC startup |
@@ -341,6 +348,7 @@ if __name__ == "__main__":
 | `src/backup_manager.py` | Backup creation/pruning — OneDrive-only enforcement |
 | `src/utils.py` | `is_dangerous_root_path`, `is_under_onedrive_root` — security-critical |
 | `src/exceptions.py` | Typed exceptions — catch specific types in sync_manager |
+| `src/shutdown_monitor.py` | Resident monitor that receives WM_QUERYENDSESSION / WM_ENDSESSION via a hidden window and triggers shutdown sync |
 | `Setup-ScheduledTasks.ps1` | Task registration — run after moving project or changing Python |
 | `config.json` | User-editable config — env vars expanded at load time |
 
