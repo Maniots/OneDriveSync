@@ -13,3 +13,4 @@
 # subprocess, json, shutil, os, argparse, enum, msvcrt) are part of
 # the Python 3.12+ standard library.
 pywin32
+graphifyy
