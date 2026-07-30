@@ -1,0 +1,917 @@
+{
+  "nodes": [
+    {
+      "id": "claude_project_instructions",
+      "label": "Claude Code Project Instructions",
+      "file_type": "document",
+      "source_file": "C:\\Coding\\OneDriveSync\\CLAUDE.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "project_memory",
+      "label": "OneDrive PC Sync Project Memory",
+      "file_type": "document",
+      "source_file": "C:\\Coding\\OneDriveSync\\PROJECT_MEMORY.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "readme",
+      "label": "OneDrive PC Sync README",
+      "file_type": "document",
+      "source_file": "C:\\Coding\\OneDriveSync\\README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "requirements",
+      "label": "Third-party Dependencies",
+      "file_type": "document",
+      "source_file": "C:\\Coding\\OneDriveSync\\requirements.txt",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "shutdown_management_branch",
+      "label": "shutdown-management Branch",
+      "file_type": "document",
+      "source_file": "C:\\Coding\\OneDriveSync\\PROJECT_MEMORY.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "safety_first_philosophy",
+      "label": "Safety-First Architecture",
+      "file_type": "rationale",
+      "source_file": "C:\\Coding\\OneDriveSync\\PROJECT_MEMORY.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "non_destructive_sync",
+      "label": "Non-Destructive Sync",
+      "file_type": "rationale",
+      "source_file": "C:\\Coding\\OneDriveSync\\README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "dangerous_root_rejection",
+      "label": "Dangerous Root Path Rejection",
+      "file_type": "concept",
+      "source_file": "C:\\Coding\\OneDriveSync\\PROJECT_MEMORY.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "safety_threshold",
+      "label": "File-Count Safety Threshold",
+      "file_type": "concept",
+      "source_file": "C:\\Coding\\OneDriveSync\\PROJECT_MEMORY.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "non_destructive_robocopy",
+      "label": "Non-Destructive robocopy Flag Enforcement",
+      "file_type": "concept",
+      "source_file": "C:\\Coding\\OneDriveSync\\PROJECT_MEMORY.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "pre_upload_backup",
+      "label": "Pre-Upload Backup",
+      "file_type": "concept",
+      "source_file": "C:\\Coding\\OneDriveSync\\PROJECT_MEMORY.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "post_sync_verification",
+      "label": "Post-Sync Verification",
+      "file_type": "concept",
+      "source_file": "C:\\Coding\\OneDriveSync\\PROJECT_MEMORY.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "single_instance_lock",
+      "label": "Single-Instance Lock",
+      "file_type": "concept",
+      "source_file": "C:\\Coding\\OneDriveSync\\PROJECT_MEMORY.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "src_config",
+      "label": "config.py",
+      "file_type": "code",
+      "source_file": "C:\\Coding\\OneDriveSync\\PROJECT_MEMORY.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "src_config_manager",
+      "label": "config_manager.py",
+      "file_type": "code",
+      "source_file": "C:\\Coding\\OneDriveSync\\PROJECT_MEMORY.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "src_exceptions",
+      "label": "exceptions.py",
+      "file_type": "code",
+      "source_file": "C:\\Coding\\OneDriveSync\\PROJECT_MEMORY.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "src_logger",
+      "label": "logger.py",
+      "file_type": "code",
+      "source_file": "C:\\Coding\\OneDriveSync\\PROJECT_MEMORY.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "src_utils",
+      "label": "utils.py",
+      "file_type": "code",
+      "source_file": "C:\\Coding\\OneDriveSync\\PROJECT_MEMORY.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "src_robocopy_manager",
+      "label": "robocopy_manager.py",
+      "file_type": "code",
+      "source_file": "C:\\Coding\\OneDriveSync\\PROJECT_MEMORY.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "src_backup_manager",
+      "label": "backup_manager.py",
+      "file_type": "code",
+      "source_file": "C:\\Coding\\OneDriveSync\\PROJECT_MEMORY.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "src_sync_manager",
+      "label": "sync_manager.py",
+      "file_type": "code",
+      "source_file": "C:\\Coding\\OneDriveSync\\PROJECT_MEMORY.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "src_single_instance",
+      "label": "single_instance.py",
+      "file_type": "code",
+      "source_file": "C:\\Coding\\OneDriveSync\\PROJECT_MEMORY.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "src_notifications",
+      "label": "notifications.py",
+      "file_type": "code",
+      "source_file": "C:\\Coding\\OneDriveSync\\PROJECT_MEMORY.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "src_shutdown_monitor",
+      "label": "shutdown_monitor.py",
+      "file_type": "code",
+      "source_file": "C:\\Coding\\OneDriveSync\\PROJECT_MEMORY.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "src_main",
+      "label": "main.py",
+      "file_type": "code",
+      "source_file": "C:\\Coding\\OneDriveSync\\PROJECT_MEMORY.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "config_json",
+      "label": "config.json",
+      "file_type": "document",
+      "source_file": "C:\\Coding\\OneDriveSync\\PROJECT_MEMORY.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "wm_queryendsession",
+      "label": "WM_QUERYENDSESSION Windows Message",
+      "file_type": "concept",
+      "source_file": "C:\\Coding\\OneDriveSync\\PROJECT_MEMORY.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "wm_endsession",
+      "label": "WM_ENDSESSION Windows Message",
+      "file_type": "concept",
+      "source_file": "C:\\Coding\\OneDriveSync\\PROJECT_MEMORY.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "pywin32",
+      "label": "pywin32 Dependency",
+      "file_type": "concept",
+      "source_file": "C:\\Coding\\OneDriveSync\\requirements.txt",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "startup_sync",
+      "label": "Startup Sync (Download)",
+      "file_type": "concept",
+      "source_file": "C:\\Coding\\OneDriveSync\\PROJECT_MEMORY.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "shutdown_sync",
+      "label": "Shutdown Sync (Upload)",
+      "file_type": "concept",
+      "source_file": "C:\\Coding\\OneDriveSync\\PROJECT_MEMORY.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "periodic_upload",
+      "label": "Periodic Upload (15-min Safety Net)",
+      "file_type": "concept",
+      "source_file": "C:\\Coding\\OneDriveSync\\PROJECT_MEMORY.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    }
+  ],
+  "edges": [
+    {
+      "source": "claude_project_instructions",
+      "target": "project_memory",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Coding\\OneDriveSync\\CLAUDE.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "project_memory",
+      "target": "src_sync_manager",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Coding\\OneDriveSync\\PROJECT_MEMORY.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "project_memory",
+      "target": "src_robocopy_manager",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Coding\\OneDriveSync\\PROJECT_MEMORY.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "project_memory",
+      "target": "src_backup_manager",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Coding\\OneDriveSync\\PROJECT_MEMORY.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "project_memory",
+      "target": "src_shutdown_monitor",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Coding\\OneDriveSync\\PROJECT_MEMORY.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "project_memory",
+      "target": "src_single_instance",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Coding\\OneDriveSync\\PROJECT_MEMORY.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "project_memory",
+      "target": "src_notifications",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Coding\\OneDriveSync\\PROJECT_MEMORY.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "project_memory",
+      "target": "src_config",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Coding\\OneDriveSync\\PROJECT_MEMORY.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "project_memory",
+      "target": "src_config_manager",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Coding\\OneDriveSync\\PROJECT_MEMORY.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "project_memory",
+      "target": "src_utils",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Coding\\OneDriveSync\\PROJECT_MEMORY.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "project_memory",
+      "target": "src_exceptions",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Coding\\OneDriveSync\\PROJECT_MEMORY.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "project_memory",
+      "target": "src_logger",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Coding\\OneDriveSync\\PROJECT_MEMORY.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "project_memory",
+      "target": "src_main",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Coding\\OneDriveSync\\PROJECT_MEMORY.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "project_memory",
+      "target": "safety_first_philosophy",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Coding\\OneDriveSync\\PROJECT_MEMORY.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "project_memory",
+      "target": "dangerous_root_rejection",
+      "relation": "implements",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Coding\\OneDriveSync\\PROJECT_MEMORY.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "project_memory",
+      "target": "safety_threshold",
+      "relation": "implements",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Coding\\OneDriveSync\\PROJECT_MEMORY.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "project_memory",
+      "target": "non_destructive_robocopy",
+      "relation": "implements",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Coding\\OneDriveSync\\PROJECT_MEMORY.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "project_memory",
+      "target": "pre_upload_backup",
+      "relation": "implements",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Coding\\OneDriveSync\\PROJECT_MEMORY.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "project_memory",
+      "target": "post_sync_verification",
+      "relation": "implements",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Coding\\OneDriveSync\\PROJECT_MEMORY.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "project_memory",
+      "target": "single_instance_lock",
+      "relation": "implements",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Coding\\OneDriveSync\\PROJECT_MEMORY.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "project_memory",
+      "target": "config_json",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Coding\\OneDriveSync\\PROJECT_MEMORY.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "project_memory",
+      "target": "startup_sync",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Coding\\OneDriveSync\\PROJECT_MEMORY.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "project_memory",
+      "target": "shutdown_sync",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Coding\\OneDriveSync\\PROJECT_MEMORY.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "project_memory",
+      "target": "periodic_upload",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Coding\\OneDriveSync\\PROJECT_MEMORY.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "project_memory",
+      "target": "wm_queryendsession",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Coding\\OneDriveSync\\PROJECT_MEMORY.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "project_memory",
+      "target": "wm_endsession",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Coding\\OneDriveSync\\PROJECT_MEMORY.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "src_sync_manager",
+      "target": "src_robocopy_manager",
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Coding\\OneDriveSync\\PROJECT_MEMORY.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "src_sync_manager",
+      "target": "src_backup_manager",
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Coding\\OneDriveSync\\PROJECT_MEMORY.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "src_sync_manager",
+      "target": "src_utils",
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Coding\\OneDriveSync\\PROJECT_MEMORY.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "src_shutdown_monitor",
+      "target": "src_sync_manager",
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Coding\\OneDriveSync\\PROJECT_MEMORY.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "src_shutdown_monitor",
+      "target": "wm_queryendsession",
+      "relation": "implements",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Coding\\OneDriveSync\\PROJECT_MEMORY.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "src_shutdown_monitor",
+      "target": "wm_endsession",
+      "relation": "implements",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Coding\\OneDriveSync\\PROJECT_MEMORY.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "src_robocopy_manager",
+      "target": "non_destructive_robocopy",
+      "relation": "implements",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Coding\\OneDriveSync\\PROJECT_MEMORY.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "src_backup_manager",
+      "target": "pre_upload_backup",
+      "relation": "implements",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Coding\\OneDriveSync\\PROJECT_MEMORY.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "src_sync_manager",
+      "target": "safety_threshold",
+      "relation": "implements",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Coding\\OneDriveSync\\PROJECT_MEMORY.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "src_sync_manager",
+      "target": "post_sync_verification",
+      "relation": "implements",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Coding\\OneDriveSync\\PROJECT_MEMORY.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "src_single_instance",
+      "target": "single_instance_lock",
+      "relation": "implements",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Coding\\OneDriveSync\\PROJECT_MEMORY.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "src_utils",
+      "target": "dangerous_root_rejection",
+      "relation": "implements",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Coding\\OneDriveSync\\PROJECT_MEMORY.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "requirements",
+      "target": "pywin32",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Coding\\OneDriveSync\\requirements.txt",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "requirements",
+      "target": "src_shutdown_monitor",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Coding\\OneDriveSync\\requirements.txt",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "pywin32",
+      "target": "wm_queryendsession",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Coding\\OneDriveSync\\requirements.txt",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "pywin32",
+      "target": "wm_endsession",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Coding\\OneDriveSync\\requirements.txt",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "readme",
+      "target": "non_destructive_sync",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Coding\\OneDriveSync\\README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "readme",
+      "target": "dangerous_root_rejection",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Coding\\OneDriveSync\\README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "readme",
+      "target": "src_shutdown_monitor",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Coding\\OneDriveSync\\README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "readme",
+      "target": "periodic_upload",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Coding\\OneDriveSync\\README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "readme",
+      "target": "pre_upload_backup",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Coding\\OneDriveSync\\README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "non_destructive_sync",
+      "target": "non_destructive_robocopy",
+      "relation": "semantically_similar_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.95,
+      "source_file": "C:\\Coding\\OneDriveSync\\README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "non_destructive_sync",
+      "target": "dangerous_root_rejection",
+      "relation": "semantically_similar_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.85,
+      "source_file": "C:\\Coding\\OneDriveSync\\README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "startup_sync",
+      "target": "shutdown_sync",
+      "relation": "conceptually_related_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.85,
+      "source_file": "C:\\Coding\\OneDriveSync\\PROJECT_MEMORY.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "periodic_upload",
+      "target": "shutdown_sync",
+      "relation": "semantically_similar_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.9,
+      "source_file": "C:\\Coding\\OneDriveSync\\PROJECT_MEMORY.md",
+      "source_location": null,
+      "weight": 1.0
+    }
+  ],
+  "hyperedges": [
+    {
+      "id": "safety_architecture_flow",
+      "label": "Safety Architecture Flow",
+      "nodes": [
+        "dangerous_root_rejection",
+        "safety_threshold",
+        "non_destructive_robocopy",
+        "pre_upload_backup",
+        "post_sync_verification",
+        "single_instance_lock"
+      ],
+      "relation": "participate_in",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Coding\\OneDriveSync\\PROJECT_MEMORY.md"
+    },
+    {
+      "id": "sync_orchestration",
+      "label": "Sync Manager Orchestration",
+      "nodes": [
+        "src_sync_manager",
+        "src_robocopy_manager",
+        "src_backup_manager",
+        "src_utils",
+        "src_config_manager"
+      ],
+      "relation": "participate_in",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Coding\\OneDriveSync\\PROJECT_MEMORY.md"
+    },
+    {
+      "id": "shutdown_signal_handling",
+      "label": "Shutdown Signal Handling",
+      "nodes": [
+        "src_shutdown_monitor",
+        "wm_queryendsession",
+        "wm_endsession",
+        "pywin32"
+      ],
+      "relation": "participate_in",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "C:\\Coding\\OneDriveSync\\PROJECT_MEMORY.md"
+    }
+  ],
+  "input_tokens": 0,
+  "output_tokens": 0
+}

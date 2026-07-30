@@ -1,0 +1,4 @@
+C:\Coding\OneDriveSync\CLAUDE.md
+C:\Coding\OneDriveSync\PROJECT_MEMORY.md
+C:\Coding\OneDriveSync\README.md
+C:\Coding\OneDriveSync\requirements.txt
