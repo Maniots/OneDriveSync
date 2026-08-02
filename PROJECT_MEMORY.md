@@ -1,6 +1,6 @@
 # OneDrive PC Sync — Project Memory
 
-**Last updated:** 2026-07-29  
+**Last updated:** 2026-08-01  
 **Branch:** `shutdown-management` (off `master`)  
 **Language:** Python 3.14+ (type-annotated, dataclasses, pathlib)  
 **Target OS:** Windows 10/11 (uses `robocopy`, PowerShell toast notifications, Windows file locking, `pywin32` for shutdown monitor)
@@ -38,8 +38,12 @@ src/
 ├── notifications.py       # Best-effort Windows toast notifications (PowerShell + WinRT)
 ├── shutdown_monitor.py    # Resident monitor that waits for Windows session-ending
 │                           # notifications (WM_QUERYENDSESSION / WM_ENDSESSION)
-│                           # via a hidden message-only window and triggers an upload
-│                           # sync on shutdown, restart, or logoff.
+│                           # via a hidden top-level window (NULL parent) and triggers
+│                           # an upload sync on shutdown, restart, or logoff.
+│                           # FIXED: Previously used HWND_MESSAGE (message-only window)
+│                           # which does NOT receive WM_QUERYENDSESSION broadcast messages.
+│                           # Now uses NULL parent (hidden top-level window) instead.
+│                           # See shutdown_diagnosis.md for full analysis and resolution.
 └── main.py                # (not yet present — entry point called via PowerShell wrapper)
 ```
 
@@ -329,6 +333,8 @@ if __name__ == "__main__":
 | Commit | Date | Summary |
 |--------|------|---------|
 | `e3a1b42` (HEAD) | 2026-07-29 | Replaced broken `SetConsoleCtrlHandler`/`CTRL_SHUTDOWN_EVENT` approach in `shutdown_monitor.py` with a hidden message-only window + Windows message loop handling `WM_QUERYENDSESSION` / `WM_ENDSESSION` (the Windows-recommended architecture for interactive apps); added `pywin32` dependency |
+| `2aa2931` | 2026-07-31 | **Fix applied:** Replaced `HWND_MESSAGE` with `NULL` (0) as window parent in `shutdown_monitor.py` so the hidden top-level window receives `WM_QUERYENDSESSION`/`WM_ENDSESSION` broadcast messages. Improved logging (PID, startup method, handler initialized, sync start/complete/fail, monitor exit). Added `try/except` around monitor run. Updated `shutdown_diagnosis.md` — marked as resolved. |
+| 2026-08-01 | **Fix applied:** Fixed `SystemError: new style getargs format but argument is not a tuple` in `shutdown_monitor.py`. Root cause: `win32gui.GetMessage()` returns a tuple `(rc, msg)`, not just the `msg` object. The code was assigning the entire tuple to `msg` and passing it to `TranslateMessage(msg)`, which expects only the `MSG` structure. Fixed by unpacking the tuple correctly: `rc, msg = win32gui.GetMessage(None, 0, 0)` and checking `rc != 0` for WM_QUIT. |
 | `595fd32` | 2026-07-24 | Added backups management + notification when startup download finishes |
 | `deea75a` | 2026-07-24 | Added single-instance tasks (prevent overlap) |
 | `0624a76` | 2026-07-24 | Added 2-minute delay on PC startup |
@@ -364,6 +370,7 @@ if __name__ == "__main__":
 6. **Dry-run uses robocopy `/L`** — no files touched, but command still logged.
 7. **First-time sync (empty dest) bypasses threshold** — by design, since there's nothing to lose.
 8. **Notifications are best-effort** — never fail the sync if toast fails.
+9. **Message-only windows (`HWND_MESSAGE`) do NOT receive `WM_QUERYENDSESSION` / `WM_ENDSESSION`** — broadcast shutdown messages are sent only to top-level windows. Use `NULL` (0) as the window parent for hidden windows that need to receive session-ending notifications. This was fixed in `shutdown_monitor.py` — the monitor now uses a hidden top-level window (`NULL` parent) instead of a message-only window.
 
 ---
 
