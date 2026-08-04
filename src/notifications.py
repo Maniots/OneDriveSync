@@ -22,10 +22,10 @@ from .logger import get_logger
 
 logger = get_logger(__name__)
 
-# Windows CREATE_NO_WINDOW process creation flag (0x08000000). See
-# robocopy_manager.py for why this is defined locally rather than via
-# subprocess.CREATE_NO_WINDOW (that attribute doesn't exist on non-Windows
-# Python builds).
+# Windows CREATE_NO_WINDOW process creation flag (0x08000000). Defined
+# locally rather than via subprocess.CREATE_NO_WINDOW because that
+# attribute does not exist on non-Windows Python builds, which would
+# break this module in test/CI environments.
 _CREATE_NO_WINDOW = 0x08000000
 
 # A well-known trick: this AUMID corresponds to PowerShell's own

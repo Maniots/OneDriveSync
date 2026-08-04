@@ -2,12 +2,13 @@
 sync_manager.py
 
 Orchestrates the full synchronization workflow: path validation, file-count
-safety-ratio checks, robocopy execution, and optional post-sync
+safety-ratio checks, copy engine execution, and optional post-sync
 verification - for every configured folder, in both startup (download)
 and shutdown (upload) modes.
 
-This module owns ALL safety decisions. robocopy_manager.py is treated as
-a dumb copy engine that this module chooses whether or not to invoke.
+This module owns ALL safety decisions. robocopy_manager.py (the copy
+engine) is a pure-Python execution layer that this module chooses whether
+or not to invoke.
 """
 
 from __future__ import annotations
@@ -22,12 +23,11 @@ from .exceptions import (
     BackupError,
     OneDrivePCSyncError,
     PathValidationError,
-    RobocopyExecutionError,
     SyncThresholdExceededError,
     VerificationError,
 )
 from .logger import get_logger
-from .robocopy_manager import RobocopyManager
+from .robocopy_manager import CopyEngine
 from .utils import calculate_sync_percentage, count_files_recursive, is_dangerous_root_path
 
 logger = get_logger(__name__)
@@ -49,14 +49,17 @@ class SyncManager:
 
     def __init__(self, config: AppConfig) -> None:
         self._config = config
-        self._robocopy = RobocopyManager(
-            settings=config.robocopy,
+        self._copy_engine = CopyEngine(
+            settings=config.copy_engine,
             dry_run=config.general.dry_run,
         )
         self._backup = BackupManager(dry_run=config.general.dry_run)
+        # Track the current sync mode for logging context in copy_engine.
+        self._mode: str = "unknown"
 
     def run_startup_sync(self) -> List[FolderSyncOutcome]:
         """Run the configured startup synchronization (typically download)."""
+        self._mode = "startup"
         trigger = self._config.sync.startup
         if not trigger.enabled:
             logger.info("Startup sync is disabled in configuration. Skipping.")
@@ -66,6 +69,7 @@ class SyncManager:
 
     def run_shutdown_sync(self) -> List[FolderSyncOutcome]:
         """Run the configured shutdown synchronization (typically upload)."""
+        self._mode = "shutdown"
         trigger = self._config.sync.shutdown
         if not trigger.enabled:
             logger.info("Shutdown sync is disabled in configuration. Skipping.")
@@ -137,7 +141,7 @@ class SyncManager:
             self._backup.create_backup(folder.id, folder.backup, destination)
             self._backup.prune_old_backups(folder.id, folder.backup)
 
-        result = self._robocopy.run(source, destination)
+        result = self._copy_engine.run(source, destination, mode=self._mode)
 
         if (
             folder.verify_after_sync
@@ -293,7 +297,7 @@ class SyncManager:
         for files that originated from source).
 
         This is intentionally a lightweight structural check, not a
-        byte-for-byte verification (robocopy's own logging provides
+        byte-for-byte verification (the copy engine's own logging provides
         per-file detail for deeper audits).
         """
         source_count = count_files_recursive(source)

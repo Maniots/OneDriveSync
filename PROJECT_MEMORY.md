@@ -3,7 +3,7 @@
 **Last updated:** 2026-08-01  
 **Branch:** `shutdown-management` (off `master`)  
 **Language:** Python 3.14+ (type-annotated, dataclasses, pathlib)  
-**Target OS:** Windows 10/11 (uses `robocopy`, PowerShell toast notifications, Windows file locking, `pywin32` for shutdown monitor)
+**Target OS:** Windows 10/11 (uses PowerShell toast notifications, Windows file locking, `pywin32` for shutdown monitor)
 
 ---
 
@@ -31,9 +31,9 @@ src/
 ├── exceptions.py          # Typed exception hierarchy (ConfigurationError, PathValidationError, ...)
 ├── logger.py              # Centralized logging (rotating file + console)
 ├── utils.py               # Path safety (dangerous roots, OneDrive check), file counting, %VAR% expansion
-├── robocopy_manager.py    # Safe robocopy wrapper: builds non-destructive commands, interprets exit codes
+├── robocopy_manager.py    # Pure-Python copy engine: safe, non-destructive, in-process file copy
 ├── backup_manager.py      # Pre-upload zip backups inside OneDrive (timestamped, retention-pruned)
-├── sync_manager.py        # Orchestrates: validate → safety threshold → (backup?) → robocopy → verify
+├── sync_manager.py        # Orchestrates: validate → safety threshold → (backup?) → copy engine → verify
 ├── single_instance.py     # OS-level file lock: prevents concurrent runs from different scheduled tasks
 ├── notifications.py       # Best-effort Windows toast notifications (PowerShell + WinRT)
 ├── shutdown_monitor.py    # Resident monitor that waits for Windows session-ending
@@ -50,8 +50,8 @@ src/
 **Key design boundaries:**
 - **config.py** — *pure data shapes*, no I/O, no validation logic
 - **config_manager.py** — *only* place that touches raw JSON/env vars
-- **sync_manager.py** — *owns all safety decisions* (robocopy is a "dumb engine")
-- **robocopy_manager.py** — *never* makes safety decisions; forbidden flags (`/MIR`, `/PURGE`, `/MOV`, `/MOVE`) are enforced at command-build time
+- **sync_manager.py** — *owns all safety decisions* (the copy engine is a "dumb execution layer")
+- **robocopy_manager.py** — *never* makes safety decisions; the Python copy engine is additive and non-destructive by design (no destructive flags possible)
 - **backup_manager.py** — creates timestamped ZIP backups *inside OneDrive only*, prunes by retention days
 - **single_instance.py** — cross-task mutex using Windows file locking (msvcrt)
 
@@ -72,7 +72,7 @@ src/
     "startup": { "enabled": true, "direction": "download" },
     "shutdown": { "enabled": true, "direction": "upload" }
   },
-  "robocopy": {
+  "copy_engine": {
     "retry_count": 2,
     "retry_wait_seconds": 2,
     "multithreading": 16,
@@ -124,15 +124,12 @@ ratio = min(source_count, dest_count) / max(source_count, dest_count) * 100
 If `ratio < minimum_sync_percentage` (default 80%), **sync is aborted**.  
 *Exception:* first-time sync (destination empty) always allowed.
 
-### 3. **Non-Destructive robocopy Flags Only** (`robocopy_manager.build_command`)
-Mandatory safe flags:
-- `/XO` — **never overwrite newer destination with older source** (critical for bidirectional safety)
-- `/XX` — exclude "extra" files from deletion consideration
-- `/E` — copy subdirectories (incl. empty if configured)
-- `/XJ` — exclude junctions (avoid symlink loops)
-- `/FFT` — tolerant file-time comparison (FAT/NTFS granularity)
-
-**Forbidden flags (hard-coded assertion):** `/MIR`, `/PURGE`, `/MOV`, `/MOVE`
+### 3. **Non-Destructive Copy Semantics** (`robocopy_manager.CopyEngine`)
+The Python copy engine is additive and conservative by design — no destructive flags are possible because there are no flags at all. Safety is enforced by design:
+- **XO semantics** — never overwrite a newer destination file with an older source file
+- **Junction/symlink skipping** — avoids infinite loops and dangerous following
+- **Additive-only** — never deletes source or destination files
+- **No mirroring or purging** — destination files not in source are left untouched
 
 ### 4. **Pre-Upload Backups** (`backup_manager.py`)
 - **Only before UPLOAD** (local → OneDrive), never before DOWNLOAD
@@ -178,10 +175,12 @@ run_startup_sync() / run_shutdown_sync()
             │
             ├─► [UPLOAD only] backup_manager.create_backup() + prune_old_backups()
             │
-            ├─► robocopy_manager.run(source, dest)
-            │       - builds safe command
-            │       - executes via subprocess (CREATE_NO_WINDOW)
-            │       - interprets exit code bitmask (fail if bit 8 or 16 set)
+            ├─► robocopy_manager.run(source, dest, mode)
+            │       - runs the pure-Python copy engine (no child process)
+            │       - walks source tree, copies files with XO semantics
+            │       - skips junctions/symlinks, creates empty dirs
+            │       - preserves metadata via shutil.copy2
+            │       - tolerates up to 5 individual file errors
             │
             ├─► [if verify_after_sync] _verify_after_sync()
             │
@@ -225,7 +224,7 @@ tests/
 ├── test_config.py      # Config loading, env expansion, dangerous path rejection
 ├── test_sync.py        # Safety threshold, first-time sync, verification, disabled folders
 ├── test_backup.py      # Config validation (OneDrive-only), archive creation, pruning, E2E wiring
-└── test_robocopy.py    # Command building, forbidden flag assertion, exit code interpretation
+└── test_copy_engine.py  # Python copy engine: safe copy, XO semantics, error handling, verification
 ```
 
 Run: `pytest tests/ -v` (from project root, with `.venv` activated)
@@ -233,7 +232,7 @@ Run: `pytest tests/ -v` (from project root, with `.venv` activated)
 Key test patterns:
 - `tmp_path` fixture for isolated temp dirs
 - `monkeypatch` for env vars (`%OneDrive%`, `%APPDATA%`)
-- `monkeypatch.setattr(RobocopyManager, "run", fake_run)` for E2E tests without real robocopy
+- `monkeypatch.setattr(CopyEngine, "run", fake_run)` for E2E tests without real copy engine
 
 ---
 
@@ -257,6 +256,21 @@ powershell -ExecutionPolicy Bypass -File .\Setup-ScheduledTasks.ps1 -Uninstall
 ```
 
 **Hidden-window wrapper:** `RunHidden.vbs` (auto-generated) → launches `wscript.exe` → Python executable → Python script — avoids console flash even with `pythonw.exe`. Used by both `main.py` (scheduled tasks) and `shutdown_monitor.py`.
+
+## 📋 Desktop Heap Setup (Setup-DesktopHeap.ps1)
+
+**Run once (as Administrator):**
+```powershell
+powershell -ExecutionPolicy Bypass -File .\Setup-DesktopHeap.ps1
+```
+
+**What it does:** Increases the non-interactive desktop heap size in the Windows registry from the default 768 KB to 12288 KB. This resolves `STATUS_DLL_INIT_FAILED` (0xC0000142) errors when spawning `robocopy.exe` from a background process (e.g., a Scheduled Task with no visible desktop) during system shutdown.
+
+**Why it's needed:** Background processes create child processes on a non-interactive desktop with a much smaller heap budget. During shutdown, when many processes are closing simultaneously, that heap can be exhausted, causing robocopy to fail even though the same command works fine interactively.
+
+**Requires a reboot** to take effect. The script backs up the original value to `desktop_heap_original_value.txt` and supports `-Revert` to restore it.
+
+**Idempotent:** Re-running the script reports success if the heap is already set to 12288 KB.
 
 ---
 
@@ -335,6 +349,8 @@ if __name__ == "__main__":
 | `e3a1b42` (HEAD) | 2026-07-29 | Replaced broken `SetConsoleCtrlHandler`/`CTRL_SHUTDOWN_EVENT` approach in `shutdown_monitor.py` with a hidden message-only window + Windows message loop handling `WM_QUERYENDSESSION` / `WM_ENDSESSION` (the Windows-recommended architecture for interactive apps); added `pywin32` dependency |
 | `2aa2931` | 2026-07-31 | **Fix applied:** Replaced `HWND_MESSAGE` with `NULL` (0) as window parent in `shutdown_monitor.py` so the hidden top-level window receives `WM_QUERYENDSESSION`/`WM_ENDSESSION` broadcast messages. Improved logging (PID, startup method, handler initialized, sync start/complete/fail, monitor exit). Added `try/except` around monitor run. Updated `shutdown_diagnosis.md` — marked as resolved. |
 | 2026-08-01 | **Fix applied:** Fixed `SystemError: new style getargs format but argument is not a tuple` in `shutdown_monitor.py`. Root cause: `win32gui.GetMessage()` returns a tuple `(rc, msg)`, not just the `msg` object. The code was assigning the entire tuple to `msg` and passing it to `TranslateMessage(msg)`, which expects only the `MSG` structure. Fixed by unpacking the tuple correctly: `rc, msg = win32gui.GetMessage(None, 0, 0)` and checking `rc != 0` for WM_QUIT. |
+| 2026-08-02 | **Fix applied:** `Setup-DesktopHeap.ps1` — fixed 3 references to `Fix-DesktopHeap.ps1` → `Setup-DesktopHeap.ps1` in help text; added idempotency check (already set to 12288 KB → reports success, exits 0); documented in PROJECT_MEMORY.md and shutdown_diagnosis.md. |
+| 2026-08-03 | **Fix applied:** `robocopy_manager.py` — added in-process Python copy fallback (`copy_files_in_process`) that activates when `robocopy.exe` fails to start after retries (e.g. `STATUS_DLL_INIT_FAILED` / `0xC0000142` during shutdown). This makes shutdown upload reliable even when the OS cannot spawn child processes during session teardown. Also added `mode` parameter to `run()` for better launch logging, and enhanced logging with working directory, parent PID, and detailed launch diagnostics. Updated `sync_manager.py` to track and pass sync mode. |
 | `595fd32` | 2026-07-24 | Added backups management + notification when startup download finishes |
 | `deea75a` | 2026-07-24 | Added single-instance tasks (prevent overlap) |
 | `0624a76` | 2026-07-24 | Added 2-minute delay on PC startup |
@@ -350,12 +366,14 @@ if __name__ == "__main__":
 | `src/config.py` | **Source of truth for config shape** — add fields here first |
 | `src/config_manager.py` | Validation & env expansion — add checks here |
 | `src/sync_manager.py` | **All safety logic lives here** — audit this for correctness |
-| `src/robocopy_manager.py` | Command building + exit code interpretation — never add destructive flags |
+| `src/robocopy_manager.py` | Command building + exit code interpretation + in-process Python copy fallback — never add destructive flags |
 | `src/backup_manager.py` | Backup creation/pruning — OneDrive-only enforcement |
 | `src/utils.py` | `is_dangerous_root_path`, `is_under_onedrive_root` — security-critical |
 | `src/exceptions.py` | Typed exceptions — catch specific types in sync_manager |
 | `src/shutdown_monitor.py` | Resident monitor that receives WM_QUERYENDSESSION / WM_ENDSESSION via a hidden window and triggers shutdown sync |
 | `Setup-ScheduledTasks.ps1` | Task registration — run after moving project or changing Python |
+| `Setup-DesktopHeap.ps1` | Increases non-interactive desktop heap (768 → 12288 KB) in registry to fix STATUS_DLL_INIT_FAILED when robocopy runs from a background process during shutdown |
+| `Setup-ShutdownMonitor.ps1` | Registers the shutdown monitor as a Scheduled Task (logon trigger) |
 | `config.json` | User-editable config — env vars expanded at load time |
 
 ---

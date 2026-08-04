@@ -1,9 +1,9 @@
 # Shutdown Monitor Investigation — Root Cause Diagnosis
 
-**Date:** 2026-07-31  
+**Date:** 2026-07-31 (updated 2026-08-03)  
 **Investigator:** Claude Code  
 **Branch:** `shutdown-management`  
-**Status:** ✅ RESOLVED — two fixes implemented in `src/shutdown_monitor.py`
+**Status:** ✅ RESOLVED — three fixes implemented across `src/shutdown_monitor.py`, `src/robocopy_manager.py`, and `src/sync_manager.py`
 
 ---
 
@@ -162,6 +162,26 @@ Similar to 6.3 but for applications that register as service-like handlers. Not 
 
 ---
 
+## Related: Non-Interactive Desktop Heap (STATUS_DLL_INIT_FAILED)
+
+A separate but related issue can cause the shutdown sync to fail with `STATUS_DLL_INIT_FAILED` (0xC0000142) when `robocopy.exe` is spawned from a background process during system shutdown.
+
+### Root Cause
+
+Background processes (like a Scheduled Task running with no visible desktop) create new child processes on a **non-interactive desktop**. That desktop has its own separate, much smaller heap budget than the interactive one. When that heap is exhausted or under pressure during shutdown — many processes closing and creating objects simultaneously — new console processes (like `robocopy.exe`) can fail to initialize, even though the exact same command works fine in any manual/interactive test.
+
+### Fix
+
+Run `Setup-DesktopHeap.ps1` (as Administrator) to increase the non-interactive desktop heap from the Windows default of 768 KB to 12288 KB. **A reboot is required** for this change to take effect.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\Setup-DesktopHeap.ps1
+```
+
+The script is idempotent — re-running it reports success if the heap is already set to 12288 KB. It also supports `-Revert` to restore the original value.
+
+---
+
 ## 7. Evidence
 
 ### 7.1 Log evidence (July 27 — old code working)
@@ -195,6 +215,7 @@ The StackOverflow question "Can a message-only window receive WM_QUERYENDSESSION
 |------|------|
 | `src/shutdown_monitor.py` | Contains both fixes — HWND_MESSAGE→NULL parent, and GetMessage tuple unpacking |
 | `Setup-ShutdownMonitor.ps1` | Scheduled Task registration — no changes needed |
+| `Setup-DesktopHeap.ps1` | Increases non-interactive desktop heap to fix STATUS_DLL_INIT_FAILED when robocopy runs from a background process during shutdown |
 | `RunHidden.vbs` | Hidden launch wrapper — no changes needed |
 | `src/sync_runner.py` | Sync execution — no changes needed |
 | `src/single_instance.py` | Singleton lock — no changes needed |
@@ -287,7 +308,78 @@ The error `new style getargs format but argument is not a tuple` refers to the f
 
 ---
 
-## Sources
+## Second Issue: robocopy.exe Fails to Start During Shutdown (0xC0000142)
+
+**Date:** 2026-08-03  
+**Status:** ✅ RESOLVED — in-process Python copy fallback added to `src/robocopy_manager.py`
+
+### Summary
+
+After fixing the shutdown monitor's message delivery (HWND_MESSAGE → NULL parent), a second issue surfaced: `robocopy.exe` fails to start during Windows shutdown with `STATUS_DLL_INIT_FAILED` (`0xC0000142` / exit code `3221225794`). The error message is "The application was unable to start correctly."
+
+### Root Cause
+
+During Windows session teardown, the OS is under heavy resource pressure. Spawning new child processes (like `robocopy.exe`) from a background process at this stage is unreliable because:
+
+1. The non-interactive desktop heap is small by default (768 KB), and during shutdown many processes are creating objects simultaneously, exhausting it.
+2. The session's subsystem is partially torn down, making `CreateProcess` fail with `STATUS_DLL_INIT_FAILED`.
+3. Even though the sync runs during `WM_QUERYENDSESSION` (when the session is still fully alive), the resource pressure during shutdown can prevent new process creation.
+
+The `Setup-DesktopHeap.ps1` script (which increases the non-interactive desktop heap from 768 KB to 12288 KB) is a complementary fix but does not fully resolve the issue under all shutdown conditions.
+
+### Fix: In-Process Python Copy Fallback
+
+Instead of relying solely on spawning `robocopy.exe` as a child process, `RobocopyManager.run()` now falls back to a pure-Python file copy when `robocopy.exe` fails to start after retries. This avoids spawning any child process, making the shutdown upload reliable even when the OS cannot create new processes during session teardown.
+
+#### Changes in `src/robocopy_manager.py`:
+
+1. **`copy_files_in_process(source, destination)`** — New public method that implements the same non-destructive copy semantics as robocopy using Python's `shutil` and `os` modules:
+   - `/XO`: Skips files where the destination is newer than the source
+   - `/XJ`: Skips junctions and symlinks (detected via `os.path.islink`)
+   - `/E`: Creates empty directories at the destination
+   - Preserves file metadata via `shutil.copy2`
+   - Tolerates up to 5 individual file errors (e.g., files locked by another process during shutdown)
+
+2. **`run(source, destination, mode="unknown")`** — Modified to:
+   - Accept a `mode` parameter (`"startup"`, `"shutdown"`, or `"unknown"`) for better launch logging
+   - Log working directory, parent PID, exact command line, and launch success/failure
+   - After retry exhaustion for process-start failures, fall back to `copy_files_in_process()` instead of raising `RobocopyExecutionError`
+
+3. **Enhanced logging** — Before and after each robocopy launch attempt, logs:
+   - Sync mode (startup/shutdown)
+   - Parent process PID
+   - Working directory
+   - Exact command line
+   - Whether the child process was created successfully
+   - Exit code and any stderr/stdout on failure
+
+#### Changes in `src/sync_manager.py`:
+
+- Added `_mode` attribute to `SyncManager` that tracks the current sync mode (`"startup"` or `"shutdown"`)
+- `run_startup_sync()` sets `self._mode = "startup"`
+- `run_shutdown_sync()` sets `self._mode = "shutdown"`
+- The mode is passed to `robocopy.run(source, destination, mode=self._mode)` for diagnostic logging
+
+#### Why This Fix Is Safer Than Spawning robocopy During Shutdown
+
+| Aspect | Spawning robocopy.exe | In-process fallback |
+|--------|----------------------|---------------------|
+| Requires OS process creation | Yes | No |
+| Depends on desktop heap | Yes | No |
+| Fails during session teardown | Yes (0xC0000142) | No |
+| Depends on PATH environment | Yes | No (uses shutil) |
+| Depends on console allocation | Yes (CREATE_NO_WINDOW) | No |
+| Child process resource usage | Yes | No |
+
+### Complementary Fix: Desktop Heap
+
+The `Setup-DesktopHeap.ps1` script remains relevant as a complementary fix that reduces the likelihood of `STATUS_DLL_INIT_FAILED` for other scenarios (e.g., other background processes that still need to spawn child processes during shutdown). It should still be run as Administrator and followed by a reboot.
+
+### Verification
+
+- All 65 existing and new tests pass
+- New tests cover: basic file copy, XO behaviour, junction/symlink skipping, empty directory creation, dry-run mode, file error tolerance, fallback on invalid exit code, and error when fallback is disabled
+
 
 - [WM_QUERYENDSESSION message — Microsoft Learn](https://learn.microsoft.com/en-us/windows/win32/shutdown/wm-queryendsession)
 - [WM_ENDSESSION message — Microsoft Learn](https://learn.microsoft.com/en-us/windows/win32/shutdown/wm-endsession)

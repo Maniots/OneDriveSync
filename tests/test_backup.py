@@ -24,16 +24,16 @@ from src.backup_manager import BackupManager
 from src.config import (
     AppConfig,
     BackupSettings,
+    CopyEngineSettings,
     FolderSyncConfig,
     GeneralSettings,
-    RobocopySettings,
     SyncDirection,
     SyncSettings,
     SyncTriggerSettings,
 )
 from src.config_manager import ConfigManager
 from src.exceptions import ConfigurationError
-from src.robocopy_manager import RobocopyManager, RobocopyResult
+from src.robocopy_manager import CopyEngine, CopyResult
 from src.sync_manager import SyncManager
 from src.utils import is_under_onedrive_root
 
@@ -68,7 +68,7 @@ def _base_config_dict() -> dict:
             "startup": {"enabled": True, "direction": "download"},
             "shutdown": {"enabled": True, "direction": "upload"},
         },
-        "robocopy": {
+        "copy_engine": {
             "retry_count": 2,
             "retry_wait_seconds": 2,
             "multithreading": 8,
@@ -457,7 +457,7 @@ def _make_app_config_with_backup(tmp_path: Path, dry_run: bool) -> AppConfig:
         startup=SyncTriggerSettings(enabled=True, direction=SyncDirection.DOWNLOAD),
         shutdown=SyncTriggerSettings(enabled=True, direction=SyncDirection.UPLOAD),
     )
-    robocopy = RobocopySettings()
+    copy_engine = CopyEngineSettings()
     folder = FolderSyncConfig(
         id="test_folder",
         name="Test Folder",
@@ -473,20 +473,20 @@ def _make_app_config_with_backup(tmp_path: Path, dry_run: bool) -> AppConfig:
             retention_days=7,
         ),
     )
-    return AppConfig(general=general, sync=sync, robocopy=robocopy, folders=[folder])
+    return AppConfig(general=general, sync=sync, copy_engine=copy_engine, folders=[folder])
 
 
-def _stub_successful_robocopy_run(monkeypatch: pytest.MonkeyPatch) -> None:
-    def fake_run(self: RobocopyManager, source: Path, destination: Path) -> RobocopyResult:
-        return RobocopyResult(
+def _stub_successful_copy_engine_run(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fake_run(self: CopyEngine, source: Path, destination: Path, mode: str = "unknown") -> CopyResult:
+        return CopyResult(
             source=source, destination=destination, exit_code=0,
             success=True, stdout="", stderr="", dry_run=self._dry_run,
         )
-    monkeypatch.setattr(RobocopyManager, "run", fake_run)
+    monkeypatch.setattr(CopyEngine, "run", fake_run)
 
 
 def test_backup_is_created_before_upload(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    _stub_successful_robocopy_run(monkeypatch)
+    _stub_successful_copy_engine_run(monkeypatch)
     config = _make_app_config_with_backup(tmp_path, dry_run=False)
 
     onedrive_path = config.folders[0].onedrive_path
@@ -508,7 +508,7 @@ def test_backup_is_created_before_upload(tmp_path: Path, monkeypatch: pytest.Mon
 
 
 def test_backup_is_not_created_before_download(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    _stub_successful_robocopy_run(monkeypatch)
+    _stub_successful_copy_engine_run(monkeypatch)
     config = _make_app_config_with_backup(tmp_path, dry_run=False)
 
     onedrive_path = config.folders[0].onedrive_path
@@ -528,7 +528,7 @@ def test_backup_is_not_created_before_download(tmp_path: Path, monkeypatch: pyte
 
 def test_upload_fails_if_backup_creation_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """If backup creation fails, the upload should be aborted."""
-    _stub_successful_robocopy_run(monkeypatch)
+    _stub_successful_copy_engine_run(monkeypatch)
     config = _make_app_config_with_backup(tmp_path, dry_run=False)
 
     # Mock create_backup to raise BackupError

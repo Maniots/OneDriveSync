@@ -1,59 +1,61 @@
 """
 robocopy_manager.py
 
-Thin, safety-constrained wrapper around the Windows `robocopy` executable.
+Pure-Python file copy engine that replaces the previous robocopy.exe-based
+implementation.
 
-Design principle: robocopy is used ONLY as a copy engine. It never makes
-safety decisions - those are made entirely by sync_manager.py BEFORE this
-module is invoked. This module's job is simply to build a command line
-that can NEVER be destructive (no /MIR, /PURGE, /MOVE, /MOV) and that
-NEVER overwrites a newer file with an older one (/XO), and to correctly
-interpret robocopy's unusual exit code bitmask.
+Design principle: this module is the copy engine only. It never makes
+safety decisions — those are made entirely by sync_manager.py BEFORE this
+module is invoked. This module's job is to walk directories, copy files
+safely, preserve metadata, and return structured results.
 
-Robocopy exit code bitmask (values can combine by addition):
-    0  - No files copied. No failure.
-    1  - Files copied successfully.
-    2  - Extra files/dirs detected at destination (informational only,
-         since we never purge, this simply means dest has files
-         source doesn't - not an error for us).
-    4  - Mismatched files/dirs detected.
-    8  - Some files/dirs could not be copied (copy errors occurred).
-    16 - Serious error: robocopy did not copy any files. This is a
-         fatal error (e.g. invalid path, access denied at the top level).
-
-Any code with bit 8 or bit 16 set is treated as a failure by this module.
+The engine is:
+- Additive and conservative: never deletes source or destination files.
+- Non-destructive: never overwrites a newer destination file with an older
+  source file (XO semantics).
+- Junction/symlink-aware: skips them to avoid infinite loops.
+- Metadata-preserving: copies timestamps and permissions via shutil.copy2.
+- Dry-run capable: logs what would happen without touching files.
+- Resilient: tolerates a small number of individual file errors (e.g. files
+  locked by another process during shutdown) rather than failing the entire
+  sync.
 """
 
 from __future__ import annotations
 
-import subprocess
-import sys
+import os
+import shutil
+import stat
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List
+from typing import List, Tuple
 
-from .config import RobocopySettings
-from .exceptions import RobocopyExecutionError
+from .config import CopyEngineSettings
+from .exceptions import CopyEngineError
 from .logger import get_logger
 
 logger = get_logger(__name__)
 
-# Windows CREATE_NO_WINDOW process creation flag (0x08000000). Defined as a
-# local constant rather than referencing subprocess.CREATE_NO_WINDOW because
-# that attribute does not exist on non-Windows Python builds, which would
-# break this module on other platforms (including in test/CI environments).
-_CREATE_NO_WINDOW = 0x08000000
+# Exit code used when the copy engine reports overall success.
+_SUCCESS_EXIT_CODE = 1
 
-# Exit code bits that indicate an actual failure occurred.
-_FAILURE_BITMASK = 0b11000  # bits 8 (copy errors) and 16 (fatal error)
+# Exit code used when the copy engine reports failure (too many file errors).
+_FAILURE_EXIT_CODE = 8
 
-# Flags that must NEVER appear in a command built by this module.
-_FORBIDDEN_FLAGS = {"/mir", "/purge", "/mov", "/move"}
+# Maximum number of individual file-copy errors tolerated before the engine
+# reports overall failure. A small number of failures (e.g. a file locked by
+# another process during shutdown) should not cause the entire sync to fail.
+_MAX_FILE_ERRORS = 5
+
+
+# ---------------------------------------------------------------------------
+# Result dataclass
+# ---------------------------------------------------------------------------
 
 
 @dataclass(frozen=True)
-class RobocopyResult:
-    """Outcome of a single robocopy invocation."""
+class CopyResult:
+    """Outcome of a single copy engine invocation."""
 
     source: Path
     destination: Path
@@ -64,160 +66,302 @@ class RobocopyResult:
     dry_run: bool
 
 
-class RobocopyManager:
-    """Builds and safely executes robocopy commands."""
+# ---------------------------------------------------------------------------
+# Internal helpers
+# ---------------------------------------------------------------------------
 
-    def __init__(self, settings: RobocopySettings, dry_run: bool = False) -> None:
+
+def _is_junction_or_symlink(path: Path) -> bool:
+    """Return True if *path* is a junction or symlink (reparse point).
+
+    Junctions and symlinks are skipped to avoid infinite loops and because
+    the engine never follows them into potentially dangerous locations.
+    """
+    if not path.exists():
+        return False
+    try:
+        st = path.lstat()
+        return stat.S_ISLNK(st.st_mode)
+    except OSError:
+        return False
+
+
+def _compare_files(src_file: Path, dst_file: Path) -> Tuple[bool, str]:
+    """Compare two files and return (should_copy, reason).
+
+    Implements XO semantics: the destination file is never overwritten if it
+    is newer than or identical to the source file. The source file is
+    copied only when it is newer or when the destination does not exist.
+    """
+    if not dst_file.exists():
+        return True, "Destination does not exist — will copy"
+
+    try:
+        src_stat = src_file.stat()
+        dst_stat = dst_file.stat()
+    except OSError as exc:
+        return False, f"Cannot stat files for comparison: {exc}"
+
+    src_mtime = src_stat.st_mtime
+    dst_mtime = dst_stat.st_mtime
+
+    # XO: never overwrite a newer destination.
+    if dst_mtime > src_mtime:
+        return False, f"XO: dest is newer (dst_mtime={dst_mtime}, src_mtime={src_mtime}) — skipping"
+
+    # Same mtime — compare sizes to decide.
+    if dst_mtime == src_mtime:
+        if src_stat.st_size != dst_stat.st_size:
+            return True, f"Same mtime but size differs (src={src_stat.st_size}, dst={dst_stat.st_size}) — will copy"
+        return False, "XO: dest is same age and size — skipping"
+
+    # Source is newer — copy.
+    return True, f"Source is newer (src_mtime={src_mtime}, dst_mtime={dst_mtime}) — will copy"
+
+
+def _copy_single_file(src_file: Path, dst_file: Path) -> Tuple[bool, str]:
+    """Copy a single file, preserving metadata via shutil.copy2.
+
+    Returns (was_copied, message).
+    """
+    try:
+        dst_file.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(str(src_file), str(dst_file))
+        return True, f"Copied: {src_file} -> {dst_file}"
+    except OSError as exc:
+        return False, f"Failed: {src_file} -> {dst_file}: {exc}"
+
+
+def _collect_files(source: Path) -> List[Path]:
+    """Recursively collect all regular files under *source*, skipping
+    junctions and symlinks."""
+    files: List[Path] = []
+    for root, _, filenames in os.walk(str(source), followlinks=False):
+        for filename in filenames:
+            full_path = Path(root) / filename
+            if _is_junction_or_symlink(full_path):
+                continue
+            files.append(full_path)
+    return files
+
+
+def _collect_empty_dirs(source: Path, destination: Path) -> List[Path]:
+    """Collect empty directories under *source* so they can be recreated
+    at *destination* (matching the /E behaviour of the previous robocopy
+    engine)."""
+    empty_dirs: List[Path] = []
+    for root, dirs, filenames in os.walk(str(source), followlinks=False):
+        if not dirs and not filenames:
+            rel = Path(root).relative_to(source)
+            empty_dirs.append(destination / rel)
+    return empty_dirs
+
+
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
+
+
+class CopyEngine:
+    """Pure-Python file copy engine — no external executables required.
+
+    Replaces the previous robocopy.exe-based implementation with a
+    safe, deterministic, non-destructive Python copy engine.
+    """
+
+    def __init__(self, settings: CopyEngineSettings, dry_run: bool = False) -> None:
         """
         Args:
-            settings: Robocopy tuning parameters from configuration.
-            dry_run: If True, commands are built and logged but never
-                executed (robocopy's own /L "list only" flag is used).
+            settings: Copy engine tuning parameters from configuration.
+            dry_run: If True, operations are logged but no files are
+                touched.
         """
         self._settings = settings
         self._dry_run = dry_run
 
-    def build_command(self, source: Path, destination: Path) -> List[str]:
-        """Build a safe, non-destructive robocopy command.
+    # -- Public methods matching the previous copy engine API --------
 
-        Args:
-            source: Source directory.
-            destination: Destination directory.
+    def run(self, source: Path, destination: Path, mode: str = "unknown") -> CopyResult:
+        """Execute a full directory copy from *source* to *destination*.
 
-        Returns:
-            The full command as a list of arguments, suitable for
-            subprocess.run(). Never contains /MIR, /PURGE, /MOV, or /MOVE.
-        """
-        command: List[str] = ["robocopy", str(source), str(destination)]
-
-        if self._settings.copy_subdirectories:
-            command.append("/E")  # copy subdirectories, including empty ones
-
-        if self._settings.exclude_junctions:
-            command.append("/XJ")  # exclude junction points (prevents symlink loops)
-
-        if self._settings.fat_file_times:
-            command.append("/FFT")  # tolerant file time comparisons
-
-        command.append(f"/R:{self._settings.retry_count}")
-        command.append(f"/W:{self._settings.retry_wait_seconds}")
-
-        # CRITICAL: exclude source files that are OLDER than the destination
-        # file already there. Without this, robocopy copies any file whose
-        # timestamp merely DIFFERS from the destination - which means an
-        # older, stale copy (e.g. an out-of-date OneDrive backup) can silently
-        # overwrite a newer local file. /XO enforces "newer file wins" on a
-        # per-file basis in both sync directions, which is what this
-        # application's additive/non-destructive design requires.
-        command.append("/XO")
-
-        if self._settings.multithreading and self._settings.multithreading > 1:
-            command.append(f"/MT:{self._settings.multithreading}")
-
-        if self._settings.monitor_mode:
-            command.append("/MON:1")
-
-        # /XX excludes "extra" files/dirs from being flagged in a way that
-        # could be misread as requiring deletion. We never delete extras.
-        command.append("/XX")
-
-        # Always log a full, timestamped, per-file listing for auditability.
-        command.append("/NP")  # no progress percentage spam in logs
-        command.append("/TEE")  # output to console AND log
-
-        if self._dry_run:
-            command.append("/L")  # list only - do not actually copy/move/delete
-
-        self._assert_command_is_safe(command)
-        return command
-
-    @staticmethod
-    def _assert_command_is_safe(command: List[str]) -> None:
-        """Defense-in-depth: verify no destructive flag ever slipped in.
-
-        This is a hard invariant check, not user-configurable. If it ever
-        trips, it indicates a programming error in build_command(), and we
-        fail loudly rather than risk running a destructive command.
-        """
-        lowered = {arg.lower() for arg in command}
-        intersection = lowered.intersection(_FORBIDDEN_FLAGS)
-        if intersection:
-            raise RobocopyExecutionError(
-                f"Refusing to execute robocopy command containing forbidden "
-                f"destructive flag(s): {intersection}. This should never happen "
-                f"and indicates a bug in robocopy_manager.py."
-            )
-
-    def run(self, source: Path, destination: Path) -> RobocopyResult:
-        """Execute robocopy for a single source/destination pair.
+        This is the primary entry point, matching the previous
+        CopyEngine.run() signature so sync_manager.py can consume
+        it without changes.
 
         Args:
             source: Source directory (must already exist; validated upstream).
             destination: Destination directory (created upstream if needed).
+            mode: Sync trigger context ('startup', 'shutdown', or 'unknown').
+                  Logged for diagnostics; does not change copy semantics.
 
         Returns:
-            A RobocopyResult describing the outcome.
+            A CopyResult describing the outcome.
 
         Raises:
-            RobocopyExecutionError: If robocopy reports a fatal failure
-                (exit code with bit 8 or bit 16 set), or if the robocopy
-                executable itself cannot be launched.
+            CopyEngineError: If the source does not exist or is not a
+                directory, or if the copy fails catastrophically.
         """
-        command = self.build_command(source, destination)
-        logger.info("Executing: %s", " ".join(command))
+        if not source.exists():
+            raise CopyEngineError(f"Source path does not exist: '{source}'")
+        if not source.is_dir():
+            raise CopyEngineError(f"Source path is not a directory: '{source}'")
 
-        # On Windows, robocopy.exe is a console-mode application, so Python
-        # would otherwise allocate a new (briefly visible) console window for
-        # it - this can steal focus from an exclusive-fullscreen application
-        # (e.g. a game) even when it closes almost instantly. CREATE_NO_WINDOW
-        # suppresses that console entirely. Harmless no-op on other platforms.
-        creationflags = _CREATE_NO_WINDOW if sys.platform == "win32" else 0
-
-        try:
-            completed = subprocess.run(
-                command,
-                capture_output=True,
-                text=True,
-                check=False,  # we interpret the exit code ourselves
-                creationflags=creationflags,
-            )
-        except FileNotFoundError as exc:
-            raise RobocopyExecutionError(
-                "robocopy executable not found. This application requires Windows."
-            ) from exc
-        except OSError as exc:
-            raise RobocopyExecutionError(f"Failed to launch robocopy: {exc}") from exc
-
-        exit_code = completed.returncode
-        success = (exit_code & _FAILURE_BITMASK) == 0
-
-        result = RobocopyResult(
-            source=source,
-            destination=destination,
-            exit_code=exit_code,
-            success=success,
-            stdout=completed.stdout,
-            stderr=completed.stderr,
-            dry_run=self._dry_run,
+        logger.info(
+            "=== copy engine start === mode=%s | source=%s | destination=%s | dry_run=%s",
+            mode,
+            source,
+            destination,
+            self._dry_run,
         )
 
-        if not success:
-            logger.error(
-                "Robocopy reported failure for %s -> %s (exit code %d).",
-                source,
-                destination,
-                exit_code,
-            )
-            raise RobocopyExecutionError(
-                f"Robocopy failed copying '{source}' -> '{destination}' "
-                f"with exit code {exit_code}."
+        if self._dry_run:
+            return self._dry_run_copy(source, destination)
+
+        return self._live_copy(source, destination)
+
+    def copy_tree(self, source: Path, destination: Path) -> CopyResult:
+        """Copy an entire directory tree from *source* to *destination*.
+
+        Alias for run() with mode='copy_tree'. Provides a named API
+        for callers that want to express intent explicitly.
+        """
+        return self.run(source, destination, mode="copy_tree")
+
+    def copy_file(self, src_file: Path, dst_file: Path) -> Tuple[bool, str]:
+        """Copy a single file with XO (don't overwrite newer dest) semantics.
+
+        Args:
+            src_file: Source file path.
+            dst_file: Destination file path.
+
+        Returns:
+            (was_copied, message) tuple.
+        """
+        if self._dry_run:
+            return True, f"[DRY RUN] Would copy {src_file} -> {dst_file}"
+
+        should_copy, reason = _compare_files(src_file, dst_file)
+        if not should_copy:
+            return False, reason
+
+        return _copy_single_file(src_file, dst_file)
+
+    def compare_files(self, src_file: Path, dst_file: Path) -> Tuple[bool, str]:
+        """Compare two files and return (should_copy, reason).
+
+        Implements XO semantics: destination is never overwritten with an
+        older source file. Returns (False, reason) when the destination is
+        newer or identical; (True, reason) when the source is newer or the
+        destination does not exist.
+        """
+        return _compare_files(src_file, dst_file)
+
+    # -- Internal implementation -----------------------------------------
+
+    def _dry_run_copy(self, source: Path, destination: Path) -> CopyResult:
+        """Log what would be copied without touching any files."""
+        logger.info("[DRY RUN] Copy engine: would copy %s -> %s", source, destination)
+
+        files = _collect_files(source)
+        empty_dirs = _collect_empty_dirs(source, destination)
+
+        stdout_lines = [f"[DRY RUN] Would copy {len(files)} file(s) and {len(empty_dirs)} empty dir(s)"]
+        for f in files:
+            rel = f.relative_to(source)
+            dst_file = destination / rel
+            stdout_lines.append(f"[DRY RUN] Would copy {f} -> {dst_file}")
+
+        return CopyResult(
+            source=source,
+            destination=destination,
+            exit_code=_SUCCESS_EXIT_CODE,
+            success=True,
+            stdout="\n".join(stdout_lines),
+            stderr="",
+            dry_run=True,
+        )
+
+    def _live_copy(self, source: Path, destination: Path) -> CopyResult:
+        """Perform the actual file copy with full logging and error handling."""
+        stdout_lines: List[str] = []
+        file_errors = 0
+        files_copied = 0
+        files_skipped = 0
+        files_overwritten = 0
+        dirs_created = 0
+
+        # Collect and copy regular files
+        all_files = _collect_files(source)
+        logger.info(
+            "Copy engine: found %d file(s) in source '%s'.",
+            len(all_files),
+            source,
+        )
+
+        for src_file in all_files:
+            rel = src_file.relative_to(source)
+            dst_file = destination / rel
+
+            should_copy, reason = _compare_files(src_file, dst_file)
+            if not should_copy:
+                files_skipped += 1
+                stdout_lines.append(f"Skipped: {src_file} ({reason})")
+                continue
+
+            copied, msg = _copy_single_file(src_file, dst_file)
+            if copied:
+                files_copied += 1
+                files_overwritten += 1 if dst_file.exists() else 0
+                stdout_lines.append(msg)
+            else:
+                file_errors += 1
+                logger.warning("%s", msg)
+                stdout_lines.append(msg)
+
+        # Recreate empty directories (matching /E behaviour)
+        empty_dirs = _collect_empty_dirs(source, destination)
+        for empty_dir in empty_dirs:
+            try:
+                empty_dir.mkdir(parents=True, exist_ok=True)
+                dirs_created += 1
+                stdout_lines.append(f"Created empty dir: {empty_dir}")
+            except OSError as exc:
+                file_errors += 1
+                logger.warning("Failed to create empty directory %s: %s", empty_dir, exc)
+                stdout_lines.append(f"Failed to create empty dir {empty_dir}: {exc}")
+
+        # Determine overall success
+        overall_success = file_errors <= _MAX_FILE_ERRORS
+        exit_code = _SUCCESS_EXIT_CODE if overall_success else _FAILURE_EXIT_CODE
+
+        stdout = "\n".join(stdout_lines)
+        stderr = ""
+        if file_errors > 0:
+            stderr = (
+                f"{file_errors} file(s) failed to copy "
+                f"(tolerated up to {_MAX_FILE_ERRORS})."
             )
 
         logger.info(
-            "Robocopy completed for %s -> %s (exit code %d, dry_run=%s).",
+            "Copy engine completed for %s -> %s: "
+            "%d files copied, %d skipped, %d overwritten, "
+            "%d dirs created, %d errors, success=%s.",
             source,
             destination,
-            exit_code,
-            self._dry_run,
+            files_copied,
+            files_skipped,
+            files_overwritten,
+            dirs_created,
+            file_errors,
+            overall_success,
         )
-        return result
+
+        return CopyResult(
+            source=source,
+            destination=destination,
+            exit_code=exit_code,
+            success=overall_success,
+            stdout=stdout,
+            stderr=stderr,
+            dry_run=False,
+        )

@@ -19,10 +19,10 @@ from typing import Any, Dict, List, Optional
 from .config import (
     AppConfig,
     BackupSettings,
+    CopyEngineSettings,
     FolderSyncConfig,
     GeneralSettings,
     LogLevel,
-    RobocopySettings,
     SyncDirection,
     SyncSettings,
     SyncTriggerSettings,
@@ -56,7 +56,7 @@ class ConfigManager:
         try:
             general = self._parse_general(raw.get("general", {}))
             sync_settings = self._parse_sync(raw.get("sync", {}))
-            robocopy_settings = self._parse_robocopy(raw.get("robocopy", {}))
+            copy_engine_settings = self._parse_copy_engine(raw.get("copy_engine", {}))
             folders = self._parse_folders(raw.get("folders", []))
         except (KeyError, TypeError, ValueError) as exc:
             raise ConfigurationError(f"Invalid configuration structure: {exc}") from exc
@@ -64,7 +64,7 @@ class ConfigManager:
         config = AppConfig(
             general=general,
             sync=sync_settings,
-            robocopy=robocopy_settings,
+            copy_engine=copy_engine_settings,
             folders=folders,
         )
 
@@ -115,8 +115,8 @@ class ConfigManager:
         return SyncSettings(startup=startup, shutdown=shutdown)
 
     @staticmethod
-    def _parse_robocopy(data: Dict[str, Any]) -> RobocopySettings:
-        return RobocopySettings(
+    def _parse_copy_engine(data: Dict[str, Any]) -> CopyEngineSettings:
+        return CopyEngineSettings(
             retry_count=int(data.get("retry_count", 2)),
             retry_wait_seconds=int(data.get("retry_wait_seconds", 2)),
             multithreading=int(data.get("multithreading", 8)),

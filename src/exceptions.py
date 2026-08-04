@@ -34,12 +34,13 @@ class SyncThresholdExceededError(OneDrivePCSyncError):
     minimum_sync_percentage for a folder, aborting that folder's sync."""
 
 
-class RobocopyExecutionError(OneDrivePCSyncError):
-    """Raised when robocopy exits with a code indicating failure.
+class CopyEngineError(OneDrivePCSyncError):
+    """Raised when the copy engine reports a failure.
 
-    Note: robocopy's exit code semantics are bitmask-based and codes
-    0-7 are all "success" in some form. Only codes >= 8 indicate a
-    real failure. See robocopy_manager.py for the interpretation logic.
+    The copy engine is a pure-Python implementation that replaces the
+    previous robocopy.exe-based approach. Exit codes follow the same
+    convention: 0-7 are success variants, >= 8 indicates a failure.
+    See robocopy_manager.py for the interpretation logic.
     """
 
 

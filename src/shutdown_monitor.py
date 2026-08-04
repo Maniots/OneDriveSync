@@ -18,7 +18,7 @@ chain for session-ending messages.
 
 WHY THE SYNC RUNS DURING WM_QUERYENDSESSION, NOT WM_ENDSESSION
 -----------------------------------------------------------------
-The sync (which spawns robocopy.exe as a child process) runs synchronously
+The sync (which uses the Python copy engine in robocopy_manager.py) runs synchronously
 inside the WM_QUERYENDSESSION handler, delaying the TRUE response until it
 completes — NOT inside WM_ENDSESSION as an earlier version of this file did.
 
@@ -26,11 +26,11 @@ WM_QUERYENDSESSION is Windows *asking permission* to end the session; the
 session is still fully alive and normal at that point. WM_ENDSESSION is
 sent only after every app has already agreed, and by then Windows may
 already be tearing down parts of the session's subsystems in preparation
-for the actual teardown. Spawning a brand new child process (robocopy.exe)
-that late was found to fail unreliably with STATUS_DLL_INIT_FAILED
-(0xc0000142) — a known category of error when CreateProcess is invoked
-during session teardown. Doing the work during WM_QUERYENDSESSION instead
-avoids this: robocopy is launched while the session is still fully intact.
+for the actual teardown. Doing the work during WM_QUERYENDSESSION instead
+avoids the need to spawn any child process during session teardown — the
+Python copy engine runs entirely in-process, eliminating the risk of
+STATUS_DLL_INIT_FAILED (0xc0000142) that plagued the previous
+robocopy.exe-based approach.
 
 Delaying the response to WM_QUERYENDSESSION is an explicitly supported,
 documented pattern (it's exactly what Notepad does to show its "save
@@ -175,12 +175,14 @@ class ShutdownMonitorWindow:
             # NOT in WM_ENDSESSION. By the time WM_ENDSESSION arrives the
             # session has already committed to ending and Windows may
             # already be tearing down parts of the session's subsystems;
-            # spawning a brand new child process (robocopy.exe) at that
-            # point is unreliable and can fail with STATUS_DLL_INIT_FAILED
-            # (0xc0000142). During WM_QUERYENDSESSION the session is
-            # still fully alive — Windows is only *asking* whether it's
-            # OK to end — so this is the correct, safe place to run
-            # robocopy. We delay responding TRUE until the sync is done;
+            # spawning a child process at that point is unreliable and
+            # can fail with STATUS_DLL_INIT_FAILED (0xc0000142).
+            # During WM_QUERYENDSESSION the session is still fully alive —
+            # Windows is only *asking* whether it's OK to end — so this
+            # is the correct, safe place to run the copy engine. The
+            # Python copy engine runs entirely in-process, eliminating
+            # the child-process-spawning risk entirely. We delay
+            # responding TRUE until the sync is done;
             # ShutdownBlockReasonCreate (set at window creation) tells
             # Windows we're legitimately still working, so it shows a
             # "waiting" UI instead of treating the process as hung.
