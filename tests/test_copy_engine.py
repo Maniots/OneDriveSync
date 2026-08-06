@@ -176,7 +176,7 @@ def test_copy_engine_copies_when_source_newer(engine: CopyEngine, tmp_path: Path
 # ---------------------------------------------------------------------------
 
 
-def test_copy_engine_skips_symlinks(tmp_path: Path) -> None:
+def test_copy_engine_skips_symlinks(engine: CopyEngine, tmp_path: Path) -> None:
     """CopyEngine skips symlinks (matching /XJ behaviour)."""
     source = tmp_path / "src"
     dest = tmp_path / "dst"
@@ -200,7 +200,7 @@ def test_copy_engine_skips_symlinks(tmp_path: Path) -> None:
         assert not (dest / "link_to_real").exists()
 
 
-def test_copy_engine_skips_junctions(tmp_path: Path) -> None:
+def test_copy_engine_skips_junctions(engine: CopyEngine, tmp_path: Path) -> None:
     """CopyEngine skips junctions (matching /XJ behaviour).
 
     On Windows, junctions are reparse points. On non-Windows,

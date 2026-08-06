@@ -1,6 +1,6 @@
 # OneDrive PC Sync — Project Memory
 
-**Last updated:** 2026-08-01  
+**Last updated:** 2026-08-06  
 **Branch:** `shutdown-management` (off `master`)  
 **Language:** Python 3.14+ (type-annotated, dataclasses, pathlib)  
 **Target OS:** Windows 10/11 (uses PowerShell toast notifications, Windows file locking, `pywin32` for shutdown monitor)
@@ -346,6 +346,7 @@ if __name__ == "__main__":
 
 | Commit | Date | Summary |
 |--------|------|---------|
+| `local` | 2026-08-06 | Fixed test_copy_engine.py: added missing engine fixture to test_copy_engine_skips_symlinks and test_copy_engine_skips_junctions |
 | `e3a1b42` (HEAD) | 2026-07-29 | Replaced broken `SetConsoleCtrlHandler`/`CTRL_SHUTDOWN_EVENT` approach in `shutdown_monitor.py` with a hidden message-only window + Windows message loop handling `WM_QUERYENDSESSION` / `WM_ENDSESSION` (the Windows-recommended architecture for interactive apps); added `pywin32` dependency |
 | `2aa2931` | 2026-07-31 | **Fix applied:** Replaced `HWND_MESSAGE` with `NULL` (0) as window parent in `shutdown_monitor.py` so the hidden top-level window receives `WM_QUERYENDSESSION`/`WM_ENDSESSION` broadcast messages. Improved logging (PID, startup method, handler initialized, sync start/complete/fail, monitor exit). Added `try/except` around monitor run. Updated `shutdown_diagnosis.md` — marked as resolved. |
 | 2026-08-01 | **Fix applied:** Fixed `SystemError: new style getargs format but argument is not a tuple` in `shutdown_monitor.py`. Root cause: `win32gui.GetMessage()` returns a tuple `(rc, msg)`, not just the `msg` object. The code was assigning the entire tuple to `msg` and passing it to `TranslateMessage(msg)`, which expects only the `MSG` structure. Fixed by unpacking the tuple correctly: `rc, msg = win32gui.GetMessage(None, 0, 0)` and checking `rc != 0` for WM_QUIT. |
