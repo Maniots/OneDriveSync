@@ -7,6 +7,7 @@
 
 ---
 
+
 ## 📋 Project Overview
 
 **OneDrive PC Sync** is a safety-first, Windows-only utility that synchronizes game save folders (and other per-app data) between a local PC and a user's OneDrive folder. It is designed to run **automatically via Windows Scheduled Tasks** at three trigger points:
@@ -341,6 +342,26 @@ if __name__ == "__main__":
 ```
 
 ---
+
+## ������ ���� ���� �� ���� �� �� 🖥��������������️ UI Architecture (ui/)
+
+The ui/ folder contains the desktop application built with PySide6, separated from the synchronization engine.
+
+```
+ui/
+    __init__.py
+    app.py
+    resources/
+    themes/
+    widgets/
+        __init__.py
+    pages/
+        __init__.py
+    dialogs/
+        __init__.py
+```
+
+This architecture ensures the UI remains independent from the core synchronization logic under src/.
 
 ## 📝 Recent Changes (from git log)
 
