@@ -19,7 +19,7 @@
         }
     },
 
-    "robocopy": {
+    "copy_engine": {
         "retry_count": 2,
         "retry_wait_seconds": 2,
         "multithreading": 16,

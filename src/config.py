@@ -63,12 +63,13 @@ class SyncSettings:
 
 
 @dataclass(frozen=True)
-class RobocopySettings:
-    """Settings that control how robocopy is invoked.
+class CopyEngineSettings:
+    """Settings that control the Python copy engine.
 
-    These settings NEVER include destructive flags such as /MIR, /PURGE,
-    or /MOVE. robocopy_manager.py enforces this at the command-building
-    stage regardless of what is configured here.
+    These settings govern the behavior of the pure-Python copy engine
+    in robocopy_manager.py. No destructive flags exist in this engine
+    — safety is enforced by design (XO semantics, junction skipping,
+    additive-only copies).
     """
 
     retry_count: int = 2
@@ -129,7 +130,7 @@ class AppConfig:
 
     general: GeneralSettings
     sync: SyncSettings
-    robocopy: RobocopySettings
+    copy_engine: CopyEngineSettings
     folders: List[FolderSyncConfig] = field(default_factory=list)
 
     def enabled_folders(self) -> List[FolderSyncConfig]:

@@ -10,7 +10,7 @@ This matters because the scheduled tasks are registered independently and
 each only protects itself against re-entrancy (Task Scheduler's "Ignore
 New" instance policy is per-task). Nothing stops two DIFFERENT tasks - for
 example the delayed startup download and the periodic upload - from firing
-close together and running robocopy in opposite directions against the
+close together and running the copy engine in opposite directions against the
 same folders at the same time, which can cause file-locking errors or an
 inconsistent file-count read mid-sync.
 

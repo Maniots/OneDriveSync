@@ -18,32 +18,32 @@ import pytest
 
 from src.config import (
     AppConfig,
+    CopyEngineSettings,
     FolderSyncConfig,
     GeneralSettings,
-    RobocopySettings,
     SyncDirection,
     SyncSettings,
     SyncTriggerSettings,
 )
 from src.exceptions import SyncThresholdExceededError
-from src.robocopy_manager import RobocopyManager, RobocopyResult
+from src.robocopy_manager import CopyEngine, CopyResult
 from src.sync_manager import SyncManager
 from src.utils import calculate_sync_percentage, is_dangerous_root_path
 
 
-def _stub_successful_robocopy_run(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Replace RobocopyManager.run with a stub that always succeeds.
+def _stub_successful_copy_engine_run(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Replace CopyEngine.run with a stub that always succeeds.
 
     sync_manager.py's own safety checks (path validation, percentage
-    threshold) run BEFORE robocopy is ever invoked, so these tests can
-    safely stub out the actual copy engine - robocopy itself is a
-    Windows-only executable that isn't available in this environment.
-    RobocopyManager's own command-building and exit-code logic is
-    covered separately in test_robocopy.py.
+    threshold) run BEFORE the copy engine is ever invoked, so these
+    tests can safely stub out the actual copy engine — it runs
+    entirely in-process and is a Windows-only executable that isn't
+    available in this environment.
+    CopyEngine's own copy logic is covered separately in test_copy_engine.py.
     """
 
-    def fake_run(self: RobocopyManager, source: Path, destination: Path) -> RobocopyResult:
-        return RobocopyResult(
+    def fake_run(self: CopyEngine, source: Path, destination: Path, mode: str = "unknown") -> CopyResult:
+        return CopyResult(
             source=source,
             destination=destination,
             exit_code=0,
@@ -53,7 +53,7 @@ def _stub_successful_robocopy_run(monkeypatch: pytest.MonkeyPatch) -> None:
             dry_run=self._dry_run,
         )
 
-    monkeypatch.setattr(RobocopyManager, "run", fake_run)
+    monkeypatch.setattr(CopyEngine, "run", fake_run)
 
 
 # --- Pure safety-logic tests -------------------------------------------------
@@ -104,7 +104,7 @@ def _make_config(tmp_path: Path, minimum_sync_percentage: float = 80.0) -> AppCo
         startup=SyncTriggerSettings(enabled=True, direction=SyncDirection.DOWNLOAD),
         shutdown=SyncTriggerSettings(enabled=True, direction=SyncDirection.UPLOAD),
     )
-    robocopy = RobocopySettings()
+    copy_engine = CopyEngineSettings()
     folder = FolderSyncConfig(
         id="test_folder",
         name="Test Folder",
@@ -115,7 +115,7 @@ def _make_config(tmp_path: Path, minimum_sync_percentage: float = 80.0) -> AppCo
         verify_after_sync=False,
         create_destination=True,
     )
-    return AppConfig(general=general, sync=sync, robocopy=robocopy, folders=[folder])
+    return AppConfig(general=general, sync=sync, copy_engine=copy_engine, folders=[folder])
 
 
 def _populate(directory: Path, file_count: int) -> None:
@@ -127,7 +127,7 @@ def _populate(directory: Path, file_count: int) -> None:
 def test_first_time_sync_to_empty_destination_is_allowed(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    _stub_successful_robocopy_run(monkeypatch)
+    _stub_successful_copy_engine_run(monkeypatch)
     config = _make_config(tmp_path)
     _populate(config.folders[0].local_path, file_count=10)
     # Destination intentionally left empty/non-existent.
@@ -153,7 +153,7 @@ def test_sync_below_threshold_is_aborted(tmp_path: Path) -> None:
 
 
 def test_sync_within_threshold_proceeds(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    _stub_successful_robocopy_run(monkeypatch)
+    _stub_successful_copy_engine_run(monkeypatch)
     config = _make_config(tmp_path, minimum_sync_percentage=80.0)
     _populate(config.folders[0].local_path, file_count=1000)
     _populate(config.folders[0].onedrive_path, file_count=950)
