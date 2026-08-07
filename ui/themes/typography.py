@@ -1,0 +1,25 @@
+"""
+Typography settings for the OneDrive PC Sync UI.
+"""
+
+# Font families
+FONT_FAMILY = "'Segoe UI', Arial, sans-serif"
+FONT_FAMILY_MONO = "'Consolas', 'Courier New', monospace"
+
+# Font sizes (pt)
+FONT_SIZE_XXSMALL = 6
+FONT_SIZE_XSMALL = 8
+FONT_SIZE_SMALL = 9
+FONT_SIZE_MEDIUM = 10
+FONT_SIZE_LARGE = 12
+FONT_SIZE_XLARGE = 14
+FONT_SIZE_XXLARGE = 16
+FONT_SIZE_XXXLARGE = 20
+FONT_SIZE_TITLE = 24
+
+# Font weights
+FONT_WEIGHT_LIGHT = 300
+FONT_WEIGHT_NORMAL = 400
+FONT_WEIGHT_MEDIUM = 500
+FONT_WEIGHT_SEMIBOLD = 600
+FONT_WEIGHT_BOLD = 700

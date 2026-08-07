@@ -1,6 +1,6 @@
 # OneDrive PC Sync — Project Memory
 
-**Last updated:** 2026-08-06  
+**Last updated:** 2026-08-07  
 **Branch:** `shutdown-management` (off `master`)  
 **Language:** Python 3.14+ (type-annotated, dataclasses, pathlib)  
 **Target OS:** Windows 10/11 (uses PowerShell toast notifications, Windows file locking, `pywin32` for shutdown monitor)
@@ -351,22 +351,47 @@ The ui/ folder contains the desktop application built with PySide6, separated fr
 ui/
     __init__.py
     app.py
+    main_window.py
     resources/
+        __init__.py
+        icons.py
     themes/
+        __init__.py
+        colors.py
+        typography.py
+        spacing.py
+        theme.py
     widgets/
         __init__.py
+        card.py
+    models/
+        __init__.py
+        folder_model.py
+        backup_model.py
+        sync_status_model.py
+        scheduler_model.py
     pages/
         __init__.py
+        dashboard.py
+        folders.py
+        backups.py
+        scheduler.py
+        logs.py
+        settings.py
+        about.py
     dialogs/
         __init__.py
 ```
 
+The UI depends on `qtawesome` for icons and `pyqtgraph` for charts/graphs, installed via `requirements.txt`.
 This architecture ensures the UI remains independent from the core synchronization logic under src/.
 
 ## 📝 Recent Changes (from git log)
 
 | Commit | Date | Summary |
+| `local` | 2026-08-07 | Implemented centralized icon system with semantic names using qtawesome |
 |--------|------|---------|
+| `local` | 2026-08-07 | Implemented complete PySide6 UI with design system, backend wrappers, and UI models |
 | `local` | 2026-08-06 | Fixed test_copy_engine.py: added missing engine fixture to test_copy_engine_skips_symlinks and test_copy_engine_skips_junctions |
 | `e3a1b42` (HEAD) | 2026-07-29 | Replaced broken `SetConsoleCtrlHandler`/`CTRL_SHUTDOWN_EVENT` approach in `shutdown_monitor.py` with a hidden message-only window + Windows message loop handling `WM_QUERYENDSESSION` / `WM_ENDSESSION` (the Windows-recommended architecture for interactive apps); added `pywin32` dependency |
 | `2aa2931` | 2026-07-31 | **Fix applied:** Replaced `HWND_MESSAGE` with `NULL` (0) as window parent in `shutdown_monitor.py` so the hidden top-level window receives `WM_QUERYENDSESSION`/`WM_ENDSESSION` broadcast messages. Improved logging (PID, startup method, handler initialized, sync start/complete/fail, monitor exit). Added `try/except` around monitor run. Updated `shutdown_diagnosis.md` — marked as resolved. |
@@ -397,6 +422,25 @@ This architecture ensures the UI remains independent from the core synchronizati
 | `Setup-DesktopHeap.ps1` | Increases non-interactive desktop heap (768 → 12288 KB) in registry to fix STATUS_DLL_INIT_FAILED when robocopy runs from a background process during shutdown |
 | `Setup-ShutdownMonitor.ps1` | Registers the shutdown monitor as a Scheduled Task (logon trigger) |
 | `config.json` | User-editable config — env vars expanded at load time |
+| `ui/main_window.py` | Main window UI with navigation sidebar and stacked pages |
+| `ui/app.py` | Application setup that creates and shows the main window |
+| `ui/themes/theme.py` | Dark modern theme style sheet |
+| `ui/themes/colors.py` | Color palette constants |
+| `ui/themes/typography.py` | Typography settings |
+| `ui/themes/spacing.py` | Spacing and sizing constants |
+| `ui/resources/icons.py` | Centralized icon system with semantic names |
+| `backend/__init__.py` | Backend package marker |
+| `backend/configuration.py` | Wrapper for configuration management |
+| `backend/sync.py` | Wrapper for synchronization operations |
+| `backend/scheduler.py` | Wrapper for scheduler (external tasks) |
+| `backend/notifications.py` | Wrapper for notifications |
+| `ui/models/__init__.py` | Package marker for UI models |
+| `ui/models/folder_model.py` | UI-only model for folder configuration |
+| `ui/models/backup_model.py` | UI-only model for backup information |
+| `ui/models/sync_status_model.py` | UI-only model for sync status |
+| `ui/models/scheduler_model.py` | UI-only model for scheduler status |
+| `backend/service.py` | Service controller abstraction (placeholder)
+| `run_ui.py` | Development-only UI launcher
 
 ---
 
