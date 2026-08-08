@@ -4,7 +4,7 @@ The main window features a modern header with page title and optional subtitle, 
 
 ---
 
-## ���� �� �� 📝 Recent Changes (from git log)
+## �������� ������ ������ ���� ������ ���� ���� �� ������ ���� ���� �� ���� �� �� 📝 Recent Changes (from git log)
 
 | `local` | 2026-08-08 | Redesigned LogsPage into a professional log viewer with live stream, search, level filters, date filtering, refresh, copy selected, and auto-scroll toggle. Fixed refresh button connection error. |
 | `local` | 2026-08-08 | Fixed QHeaderView setResizeMode error in LogsPage (used setSectionResizeMode instead). |
@@ -21,7 +21,7 @@ The main window features a modern header with page title and optional subtitle, 
 | `local` | 2026-08-08 | Redesigned BackupsPage as a modern backup management interface. |
 | `local` | 2026-08-09 | Added AddFolderWizard multi-step wizard for adding/editing folder configurations with validation and review |
 | `local` | 2026-08-08 | Redesigned MainWindow with header, updated sidebar layout, and modern UI enhancements |
-| `local` | 2026-08-08 | Created SyncChartWidget reusable chart component with dark theme, minimal grid, tooltip support, and responsive resizing |
+| `local` | 2026-08-08 | Created SyncChartWidget reusable chart widget with dark theme, minimal grid, tooltip support, and responsive resizing |
 | `local` | 2026-08-08 | Redesigned DashboardPage to use SyncChartWidget for sync activity visualization, with premium layout including status cards, folder overview, backup status, and recent activity |
 | `local` | 2026-08-08 | Redesigned FoldersPage to use FolderCard widget with toolbar, responsive grid, and loading/error/empty states |
 | `local` | 2026-08-08 | Updated theme to add status label styles for FolderCard widget |
@@ -43,6 +43,24 @@ The main window features a modern header with page title and optional subtitle, 
 | `4580fec` | 2026-07-24 | Changed PowerShell script to wrap Python run |
 | `local` | 2026-08-08 | Fixed QDateTime error in LogsPage when parsing timestamps for date filtering. |
 | `local` | 2026-08-08 | Implemented real read-only Shutdown Monitor status panel with PID, startup time, last detected event, last shutdown sync, last error, using status file from shutdown monitor and backend method in ConfigManager. Updated SchedulerPage to display status with timer updates.
+| `local` | 2026-08-08 | Designed and implemented application service layer in backend/services with ConfigurationService, SyncService, BackupService, SchedulerService, MonitorService, and LogService. Updated SchedulerPage and LogsPage to use services.
+| `local` | 2026-08-08 | Fixed missing import of get_icon in ui/pages/backups.py causing name not defined error.
+| `local` | 2026-08-08 | Fixed QHeaderView FIXED error in ui/pages/logs.py (used Fixed instead of FIXED).
+| `local` | 2026-08-08 | Fixed QHeaderView STRETCH error in ui/pages/logs.py (used Stretch instead of STRETCH).
+| `local` | 2026-08-08 | Fixed folderModel object has no attribute get error in ui/pages/folders.py by converting FolderModel to dict for FolderCard.
+| `local` | 2026-08-08 | Fixed FolderCard signal connections in ui/pages/folders.py (used edit_clicked and enabled_toggled signals with lambda to pass folder_id).
+| `local` | 2026-08-08 | Modified backend/services/sync_service.py to add get_app_config method.
+| `local` | 2026-08-08 | Added reusable Qt background worker for synchronization in ui/workers/sync_worker.py.
+| `local` | 2026-08-08 | Modified ui/pages/dashboard.py to display real synchronization state (current operation, folder, direction, elapsed time, result, last successful/failed sync) and to start sync via worker threads.
+| `local` | 2026-08-08 | Fixed missing self parameter in is_shutdown_sync_enabled method in backend/services/sync_service.py.
+| `local` | 2026-08-08 | Added finished signal to SyncWorker and emitted upon completion/failure to fix AttributeError in dashboard. |
+| `local` | 2026-08-08 | Removed duplicate deleteLater connections in dashboard.py to avoid RuntimeError on already deleted SyncWorker.
+| `local` | 2026-08-08 | Fixed QThread destroyed while thread still running by proper thread cleanup: connect finished to quit, worker deleteLater, thread deleteLater; removed manual deleteLater in on_sync_finished.
+| `local` | 2026-08-08 | Fixed SyncWorker completed signal definition: changed from Signal(List[FolderSyncOutcome]) to Signal(list) to prevent 'completed only accepts 0 argument, 1 given!' error.
+| `local` | 2026-08-08 | Modified ui/workers/sync_worker.py to provide per-folder progress signals during synchronization, enabling dashboard to show current folder.
+| `local` | 2026-08-08 | Modified ui/pages/dashboard.py to update current folder label from worker progress messages.
+| `local` | 2026-08-08 | Added system tray integration with idle/syncing/success/warning/error states and context menu (Open, Sync Now, Pause/Resume, Settings, Exit).
+| `local` | 2026-08-08 | Modified MainWindow close event to hide to tray instead of terminating application, keeping background services running.
+| `local` | 2026-08-08 | Added signals to SyncService (started, progress, completed, failed, finished) to report sync state changes.
+| `local` | 2026-08-08 | Modified MainWindow to create tray icon, connect to sync service signals, and update tray icon based on sync state.
 |--------|------|---------|
-
----

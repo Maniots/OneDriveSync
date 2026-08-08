@@ -3,9 +3,9 @@ from PySide6.QtCore import Qt
 
 
 class AboutPage(QWidget):
-    def __init__(self, config_backend=None, parent=None):
+    def __init__(self, config_service=None, parent=None):
         super().__init__(parent)
-        self.config_backend = config_backend  # Store for potential future use
+        # config_service is accepted for consistency but not used
         self.setup_ui()
 
     def setup_ui(self):
@@ -15,3 +15,16 @@ class AboutPage(QWidget):
         label = QLabel("About")
         label.setProperty("h2", "true")
         layout.addWidget(label)
+
+        # Add some placeholder about text
+        about_text = QLabel(
+            "OneDrive PC Sync\n\n"
+            "A utility to synchronize folders with OneDrive.\n\n"
+            "Version: 1.0.0\n"
+            "© 2026 OneDrive PC Sync Team"
+        )
+        about_text.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        about_text.setWordWrap(True)
+        layout.addWidget(about_text)
+
+        layout.addStretch()

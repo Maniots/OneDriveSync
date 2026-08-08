@@ -8,27 +8,28 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
 )
 from PySide6.QtCore import Qt, QTimer
-from typing import Optional
-from ..config import convert_to_ui_models
-from ..models.scheduler_model import SchedulerModel
+from typing import Optional, Dict
+from backend.services.configuration_service import ConfigurationService
+from backend.services.scheduler_service import SchedulerService
+from backend.services.monitor_service import MonitorService
 
 
 class SchedulerPage(QWidget):
-    def __init__(self, config_backend=None, parent=None):
+    def __init__(self, config_service: ConfigurationService, scheduler_service: SchedulerService, monitor_service: MonitorService, parent=None):
         super().__init__(parent)
-        self.config_backend = config_backend
-        self.scheduler_data: Optional[SchedulerModel] = None
+        self.config_service = config_service
+        self.scheduler_service = scheduler_service
+        self.monitor_service = monitor_service
+        self.scheduler_data: Optional[Dict] = None
+        self.monitor_status: Optional[Dict] = None
         self.setup_ui()
         # Timer for updating shutdown monitor status
         self.shutdown_timer = QTimer(self)
         self.shutdown_timer.timeout.connect(self.update_shutdown_monitor_status)
         self.shutdown_timer.start(5000)  # update every 5 seconds
-        # Load configuration data if backend is available
-        if self.config_backend:
-            self.load_scheduler_data()
-            self.update_shutdown_monitor_status()
-        else:
-            self.show_no_config_message()
+        # Load initial data
+        self.load_scheduler_data()
+        self.update_shutdown_monitor_status()
 
     def setup_ui(self):
         layout = QVBoxLayout(self)
@@ -49,18 +50,18 @@ class SchedulerPage(QWidget):
 
         timeline_label = QLabel(
             "Logon\n"
-            "   � ↓ (2 min delay)\n"
+            "   ��� � � ↓ (2 min delay)\n"
             "Startup Download\n\n"
             "Lock\n"
-            "   � ↓\n"
+            "   ��� � � ↓\n"
             "Upload\n\n"
             "Every 15 minutes\n"
-            "   � ↓\n"
+            "   ��� � � ↓\n"
             "Upload\n\n"
             "Shutdown\n"
-            "   � ↓\n"
+            "   ��� � � ↓\n"
             "Monitor\n"
-            "   � ↓\n"
+            "   ��� � � ↓\n"
             "Upload"
         )
         timeline_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
@@ -152,82 +153,58 @@ class SchedulerPage(QWidget):
         layout.addStretch()
 
     def load_scheduler_data(self):
-        """Load and display scheduler data."""
+        """Load and display scheduler data from the scheduler service."""
         try:
-            if not self.config_backend:
-                self.show_error("No configuration backend available")
+            if not self.config_service:
+                self.show_error("Configuration service not available")
                 return
 
-            # Get the configuration
-            config = self.config_backend.config
+            # Get scheduler summary from the scheduler service
+            scheduler_summary = self.scheduler_service.get_scheduler_summary()
+            if scheduler_summary is None:
+                self.show_error("Scheduler information not available")
+                return
 
-            # Convert to UI models to get the scheduler model
-            _, _, _, scheduler_model = convert_to_ui_models(config)
-            self.scheduler_data = scheduler_model
-
-            # Update the UI
-            self.update_ui()
+            self.scheduler_data = scheduler_summary
+            self.update_ui_from_scheduler_data()
 
         except Exception as e:
             self.show_error(f"Error loading scheduler data: {e}")
 
-    def update_ui(self):
-        """Update the UI with the scheduler data."""
+    def update_ui_from_scheduler_data(self):
+        """Update the UI with the scheduler data from the scheduler service."""
         if not self.scheduler_data:
             return
 
         # Startup Sync
-        self.startup_trigger_label.setText(self.scheduler_data.startup_trigger)
-        self.startup_delay_label.setText(f"{self.scheduler_data.startup_delay} minutes")
-        self.startup_direction_label.setText(self.scheduler_data.startup_direction.capitalize())
-        startup_status = "Enabled" if self.scheduler_data.startup_enabled else "Disabled"
-        if self.scheduler_data.startup_next_run:
-            startup_status += f" (Next: {self.scheduler_data.startup_next_run})"
-        self.startup_status_label.setText(startup_status)
+        startup_info = self.scheduler_data.get("startup")
+        if startup_info:
+            self.startup_trigger_label.setText(startup_info.get("trigger", "N/A"))
+            self.startup_delay_label.setText(startup_info.get("delay", "N/A"))
+            self.startup_direction_label.setText(startup_info.get("direction", "N/A"))
+            startup_status = startup_info.get("enabled", "Disabled")
+            self.startup_status_label.setText(startup_status)
 
         # Periodic Sync
-        self.periodic_interval_label.setText(f"{self.scheduler_data.periodic_interval} minutes")
-        self.periodic_direction_label.setText(self.scheduler_data.periodic_direction.capitalize())
-        periodic_status = "Enabled" if self.scheduler_data.periodic_enabled else "Disabled"
-        if self.scheduler_data.periodic_next_run:
-            periodic_status += f" (Next: {self.scheduler_data.periodic_next_run})"
-        self.periodic_status_label.setText(periodic_status)
+        periodic_info = self.scheduler_data.get("periodic")
+        if periodic_info:
+            self.periodic_interval_label.setText(periodic_info.get("interval", "N/A"))
+            self.periodic_direction_label.setText(periodic_info.get("direction", "N/A"))
+            periodic_status = periodic_info.get("enabled", "Disabled")
+            self.periodic_status_label.setText(periodic_status)
 
         # Workstation Lock
-        self.workstation_trigger_label.setText(self.scheduler_data.workstation_trigger)
-        self.workstation_direction_label.setText(self.scheduler_data.workstation_direction.capitalize())
-        workstation_status = "Enabled" if self.scheduler_data.workstation_enabled else "Disabled"
-        if self.scheduler_data.workstation_next_run:
-            workstation_status += f" (Next: {self.scheduler_data.workstation_next_run})"
-        self.workstation_status_label.setText(workstation_status)
-
-        # Shutdown Monitor
-        self.monitor_status_label.setText(self.scheduler_data.monitor_status)
-        self.last_detected_event_label.setText(self.scheduler_data.last_detected_event)
-        last_sync = self.scheduler_data.last_shutdown_sync or "Never"
-        self.last_shutdown_sync_label.setText(last_sync)
-
-    def show_no_config_message(self):
-        """Show a message when no configuration backend is available."""
-        self.clear_layout()
-        label = QLabel("No configuration backend available.\n"
-                       "Scheduler information cannot be displayed.")
-        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        label.setWordWrap(True)
-        self.layout().addWidget(label)
-
-    def show_error(self, message):
-        """Show an error state."""
-        self.clear_layout()
-        label = QLabel(f"Error:\n{message}")
-        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        label.setWordWrap(True)
-        self.layout().addWidget(label)
+        workstation_info = self.scheduler_data.get("workstation_lock")
+        if workstation_info:
+            self.workstation_trigger_label.setText(workstation_info.get("trigger", "N/A"))
+            self.workstation_direction_label.setText(workstation_info.get("direction", "N/A"))
+            workstation_status = workstation_info.get("enabled", "Disabled")
+            self.workstation_status_label.setText(workstation_status)
 
     def update_shutdown_monitor_status(self):
-        """Update the shutdown monitor status labels."""
-        if not self.config_backend:
-            # No backend, show unknown
+        """Update the shutdown monitor status labels using the monitor service."""
+        if not self.monitor_service:
+            # No monitor service, show unknown
             self.monitor_status_label.setText("Unknown")
             self.last_detected_event_label.setText("N/A")
             self.last_shutdown_sync_label.setText("N/A")
@@ -237,7 +214,7 @@ class SchedulerPage(QWidget):
             return
 
         try:
-            status = self.config_backend.get_shutdown_monitor_status()
+            status = self.monitor_service.get_status()
             # Map status to display text
             monitor_status = status.get("status", "unknown")
             # Capitalize first letter for display
@@ -273,6 +250,23 @@ class SchedulerPage(QWidget):
             self.pid_label.setText("N/A")
             self.startup_time_label.setText("N/A")
             self.last_error_label.setText("N/A")
+
+    def show_no_config_message(self):
+        """Show a message when no configuration service is available."""
+        self.clear_layout()
+        label = QLabel("Configuration service not available.\n"
+                       "Scheduler information cannot be displayed.")
+        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        label.setWordWrap(True)
+        self.layout().addWidget(label)
+
+    def show_error(self, message):
+        """Show an error state."""
+        self.clear_layout()
+        label = QLabel(f"Error:\n{message}")
+        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        label.setWordWrap(True)
+        self.layout().addWidget(label)
 
     def clear_layout(self):
         """Clear the layout."""

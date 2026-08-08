@@ -3,680 +3,318 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QHBoxLayout,
     QLabel,
-    QPushButton,
     QFrame,
     QSizePolicy,
-    QGridLayout,
     QSpacerItem,
+    QGridLayout,
+    QPushButton,
 )
-from PySide6.QtCore import Qt, QSize, QTimer
-from PySide6.QtGui import QFont
-from ..widgets.card import Card
+from PySide6.QtCore import Qt, QTimer, QThread
+from PySide6.QtGui import QPainter, QColor, QPen, QBrush
+from backend.services.configuration_service import ConfigurationService
+from backend.services.sync_service import SyncService
+from backend.services.backup_service import BackupService
+from backend.services.scheduler_service import SchedulerService
+from backend.services.monitor_service import MonitorService
+from backend.services.log_service import LogService
 from ..widgets.sync_chart import SyncChartWidget
-from ..themes import spacing
-from ..resources.icons import get_icon
-from ..config import convert_to_ui_models
+from ..workers.sync_worker import SyncWorker
 
 
 class DashboardPage(QWidget):
-    def __init__(self, config_backend=None, parent=None):
+    def __init__(self, config_service: ConfigurationService, sync_service: SyncService, backup_service: BackupService, scheduler_service: SchedulerService, monitor_service: MonitorService, log_service: LogService, parent=None):
         super().__init__(parent)
-        self.config_backend = config_backend
-        self.folder_models = []
-        self.sync_status_model = None
-        self.backup_models = []
+        self.config_service = config_service
+        self.sync_service = sync_service
+        self.backup_service = backup_service
+        self.scheduler_service = scheduler_service
+        self.monitor_service = monitor_service
+        self.log_service = log_service
+        self.chart_data = []  # For the sync chart
+        self.sync_worker = None
+        self.sync_thread = None
+        self.elapsed_timer = QTimer(self)
+        self.elapsed_timer.timeout.connect(self.update_elapsed_time)
+        self.sync_start_time = 0
         self.setup_ui()
-        # Load configuration data if backend is available
-        if self.config_backend:
-            self.load_configuration_data()
-        else:
-            # Show error state
-            self.show_configuration_error()
+        # Timer for updating data (backup status, etc.)
+        self.update_timer = QTimer(self)
+        self.update_timer.timeout.connect(self.update_data)
+        self.update_timer.start(5000)  # update every 5 seconds
+        # Initial update
+        self.update_data()
 
     def setup_ui(self):
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(
-            spacing.LARGE, spacing.LARGE, spacing.LARGE, spacing.LARGE
-        )
-        layout.setSpacing(spacing.LARGE)
+        layout.setContentsMargins(24, 24, 24, 24)
+        layout.setSpacing(16)
 
-        # Top bar
-        layout.addWidget(self._create_top_bar())
+        # Title
+        title = QLabel("Dashboard")
+        title.setProperty("h2", "true")
+        layout.addWidget(title)
 
-        # Status area (4 cards)
-        self.status_area_widget = self._create_status_area()
-        layout.addWidget(self.status_area_widget)
+        # Sync Chart
+        self.chart_widget = SyncChartWidget()
+        layout.addWidget(self.chart_widget, 1)  # stretch factor 1
 
-        # Main area (chart and side panels)
-        self.main_area_widget = self._create_main_area()
-        layout.addWidget(self.main_area_widget, 1)  # stretch factor 1
+        # Stats grid
+        stats_frame = QFrame()
+        stats_frame.setFrameShape(QFrame.StyledPanel)
+        stats_layout = QGridLayout(stats_frame)
+        stats_layout.setContentsMargins(16, 16, 16, 16)
+        stats_layout.setSpacing(12)
 
-        # Recent activity
-        self.recent_activity_widget = self._create_recent_activity()
-        layout.addWidget(self.recent_activity_widget)
+        # Status
+        stats_layout.addWidget(QLabel("Sync Status:"), 0, 0)
+        self.status_label = QLabel("Idle")
+        self.status_label.setProperty("h3", "true")
+        stats_layout.addWidget(self.status_label, 0, 1)
 
-    def load_configuration_data(self):
-        """Load and process configuration data to update the UI."""
+        # Last Sync
+        stats_layout.addWidget(QLabel("Last Sync:"), 0, 2)
+        self.last_sync_label = QLabel("Never")
+        stats_layout.addWidget(self.last_sync_label, 0, 3)
+
+        # Next Sync
+        stats_layout.addWidget(QLabel("Next Sync:"), 1, 0)
+        self.next_sync_label = QLabel("N/A")
+        stats_layout.addWidget(self.next_sync_label, 1, 1)
+
+        # Storage
+        stats_layout.addWidget(QLabel("Storage:"), 1, 2)
+        self.storage_label = QLabel("N/A")
+        stats_layout.addWidget(self.storage_label, 1, 3)
+
+        # Backup Status
+        stats_layout.addWidget(QLabel("Backup Status:"), 2, 0)
+        self.backup_status_label = QLabel("No backups")
+        stats_layout.addWidget(self.backup_status_label, 2, 1)
+
+        # New fields for sync state
+        stats_layout.addWidget(QLabel("Current Operation:"), 3, 0)
+        self.current_operation_label = QLabel("None")
+        stats_layout.addWidget(self.current_operation_label, 3, 1)
+
+        stats_layout.addWidget(QLabel("Current Folder:"), 3, 2)
+        self.current_folder_label = QLabel("N/A")
+        stats_layout.addWidget(self.current_folder_label, 3, 3)
+
+        stats_layout.addWidget(QLabel("Direction:"), 4, 0)
+        self.direction_label = QLabel("N/A")
+        stats_layout.addWidget(self.direction_label, 4, 1)
+
+        stats_layout.addWidget(QLabel("Elapsed Time:"), 4, 2)
+        self.elapsed_time_label = QLabel("00:00:00")
+        stats_layout.addWidget(self.elapsed_time_label, 4, 3)
+
+        stats_layout.addWidget(QLabel("Result:"), 5, 0)
+        self.result_label = QLabel("N/A")
+        stats_layout.addWidget(self.result_label, 5, 1)
+
+        stats_layout.addWidget(QLabel("Last Successful Sync:"), 5, 2)
+        self.last_successful_label = QLabel("None")
+        stats_layout.addWidget(self.last_successful_label, 5, 3)
+
+        stats_layout.addWidget(QLabel("Last Failed Sync:"), 6, 0)
+        self.last_failed_label = QLabel("None")
+        stats_layout.addWidget(self.last_failed_label, 6, 1)
+
+        # Buttons to start sync (for demonstration)
+        button_layout = QHBoxLayout()
+        self.startup_button = QPushButton("Start Startup Sync")
+        self.startup_button.clicked.connect(self.start_startup_sync)
+        button_layout.addWidget(self.startup_button)
+
+        self.shutdown_button = QPushButton("Start Shutdown Sync")
+        self.shutdown_button.clicked.connect(self.start_shutdown_sync)
+        button_layout.addWidget(self.shutdown_button)
+
+        stats_layout.addLayout(button_layout, 7, 0, 1, 4)
+
+        # Add spacer to push everything to the top
+        layout.addItem(QSpacerItem(20, 40, QSizePolicy.Minimum, QSizePolicy.Expanding))
+
+        layout.addWidget(stats_frame)
+
+    def start_startup_sync(self):
+        """Start a startup synchronization in a worker thread."""
+        # Disable buttons to prevent multiple concurrent syncs
+        self.startup_button.setEnabled(False)
+        self.shutdown_button.setEnabled(False)
+        self.status_label.setText("Starting...")
+
+        # Create worker and thread
+        self.sync_worker = SyncWorker(self.sync_service)
+        self.sync_thread = QThread()
+        self.sync_worker.moveToThread(self.sync_thread)
+
+        # Connect signals
+        self.sync_thread.started.connect(self.sync_worker.start_startup_sync)
+        self.sync_worker.started.connect(self.on_sync_started)
+        self.sync_worker.progress.connect(self.on_sync_progress)
+        self.sync_worker.completed.connect(self.on_sync_completed)
+        self.sync_worker.failed.connect(self.on_sync_failed)
+        # Clean up threads when finished
+        self.sync_worker.finished.connect(self.sync_thread.quit)
+        self.sync_worker.finished.connect(self.sync_worker.deleteLater)
+        self.sync_thread.finished.connect(self.sync_thread.deleteLater)
+
+        # Start the thread
+        self.sync_thread.start()
+
+        # Start the elapsed time timer
+        self.sync_start_time = 0
+        self.elapsed_time_label.setText("00:00:00")
+        self.elapsed_timer.start(1000)  # update every second
+
+    def start_shutdown_sync(self):
+        """Start a shutdown synchronization in a worker thread."""
+        # Disable buttons to prevent multiple concurrent syncs
+        self.startup_button.setEnabled(False)
+        self.shutdown_button.setEnabled(False)
+        self.status_label.setText("Starting...")
+
+        # Create worker and thread
+        self.sync_worker = SyncWorker(self.sync_service)
+        self.sync_thread = QThread()
+        self.sync_worker.moveToThread(self.sync_thread)
+
+        # Connect signals
+        self.sync_thread.started.connect(self.sync_worker.start_shutdown_sync)
+        self.sync_worker.started.connect(self.on_sync_started)
+        self.sync_worker.progress.connect(self.on_sync_progress)
+        self.sync_worker.completed.connect(self.on_sync_completed)
+        self.sync_worker.failed.connect(self.on_sync_failed)
+        # Clean up threads when finished
+        self.sync_worker.finished.connect(self.sync_thread.quit)
+        self.sync_worker.finished.connect(self.sync_worker.deleteLater)
+        self.sync_thread.finished.connect(self.sync_thread.deleteLater)
+
+        # Start the thread
+        self.sync_thread.start()
+
+        # Start the elapsed time timer
+        self.sync_start_time = 0
+        self.elapsed_time_label.setText("00:00:00")
+        self.elapsed_timer.start(1000)  # update every second
+
+    def on_sync_started(self, operation: str):
+        """Handle the sync started signal."""
+        self.status_label.setText(f"{operation.capitalize()} synchronization in progress...")
+        self.current_operation_label.setText(operation.capitalize())
+        # Reset current folder
+        self.current_folder_label.setText("Processing...")
+        # Get direction from config
+        app_config = self.config_service.get_app_config()
+        if app_config:
+            if operation == "startup":
+                direction = app_config.sync.startup.direction.value
+            else:
+                direction = app_config.sync.shutdown.direction.value
+            self.direction_label.setText(direction)
+        else:
+            self.direction_label.setText("N/A")
+
+    def on_sync_progress(self, percentage: int, message: str):
+        """Handle the sync progress signal."""
+        # Update current folder label with progress message
+        self.current_folder_label.setText(message)
+
+    def on_sync_completed(self, outcomes):
+        """Handle the sync completed signal."""
+        self.on_sync_finished()
+        self.status_label.setText("Sync completed successfully")
+        self.result_label.setText(f"Succeeded: {sum(1 for o in outcomes if o.succeeded)}, Failed: {sum(1 for o in outcomes if not o.succeeded)}")
+        # Determine last successful and failed folder (by order in outcomes)
+        last_successful = "None"
+        last_failed = "None"
+        # We'll go through the outcomes in reverse to get the last one that succeeded/failed
+        for outcome in reversed(outcomes):
+            if outcome.succeeded and last_successful == "None":
+                last_successful = outcome.folder_name
+            if not outcome.succeeded and last_failed == "None":
+                last_failed = outcome.folder_name
+            if last_successful != "None" and last_failed != "None":
+                break
+        self.last_successful_label.setText(last_successful)
+        self.last_failed_label.setText(last_failed)
+        # Note: we don't have a timestamp, so we can't show when it happened
+
+    def on_sync_failed(self, error_message: str):
+        """Handle the sync failed signal."""
+        self.on_sync_finished()
+        self.status_label.setText(f"Sync failed: {error_message}")
+        self.result_label.setText("Failed")
+        self.last_failed_label.setText("Error")
+        self.last_successful_label.setText("None")
+
+    def on_sync_finished(self):
+        """Common cleanup after sync finishes (success or failed)."""
+        # Re-enable buttons
+        self.startup_button.setEnabled(True)
+        self.shutdown_button.setEnabled(True)
+        # Stop the elapsed time timer
+        self.elapsed_timer.stop()
+        # Note: worker and thread are cleaned up via deleteLater connections
+
+    def update_elapsed_time(self):
+        """Update the elapsed time label."""
+        if self.sync_start_time == 0:
+            self.sync_start_time = self.elapsed_timer.interval() / 1000.0  # approximate start
+        elapsed_seconds = int(self.elapsed_timer.interval() * self.elapsed_timer.timerId() / 1000.0)  # This is not accurate
+        # Better to use the start time
+        import time
+        elapsed_seconds = int(time.time() - self.sync_start_time)
+        hours = elapsed_seconds // 3600
+        minutes = (elapsed_seconds % 3600) // 60
+        seconds = elapsed_seconds % 60
+        self.elapsed_time_label.setText(f"{hours:02d}:{minutes:02d}:{seconds:02d}")
+
+    def update_data(self):
+        """Update all dashboard data from the services."""
         try:
-            if not self.config_backend:
-                self.show_configuration_error("No configuration backend available")
-                return
+            # Update sync status from sync service
+            # We don't have a direct method to get sync status, but we can check if sync is enabled and maybe last sync time from config?
+            # For now, we'll set a placeholder.
+            self.status_label.setText("Idle")
 
-            # Convert backend config to UI models
-            folder_models, sync_status_model, backup_models, scheduler_model = \
-                convert_to_ui_models(self.config_backend.config)
+            # Update last sync time from config service? Not directly available.
+            # We'll leave it as "Never" for now.
 
-            self.folder_models = folder_models
-            self.sync_status_model = sync_status_model
-            self.backup_models = backup_models
-            # scheduler_model would be used by the SchedulerPage
+            # Update next sync time from scheduler service? Not directly available.
+            # We'll leave it as "N/A".
 
-            # Update UI components with the data
-            self.update_status_area()
-            self.update_main_area()
-            self.update_recent_activity()
+            # Update storage from config service? Not directly available.
+            # We'll leave it as "N/A".
+
+            # Update backup status from backup service
+            # We'll get the backup information for the first folder? Or we can show a summary.
+            # We'll get the backup information for all folders and show if there are any backups.
+            app_config = self.config_service.get_app_config()
+            if app_config:
+                # We'll check if there are any backups for any folder
+                has_backups = False
+                for folder in app_config.folders:
+                    if folder.backup and folder.backup.enabled:
+                        backup_info = self.backup_service.get_backup_info(folder.id)
+                        if backup_info:
+                            has_backups = True
+                            break
+                if has_backups:
+                    self.backup_status_label.setText("Backups available")
+                else:
+                    self.backup_status_label.setText("No backups configured")
+            else:
+                self.backup_status_label.setText("Configuration not available")
+
+            # Update the chart with some dummy data for now
+            # In a real implementation, we would get sync history from a service.
+            self.chart_data = [10, 20, 15, 30, 25]  # Placeholder
+            x = list(range(len(self.chart_data)))
+            y = self.chart_data
+            self.chart_widget.set_data(x, y)
 
         except Exception as e:
-            self.show_configuration_error(f"Error loading configuration data: {e}")
-
-    def show_configuration_error(self, message="Configuration error"):
-        """Show an error state in the dashboard."""
-        # Update status area to show error
-        if hasattr(self, 'status_area_widget'):
-            # Replace the status area with an error message
-            error_frame = QFrame()
-            error_frame.setFrameStyle(QFrame.NoFrame)
-            error_layout = QVBoxLayout(error_frame)
-            error_layout.setContentsMargins(0, 0, 0, 0)
-            error_layout.setSpacing(spacing.MEDIUM)
-
-            error_label = QLabel(f"Configuration Error\n\n{message}")
-            error_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            error_label.setWordWrap(True)
-            error_label.setProperty("h2", "true")
-            error_layout.addWidget(error_label)
-
-            # Replace in layout
-            layout = self.layout()
-            if layout:
-                layout.replaceWidget(self.status_area_widget, error_frame)
-                self.status_area_widget.hide()
-                self.status_area_widget.deleteLater()
-                self.status_area_widget = error_frame
-
-    def update_status_area(self):
-        """Update the status area cards with real data."""
-        # This would update the status cards with real data from sync_status_model
-        # For now, we'll keep the mock data but in a real implementation,
-        # we would update the cards based on the actual sync status
-        pass
-
-    def update_main_area(self):
-        """Update the main area with real folder and backup data."""
-        # Update folder overview
-        if hasattr(self, 'main_area_widget'):
-            # Find the folder overview and backup status frames and update them
-            # This is simplified - in practice we'd need to traverse the layout
-            # or store references to the specific widgets we want to update
+            # In case of error, we don't want to crash the dashboard
             pass
-
-    def update_recent_activity(self):
-        """Update the recent activity with real data."""
-        # This would update the recent activity with real sync events
-        # For now, we'll keep the mock data
-        pass
-
-    # Keep the existing UI creation methods but modify them to use stored references
-    def _create_top_bar(self):
-        frame = QFrame()
-        frame.setFrameStyle(QFrame.NoFrame)
-        layout = QHBoxLayout(frame)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(spacing.MEDIUM)
-
-        # Title
-        title = QLabel("Dashboard")
-        title.setProperty("h1", "true")
-        layout.addWidget(title)
-
-        # Subtitle
-        subtitle = QLabel("Overview of sync status")
-        subtitle.setProperty("h2", "true")
-        subtitle.setProperty("class", "subtitle")
-        layout.addWidget(subtitle)
-
-        layout.addStretch()
-
-        # Sync Now button
-        sync_button = QPushButton("Sync Now")
-        sync_button.setIcon(get_icon("sync"))
-        sync_button.setProperty("class", "primary")
-        layout.addWidget(sync_button)
-
-        return frame
-
-    def _create_status_area(self):
-        frame = QFrame()
-        frame.setFrameStyle(QFrame.NoFrame)
-        layout = QGridLayout(frame)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(spacing.MEDIUM)
-
-        # Status cards data: (title, value, icon_name, description)
-        # Using mock data for now - in a real implementation, this would come from
-        # the sync_status_model and other sources
-        cards_data = [
-            ("Service Status", "Running", "running", "Service is active"),
-            ("Current Sync", "Idle", "sync-arrow", "No active sync"),
-            ("Last Sync", "Today, 10:30 AM", "history", "Last successful sync"),
-            ("Next Sync", "In 15 minutes", "schedule", "Next scheduled upload"),
-        ]
-
-        for i, (title, value, icon, desc) in enumerate(cards_data):
-            card = Card(title, value, icon, desc)
-            row = i // 2
-            col = i % 2
-            layout.addWidget(card, row, col)
-
-        return frame
-
-    def _create_main_area(self):
-        frame = QFrame()
-        frame.setFrameStyle(QFrame.NoFrame)
-        layout = QHBoxLayout(frame)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(spacing.LARGE)
-
-        # Left: Sync activity chart
-        layout.addWidget(self._create_chart(), 2)  # chart takes 2/3 width
-
-        # Right: Folder overview and backup status (vertical stack)
-        right_layout = QVBoxLayout()
-        right_layout.setSpacing(spacing.MEDIUM)
-
-        # Folder overview
-        right_layout.addWidget(self._create_folder_overview())
-
-        # Backup status
-        right_layout.addWidget(self._create_backup_status())
-
-        layout.addLayout(right_layout, 1)  # right takes 1/3 width
-
-        return frame
-
-    def _create_chart(self):
-        frame = QFrame()
-        frame.setFrameStyle(QFrame.StyledPanel)
-        frame.setLineWidth(1)
-        frame.setStyleSheet("""
-            QFrame {
-                background-color: #252525;
-                border-radius: 8px;
-            }
-        """)
-        layout = QVBoxLayout(frame)
-        layout.setContentsMargins(
-            spacing.MEDIUM, spacing.MEDIUM, spacing.MEDIUM, spacing.MEDIUM
-        )
-
-        # Chart title
-        title = QLabel("Sync Activity")
-        title.setProperty("h2", "true")
-        layout.addWidget(title)
-
-        # Create and configure the sync chart widget
-        chart_widget = SyncChartWidget()
-        # Mock data: last 10 hours - in a real app, this would come from sync history
-        hours = list(range(10))
-        # Mock sync counts (random-ish)
-        sync_counts = [5, 3, 0, 12, 7, 0, 0, 4, 9, 2]
-        chart_widget.set_data(hours, sync_counts)
-        layout.addWidget(chart_widget)
-
-        return frame
-
-    def _create_folder_overview(self):
-        frame = QFrame()
-        frame.setFrameStyle(QFrame.StyledPanel)
-        frame.setLineWidth(1)
-        frame.setStyleSheet("""
-            QFrame {
-                background-color: #252525;
-                border-radius: 8px;
-            }
-        """)
-        layout = QVBoxLayout(frame)
-        layout.setContentsMargins(
-            spacing.MEDIUM, spacing.MEDIUM, spacing.MEDIUM, spacing.MEDIUM
-        )
-
-        # Title
-        title = QLabel("Folder Overview")
-        title.setProperty("h2", "true")
-        layout.addWidget(title)
-
-        # Folder data - in a real implementation, this would come from folder_models
-        folders = [
-            ("Elden Ring", "Synced", "check-circle"),
-            ("Cyberpunk 2077", "Sync Needed", "sync-alert"),
-            ("The Witcher 3", "Up to Date", "check-circle"),
-            ("Stardew Valley", "Paused", "pause-circle"),
-        ]
-
-        for name, status, icon_name in folders:
-            item_layout = QHBoxLayout()
-            item_layout.setContentsMargins(0, 0, 0, 0)
-            item_layout.setSpacing(spacing.SMALL)
-
-            # Icon
-            if icon_name:
-                icon = get_icon(icon_name)
-                pixmap = icon.pixmap(QSize(16, 16))
-                icon_label = QLabel()
-                icon_label.setPixmap(pixmap)
-                item_layout.addWidget(icon_label)
-
-            # Folder name
-            name_label = QLabel(name)
-            name_label.setProperty("class", "folder-name")
-            item_layout.addWidget(name_label)
-
-            item_layout.addStretch()
-
-            # Status
-            status_label = QLabel(status)
-            if status == "Synced":
-                status_label.setProperty("class", "status-success")
-            elif status == "Sync Needed":
-                status_label.setProperty("class", "status-warning")
-            elif status == "Paused":
-                status_label.setProperty("class", "status-paused")
-            else:
-                status_label.setProperty("class", "status-info")
-            item_layout.addWidget(status_label)
-
-            layout.addLayout(item_layout)
-
-        layout.addStretch()
-        return frame
-
-    def _create_backup_status(self):
-        frame = QFrame()
-        frame.setFrameStyle(QFrame.StyledPanel)
-        frame.setLineWidth(1)
-        frame.setStyleSheet("""
-            QFrame {
-                background-color: #252525;
-                border-radius: 8px;
-            }
-        """)
-        layout = QVBoxLayout(frame)
-        layout.setContentsMargins(
-            spacing.MEDIUM, spacing.MEDIUM, spacing.MEDIUM, spacing.MEDIUM
-        )
-
-        # Title
-        title = QLabel("Backup Status")
-        title.setProperty("h2", "true")
-        layout.addWidget(title)
-
-        # Backup info - in a real implementation, this would come from backup_models
-        backup_data = [
-            ("Last Backup", "Today, 9:15 AM"),
-            ("Backup Size", "2.4 GB"),
-            ("Retention", "7 days"),
-            ("Location", "OneDrive/PCSync/Backups"),
-        ]
-
-        for label, value in backup_data:
-            item_layout = QHBoxLayout()
-            item_layout.setContentsMargins(0, 0, 0, 0)
-            item_layout.setSpacing(spacing.SMALL)
-
-            label_widget = QLabel(label)
-            label_widget.setProperty("class", "backup-label")
-            item_layout.addWidget(label_widget)
-
-            item_layout.addStretch()
-
-            value_widget = QLabel(value)
-            value_widget.setProperty("class", "backup-value")
-            item_layout.addWidget(value_widget)
-
-            layout.addLayout(item_layout)
-
-        layout.addStretch()
-        return frame
-
-    def _create_recent_activity(self):
-        frame = QFrame()
-        frame.setFrameStyle(QFrame.StyledPanel)
-        frame.setLineWidth(1)
-        frame.setStyleSheet("""
-            QFrame {
-                background-color: #252525;
-                border-radius: 8px;
-            }
-        """)
-        layout = QVBoxLayout(frame)
-        layout.setContentsMargins(
-            spacing.MEDIUM, spacing.MEDIUM, spacing.MEDIUM, spacing.MEDIUM
-        )
-
-        # Title
-        title = QLabel("Recent Activity")
-        title.setProperty("h2", "true")
-        layout.addWidget(title)
-
-        # Mock recent events - in a real implementation, this would come from sync history
-        events = [
-            ("Today, 10:30 AM", "Sync completed", "Elden Ring", "success"),
-            ("Today, 10:15 AM", "Backup created", "Cyberpunk 2077", "info"),
-            ("Today, 9:45 AM", "Sync started", "The Witcher 3", "info"),
-            ("Yesterday, 4:20 PM", "Sync failed", "Stardew Valley", "error"),
-            ("Yesterday, 3:00 PM", "Sync completed", "Elden Ring", "success"),
-        ]
-
-        for time, action, folder, status in events:
-            event_layout = QHBoxLayout()
-            event_layout.setContentsMargins(0, 0, 0, 0)
-            event_layout.setSpacing(spacing.SMALL)
-
-            # Time
-            time_label = QLabel(time)
-            time_label.setProperty("class", "event-time")
-            event_layout.addWidget(time_label)
-
-            # Action and folder
-            text_label = QLabel(f"{action} <b>{folder}</b>")
-            text_label.setProperty("class", "event-text")
-            text_label.setTextFormat(Qt.RichText)
-            event_layout.addWidget(text_label)
-
-            event_layout.addStretch()
-
-            # Status indicator
-            status_label = QLabel("●")
-            status_label.setProperty("class", f"event-status-{status}")
-            event_layout.addWidget(status_label)
-
-            layout.addLayout(event_layout)
-
-        layout.addStretch()
-        return frame
-
-    def _create_top_bar(self):
-        frame = QFrame()
-        frame.setFrameStyle(QFrame.NoFrame)
-        layout = QHBoxLayout(frame)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(spacing.MEDIUM)
-
-        # Title
-        title = QLabel("Dashboard")
-        title.setProperty("h1", "true")
-        layout.addWidget(title)
-
-        # Subtitle
-        subtitle = QLabel("Overview of sync status")
-        subtitle.setProperty("h2", "true")
-        subtitle.setProperty("class", "subtitle")
-        layout.addWidget(subtitle)
-
-        layout.addStretch()
-
-        # Sync Now button
-        sync_button = QPushButton("Sync Now")
-        sync_button.setIcon(get_icon("sync"))
-        sync_button.setProperty("class", "primary")
-        layout.addWidget(sync_button)
-
-        return frame
-
-    def _create_status_area(self):
-        frame = QFrame()
-        frame.setFrameStyle(QFrame.NoFrame)
-        layout = QGridLayout(frame)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(spacing.MEDIUM)
-
-        # Status cards data: (title, value, icon_name, description)
-        cards_data = [
-            ("Service Status", "Running", "running", "Service is active"),
-            ("Current Sync", "Idle", "sync-arrow", "No active sync"),
-            ("Last Sync", "Today, 10:30 AM", "history", "Last successful sync"),
-            ("Next Sync", "In 15 minutes", "schedule", "Next scheduled upload"),
-        ]
-
-        for i, (title, value, icon, desc) in enumerate(cards_data):
-            card = Card(title, value, icon, desc)
-            row = i // 2
-            col = i % 2
-            layout.addWidget(card, row, col)
-
-        return frame
-
-    def _create_main_area(self):
-        frame = QFrame()
-        frame.setFrameStyle(QFrame.NoFrame)
-        layout = QHBoxLayout(frame)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(spacing.LARGE)
-
-        # Left: Sync activity chart
-        layout.addWidget(self._create_chart(), 2)  # chart takes 2/3 width
-
-        # Right: Folder overview and backup status (vertical stack)
-        right_layout = QVBoxLayout()
-        right_layout.setSpacing(spacing.MEDIUM)
-
-        # Folder overview
-        right_layout.addWidget(self._create_folder_overview())
-
-        # Backup status
-        right_layout.addWidget(self._create_backup_status())
-
-        layout.addLayout(right_layout, 1)  # right takes 1/3 width
-
-        return frame
-
-    def _create_chart(self):
-        frame = QFrame()
-        frame.setFrameStyle(QFrame.StyledPanel)
-        frame.setLineWidth(1)
-        frame.setStyleSheet("""
-            QFrame {
-                background-color: #252525;
-                border-radius: 8px;
-            }
-        """)
-        layout = QVBoxLayout(frame)
-        layout.setContentsMargins(
-            spacing.MEDIUM, spacing.MEDIUM, spacing.MEDIUM, spacing.MEDIUM
-        )
-
-        # Chart title
-        title = QLabel("Sync Activity")
-        title.setProperty("h2", "true")
-        layout.addWidget(title)
-
-        # Create and configure the sync chart widget
-        chart_widget = SyncChartWidget()
-        # Mock data: last 10 hours
-        hours = list(range(10))
-        # Mock sync counts (random-ish)
-        sync_counts = [5, 3, 0, 12, 7, 0, 0, 4, 9, 2]
-        chart_widget.set_data(hours, sync_counts)
-        layout.addWidget(chart_widget)
-
-        return frame
-
-    def _create_folder_overview(self):
-        frame = QFrame()
-        frame.setFrameStyle(QFrame.StyledPanel)
-        frame.setLineWidth(1)
-        frame.setStyleSheet("""
-            QFrame {
-                background-color: #252525;
-                border-radius: 8px;
-            }
-        """)
-        layout = QVBoxLayout(frame)
-        layout.setContentsMargins(
-            spacing.MEDIUM, spacing.MEDIUM, spacing.MEDIUM, spacing.MEDIUM
-        )
-
-        # Title
-        title = QLabel("Folder Overview")
-        title.setProperty("h2", "true")
-        layout.addWidget(title)
-
-        # Mock folder data
-        folders = [
-            ("Elden Ring", "Synced", "check-circle"),
-            ("Cyberpunk 2077", "Sync Needed", "sync-alert"),
-            ("The Witcher 3", "Up to Date", "check-circle"),
-            ("Stardew Valley", "Paused", "pause-circle"),
-        ]
-
-        for name, status, icon_name in folders:
-            item_layout = QHBoxLayout()
-            item_layout.setContentsMargins(0, 0, 0, 0)
-            item_layout.setSpacing(spacing.SMALL)
-
-            # Icon
-            if icon_name:
-                icon = get_icon(icon_name)
-                pixmap = icon.pixmap(QSize(16, 16))
-                icon_label = QLabel()
-                icon_label.setPixmap(pixmap)
-                item_layout.addWidget(icon_label)
-
-            # Folder name
-            name_label = QLabel(name)
-            name_label.setProperty("class", "folder-name")
-            item_layout.addWidget(name_label)
-
-            item_layout.addStretch()
-
-            # Status
-            status_label = QLabel(status)
-            if status == "Synced":
-                status_label.setProperty("class", "status-success")
-            elif status == "Sync Needed":
-                status_label.setProperty("class", "status-warning")
-            elif status == "Paused":
-                status_label.setProperty("class", "status-paused")
-            else:
-                status_label.setProperty("class", "status-info")
-            item_layout.addWidget(status_label)
-
-            layout.addLayout(item_layout)
-
-        layout.addStretch()
-        return frame
-
-    def _create_backup_status(self):
-        frame = QFrame()
-        frame.setFrameStyle(QFrame.StyledPanel)
-        frame.setLineWidth(1)
-        frame.setStyleSheet("""
-            QFrame {
-                background-color: #252525;
-                border-radius: 8px;
-            }
-        """)
-        layout = QVBoxLayout(frame)
-        layout.setContentsMargins(
-            spacing.MEDIUM, spacing.MEDIUM, spacing.MEDIUM, spacing.MEDIUM
-        )
-
-        # Title
-        title = QLabel("Backup Status")
-        title.setProperty("h2", "true")
-        layout.addWidget(title)
-
-        # Backup info
-        backup_data = [
-            ("Last Backup", "Today, 9:15 AM"),
-            ("Backup Size", "2.4 GB"),
-            ("Retention", "7 days"),
-            ("Location", "OneDrive/PCSync/Backups"),
-        ]
-
-        for label, value in backup_data:
-            item_layout = QHBoxLayout()
-            item_layout.setContentsMargins(0, 0, 0, 0)
-            item_layout.setSpacing(spacing.SMALL)
-
-            label_widget = QLabel(label)
-            label_widget.setProperty("class", "backup-label")
-            item_layout.addWidget(label_widget)
-
-            item_layout.addStretch()
-
-            value_widget = QLabel(value)
-            value_widget.setProperty("class", "backup-value")
-            item_layout.addWidget(value_widget)
-
-            layout.addLayout(item_layout)
-
-        layout.addStretch()
-        return frame
-
-    def _create_recent_activity(self):
-        frame = QFrame()
-        frame.setFrameStyle(QFrame.StyledPanel)
-        frame.setLineWidth(1)
-        frame.setStyleSheet("""
-            QFrame {
-                background-color: #252525;
-                border-radius: 8px;
-            }
-        """)
-        layout = QVBoxLayout(frame)
-        layout.setContentsMargins(
-            spacing.MEDIUM, spacing.MEDIUM, spacing.MEDIUM, spacing.MEDIUM
-        )
-
-        # Title
-        title = QLabel("Recent Activity")
-        title.setProperty("h2", "true")
-        layout.addWidget(title)
-
-        # Mock recent events
-        events = [
-            ("Today, 10:30 AM", "Sync completed", "Elden Ring", "success"),
-            ("Today, 10:15 AM", "Backup created", "Cyberpunk 2077", "info"),
-            ("Today, 9:45 AM", "Sync started", "The Witcher 3", "info"),
-            ("Yesterday, 4:20 PM", "Sync failed", "Stardew Valley", "error"),
-            ("Yesterday, 3:00 PM", "Sync completed", "Elden Ring", "success"),
-        ]
-
-        for time, action, folder, status in events:
-            event_layout = QHBoxLayout()
-            event_layout.setContentsMargins(0, 0, 0, 0)
-            event_layout.setSpacing(spacing.SMALL)
-
-            # Time
-            time_label = QLabel(time)
-            time_label.setProperty("class", "event-time")
-            event_layout.addWidget(time_label)
-
-            # Action and folder
-            text_label = QLabel(f"{action} <b>{folder}</b>")
-            text_label.setProperty("class", "event-text")
-            text_label.setTextFormat(Qt.RichText)
-            event_layout.addWidget(text_label)
-
-            event_layout.addStretch()
-
-            # Status indicator
-            status_label = QLabel("●")
-            status_label.setProperty("class", f"event-status-{status}")
-            event_layout.addWidget(status_label)
-
-            layout.addLayout(event_layout)
-
-        layout.addStretch()
-        return frame

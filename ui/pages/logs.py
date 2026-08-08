@@ -16,15 +16,13 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt, QTimer, QDateTime, QDate
 from PySide6.QtGui import QColor, QBrush
-from pathlib import Path
-import re
+from backend.services.log_service import LogService
 
 
 class LogsPage(QWidget):
-    def __init__(self, config_backend=None, parent=None):
+    def __init__(self, log_service: LogService, parent=None):
         super().__init__(parent)
-        self.config_backend = config_backend
-        self.log_file_path = Path(__file__).parent.parent.parent / "logs" / "onedrive_pcsync.log"
+        self.log_service = log_service
         self.last_read_pos = 0
         self.log_entries = []  # list of (timestamp, level, message, raw_line)
         self.filtered_entries = []  # indices of log_entries that match filters
@@ -130,26 +128,19 @@ class LogsPage(QWidget):
         self.log_entries.clear()
         self.filtered_entries.clear()
 
-        if not self.log_file_path.exists():
-            self.status_label.setText("Log file not found")
+        if not self.log_service:
+            self.status_label.setText("Log service not available")
             return
 
         try:
-            with open(self.log_file_path, "r", encoding="utf-8") as f:
-                lines = f.readlines()
-                # Keep last 1000 lines
-                lines = lines[-1000:] if len(lines) > 1000 else lines
-                for line in lines:
-                    line = line.rstrip("\n")
-                    parsed = self.parse_log_line(line)
-                    if parsed:
-                        timestamp, level, message = parsed
-                        self.log_entries.append((timestamp, level, message, line))
-                    else:
-                        # If line doesn't parse, still add it as a raw line with level UNKNOWN
-                        # Use an invalid QDateTime for timestamp
-                        self.log_entries.append((QDateTime(), "UNKNOWN", line, line))
-                self.last_read_pos = f.tell()
+            # Get log entries from the log service (last 1000 lines)
+            entries = self.log_service.get_log_entries(max_lines=1000)
+            # Convert to our internal format: (timestamp, level, message, raw_line)
+            # We don't have the raw line from the log service, so we'll set it to an empty string.
+            # We'll change the log_entries to store (timestamp, level, message) only.
+            # We'll adjust the update_table method accordingly.
+            self.log_entries = [(timestamp, level, message, "") for (timestamp, level, message) in entries]
+            self.last_read_pos = 0  # Not used anymore, but keep for compatibility
         except Exception as e:
             self.status_label.setText(f"Error loading log: {e}")
             return
@@ -159,56 +150,36 @@ class LogsPage(QWidget):
 
     def check_for_new_logs(self):
         """Check for new lines in the log file and append them."""
-        if not self.log_file_path.exists():
+        if not self.log_service:
             return
 
         try:
-            with open(self.log_file_path, "r", encoding="utf-8") as f:
-                f.seek(self.last_read_pos)
-                new_lines = f.readlines()
-                self.last_read_pos = f.tell()
-
-                for line in new_lines:
-                    line = line.rstrip("\n")
-                    parsed = self.parse_log_line(line)
-                    if parsed:
-                        timestamp, level, message = parsed
-                        self.log_entries.append((timestamp, level, message, line))
-                    else:
-                        # If line doesn't parse, still add it as a raw line with level UNKNOWN
-                        self.log_entries.append((QDateTime(), "UNKNOWN", line, line))
-
-                if new_lines:
-                    self.apply_filters()
-                    if self.autoscroll_cb.isChecked():
-                        self.scroll_to_bottom()
+            # Get all log entries (we could optimize to get only new ones, but for simplicity we get all and then filter)
+            # We'll get the last 1000 lines again and then compare with what we have?
+            # Instead, we'll just reload the entire log entries and then reapply filters.
+            # This is simpler and acceptable for a log viewer that updates every 500ms.
+            entries = self.log_service.get_log_entries(max_lines=1000)
+            new_log_entries = [(timestamp, level, message, "") for (timestamp, level, message) in entries]
+            # Check if we have new entries by comparing the length or the last entry?
+            # We'll just replace the log_entries and then reapply filters.
+            self.log_entries = new_log_entries
+            if self.log_entries:
+                self.apply_filters()
+                if self.autoscroll_cb.isChecked():
+                    self.scroll_to_bottom()
         except Exception as e:
             self.status_label.setText(f"Error reading log: {e}")
 
     def parse_log_line(self, line: str):
-        """Parse a log line into (timestamp, level, message).
-        Expected format: "%Y-%m-%d %H:%M:%S | %(levelname)-8s | %(name)s | %(message)s"
-        Returns a tuple (QDateTime, level, message) if successful, else None.
-        """
-        # Split by " | " but only split into 4 parts
-        parts = line.split(" | ", 3)
-        if len(parts) < 4:
-            return None
-        timestamp_str, level, logger_name, message = parts
-        try:
-            # Remove any trailing whitespace from level
-            level = level.strip()
-            timestamp = QDateTime.fromString(timestamp_str, "yyyy-MM-dd HH:mm:ss")
-            if not timestamp.isValid():
-                return None
-            # Combine logger name and message for display
-            display_message = f"[{logger_name}] {message}"
-            return timestamp, level, display_message
-        except Exception:
-            return None
+        """This method is no longer used, but we keep it for compatibility."""
+        # We don't use this anymore because we use the log service.
+        return None
 
     def apply_filters(self):
         """Apply search, level, and date filters to the log entries."""
+        if not self.log_service:
+            return
+
         search_text = self.search_input.text().lower()
         show_info = self.info_cb.isChecked()
         show_warning = self.warning_cb.isChecked()
@@ -238,45 +209,31 @@ class LogsPage(QWidget):
             start_date = None
             end_date = None
 
-        self.filtered_entries = []
-        for idx, (timestamp, level, message, raw_line) in enumerate(self.log_entries):
-            # Level filter
-            level_match = False
-            if level == "INFO" and show_info:
-                level_match = True
-            elif level == "WARNING" and show_warning:
-                level_match = True
-            elif level == "ERROR" and show_error:
-                level_match = True
-            elif level == "SUCCESS" and show_success:
-                level_match = True
-            # If we don't have a match for the level, skip
-            if not level_match:
-                continue
-
-            # Search filter
-            if search_text and search_text not in message.lower() and search_text not in level.lower():
-                continue
-
-            # Date filter
-            if start_date is not None or end_date is not None:
-                # timestamp is already a QDateTime
-                qt_timestamp = timestamp
-                if start_date is not None and qt_timestamp < start_date:
-                    continue
-                if end_date is not None and qt_timestamp >= end_date:
-                    continue
-
-            self.filtered_entries.append(idx)
+        # Get all log entries from the log service (we could cache, but for simplicity we get all)
+        entries = self.log_service.get_log_entries()
+        # Convert to our internal format for filtering
+        internal_entries = [(timestamp, level, message, "") for (timestamp, level, message) in entries]
+        # Apply filters using the log service's filter_entries method
+        filtered_internal = self.log_service.filter_entries(
+            [(timestamp, level, message) for (timestamp, level, message, _) in internal_entries],
+            search_text=search_text,
+            show_info=show_info,
+            show_warning=show_warning,
+            show_error=show_error,
+            show_success=show_success,
+            date_index=date_index
+        )
+        # Convert back to our internal format with raw line (empty string)
+        self.log_entries = [(timestamp, level, message, "") for (timestamp, level, message) in filtered_internal]
+        self.filtered_entries = list(range(len(self.log_entries)))  # All entries are shown after filtering
 
         self.update_table()
         self.update_status()
 
     def update_table(self):
         """Update the table to show only filtered entries."""
-        self.log_table.setRowCount(len(self.filtered_entries))
-        for row, idx in enumerate(self.filtered_entries):
-            timestamp, level, message, raw_line = self.log_entries[idx]
+        self.log_table.setRowCount(len(self.log_entries))
+        for row, (timestamp, level, message, _) in enumerate(self.log_entries):
             # Timestamp
             if timestamp.isValid():
                 timestamp_str = timestamp.toString("yyyy-MM-dd HH:mm:ss")
@@ -323,7 +280,6 @@ class LogsPage(QWidget):
 
     def refresh_logs(self):
         """Refresh the log display by reloading the file."""
-        self.last_read_pos = 0
         self.load_initial_logs()
 
     def copy_selected_rows(self):
