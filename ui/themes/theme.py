@@ -132,6 +132,24 @@ QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
 QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{
     background: none;
 }}
+
+/* Status labels */
+QLabel[statusSuccess="true"] {{
+    color: {c.SUCCESS};
+}}
+QLabel[statusError="true"] {{
+    color: {c.ERROR};
+}}
+QLabel[statusWarning="true"] {{
+    color: {c.WARNING};
+}}
+QLabel[statusInfo="true"] {{
+    color: {c.TEXT_SECONDARY};
+}}
+QLabel[statusPaused="true"] {{
+    color: {c.SECONDARY};
+}}
+
 """
 
 
@@ -162,7 +180,7 @@ def get_card_stylesheet() -> str:
         font-size: {t.FONT_SIZE_XSMALL}pt;
         color: {c.TEXT_SECONDARY};
     }}
-"""
+    """
 
 
 def get_sidebar_stylesheet() -> str:
@@ -201,4 +219,4 @@ def get_sidebar_stylesheet() -> str:
         padding: {s.MEDIUM}px;
         border-bottom: 1px solid {c.BORDER};
     }}
-"""
+    """

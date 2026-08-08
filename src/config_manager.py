@@ -247,3 +247,32 @@ class ConfigManager:
             if folder.id in seen_ids:
                 raise ConfigurationError(f"Duplicate folder id detected in config: '{folder.id}'")
             seen_ids.add(folder.id)
+
+    def get_shutdown_monitor_status(self) -> dict:
+        """Return the shutdown monitor status as a dictionary.
+        If the status file cannot be read, returns a default status with
+        status: "unknown".
+        """
+        status_file = Path(__file__).resolve().parent.parent / "shutdown_monitor_status.json"
+        try:
+            if status_file.exists():
+                with status_file.open("r", encoding="utf-8") as f:
+                    return json.load(f)
+            else:
+                return {
+                    "status": "unknown",
+                    "pid": None,
+                    "startup_time": None,
+                    "last_detected_event": None,
+                    "last_shutdown_sync": None,
+                    "last_error": None,
+                }
+        except (json.JSONDecodeError, OSError):
+            return {
+                "status": "unknown",
+                "pid": None,
+                "startup_time": None,
+                "last_detected_event": None,
+                "last_shutdown_sync": None,
+                "last_error": None,
+            }

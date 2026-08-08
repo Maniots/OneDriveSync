@@ -3,8 +3,9 @@ from PySide6.QtCore import Qt
 
 
 class AboutPage(QWidget):
-    def __init__(self, parent=None):
+    def __init__(self, config_backend=None, parent=None):
         super().__init__(parent)
+        self.config_backend = config_backend  # Store for potential future use
         self.setup_ui()
 
     def setup_ui(self):
