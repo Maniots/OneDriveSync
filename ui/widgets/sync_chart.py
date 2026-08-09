@@ -17,15 +17,18 @@ class SyncChartWidget(PlotWidget):
 
     def _setup_ui(self):
         """Initialize the chart appearance."""
+        # Import theme colors
+        from ..themes import colors
+
         # Dark background
-        self.setBackground('#252525')
+        self.setBackground(colors.SURFACE)
 
         # Set axis styles
-        axis_pen = mkPen(color='#b0b0b0', width=1)
+        axis_pen = mkPen(color=colors.BORDER, width=1)
         self.getAxis('left').setPen(axis_pen)
         self.getAxis('bottom').setPen(axis_pen)
-        self.getAxis('left').setTextPen('#b0b0b0')
-        self.getAxis('bottom').setTextPen('#b0b0b0')
+        self.getAxis('left').setTextPen(colors.TEXT_SECONDARY)
+        self.getAxis('bottom').setTextPen(colors.TEXT_SECONDARY)
 
         # Grid lines - subtle
         self.showGrid(x=True, y=True, alpha=0.15)
@@ -39,11 +42,11 @@ class SyncChartWidget(PlotWidget):
 
         # Initialize empty data line
         self._data_line = self.plot(
-            pen=mkPen('#0078d4', width=2),
+            pen=mkPen(colors.PRIMARY, width=2),
             symbol='o',
             symbolSize=6,
-            symbolBrush='#0078d4',
-            symbolPen=mkPen('#ffffff', width=1)
+            symbolBrush=colors.PRIMARY,
+            symbolPen=mkPen(colors.TEXT_PRIMARY, width=1)
         )
 
     def set_data(self, x, y):

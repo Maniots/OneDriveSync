@@ -6,8 +6,12 @@ from PySide6.QtWidgets import (
     QFormLayout,
     QFrame,
     QHBoxLayout,
+    QCheckBox,
+    QPushButton,
+    QMessageBox,
 )
 from PySide6.QtCore import Qt, QTimer
+from ..themes import spacing
 from typing import Optional, Dict
 from backend.services.configuration_service import ConfigurationService
 from backend.services.scheduler_service import SchedulerService
@@ -33,101 +37,174 @@ class SchedulerPage(QWidget):
 
     def setup_ui(self):
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(24, 24, 24, 24)
-        layout.setSpacing(16)
+        layout.setContentsMargins(spacing.LARGE, spacing.LARGE, spacing.LARGE, spacing.LARGE)
+        layout.setSpacing(spacing.MEDIUM)
 
-        # Title
+        # Title and refresh button
+        title_layout = QHBoxLayout()
+        title_layout.setSpacing(spacing.SMALL)
         title = QLabel("Scheduler")
         title.setProperty("h2", "true")
-        layout.addWidget(title)
+        title_layout.addWidget(title)
+        title_layout.addStretch()
+        self.refresh_button = QPushButton("Refresh")
+        self.refresh_button.setToolTip("Refresh scheduler status")
+        self.refresh_button.clicked.connect(self.on_refresh_clicked)
+        title_layout.addWidget(self.refresh_button)
+        layout.addLayout(title_layout)
 
         # Visual timeline
         timeline_frame = QFrame()
-        timeline_frame.setFrameShape(QFrame.StyledPanel)
+        timeline_frame.setProperty("card", "true")
         timeline_layout = QVBoxLayout(timeline_frame)
-        timeline_layout.setContentsMargins(16, 16, 16, 16)
-        timeline_layout.setSpacing(8)
+        timeline_layout.setContentsMargins(spacing.MEDIUM, spacing.MEDIUM, spacing.MEDIUM, spacing.MEDIUM)
+        timeline_layout.setSpacing(spacing.SMALL)
 
         timeline_label = QLabel(
             "Logon\n"
-            "   ��� � � ↓ (2 min delay)\n"
+            "   ������� ����� ����� ��� ����� ��� ��� � ����� ��� ��� � ��� � � ↓ (2 min delay)\n"
             "Startup Download\n\n"
             "Lock\n"
-            "   ��� � � ↓\n"
+            "   ������� ����� ����� ��� ����� ��� ��� � ����� ��� ��� � ��� � � ↓\n"
             "Upload\n\n"
             "Every 15 minutes\n"
-            "   ��� � � ↓\n"
+            "   ������� ����� ����� ��� ����� ��� ��� � ����� ��� ��� � ��� � � ↓\n"
             "Upload\n\n"
             "Shutdown\n"
-            "   ��� � � ↓\n"
+            "   ������� ����� ����� ��� ����� ��� ��� � ����� ��� ��� � ��� � � ↓\n"
             "Monitor\n"
-            "   ��� � � ↓\n"
+            "   ������� ����� ����� ��� ����� ��� ��� � ����� ��� ��� � ��� � � ↓\n"
             "Upload"
         )
         timeline_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
-        timeline_label.setStyleSheet("""
-            QLabel {
-                font-family: monospace;
-                font-size: 12pt;
-                color: palette(text);
-            }
-        """)
+        timeline_label.setProperty("value", "true")
+        timeline_label.setProperty("class", "monospace")
         timeline_layout.addWidget(timeline_label)
         layout.addWidget(timeline_frame)
 
         # Sections
         sections_layout = QVBoxLayout()
-        sections_layout.setSpacing(12)
+        sections_layout.setSpacing(spacing.SMALL)
 
         # Startup Sync Section
         startup_group = QGroupBox("Startup Sync")
+        startup_group.setProperty("card", "true")
         startup_layout = QFormLayout()
         startup_group.setLayout(startup_layout)
 
         self.startup_trigger_label = QLabel()
         self.startup_delay_label = QLabel()
         self.startup_direction_label = QLabel()
-        self.startup_status_label = QLabel()
+        self.startup_enabled_checkbox = QCheckBox()
+        self.startup_enabled_checkbox.stateChanged.connect(lambda state: self.on_startup_enabled_changed(state))
+        self.startup_last_run_label = QLabel()
+        self.startup_next_run_label = QLabel()
 
-        startup_layout.addRow("Trigger:", self.startup_trigger_label)
-        startup_layout.addRow("Delay:", self.startup_delay_label)
-        startup_layout.addRow("Direction:", self.startup_direction_label)
-        startup_layout.addRow("Status:", self.startup_status_label)
+        self.startup_trigger_label.setProperty("value", "true")
+        self.startup_delay_label.setProperty("value", "true")
+        self.startup_direction_label.setProperty("value", "true")
+        self.startup_enabled_checkbox.setProperty("value", "true")
+        self.startup_last_run_label.setProperty("value", "true")
+        self.startup_next_run_label.setProperty("value", "true")
+
+        trigger_label = QLabel("Trigger:")
+        trigger_label.setProperty("title", "true")
+        startup_layout.addRow(trigger_label, self.startup_trigger_label)
+        delay_label = QLabel("Delay:")
+        delay_label.setProperty("title", "true")
+        startup_layout.addRow(delay_label, self.startup_delay_label)
+        direction_label = QLabel("Direction:")
+        direction_label.setProperty("title", "true")
+        startup_layout.addRow(direction_label, self.startup_direction_label)
+        enabled_label = QLabel("Enabled:")
+        enabled_label.setProperty("title", "true")
+        startup_layout.addRow(enabled_label, self.startup_enabled_checkbox)
+        last_run_label = QLabel("Last Run:")
+        last_run_label.setProperty("title", "true")
+        startup_layout.addRow(last_run_label, self.startup_last_run_label)
+        next_run_label = QLabel("Next Run:")
+        next_run_label.setProperty("title", "true")
+        startup_layout.addRow(next_run_label, self.startup_next_run_label)
 
         sections_layout.addWidget(startup_group)
 
         # Periodic Sync Section
         periodic_group = QGroupBox("Periodic Sync")
+        periodic_group.setProperty("card", "true")
         periodic_layout = QFormLayout()
         periodic_group.setLayout(periodic_layout)
 
         self.periodic_interval_label = QLabel()
         self.periodic_direction_label = QLabel()
-        self.periodic_status_label = QLabel()
+        self.periodic_enabled_checkbox = QCheckBox()
+        self.periodic_enabled_checkbox.stateChanged.connect(lambda state: self.on_periodic_enabled_changed(state))
+        self.periodic_last_run_label = QLabel()
+        self.periodic_next_run_label = QLabel()
 
-        periodic_layout.addRow("Interval:", self.periodic_interval_label)
-        periodic_layout.addRow("Direction:", self.periodic_direction_label)
-        periodic_layout.addRow("Status:", self.periodic_status_label)
+        self.periodic_interval_label.setProperty("value", "true")
+        self.periodic_direction_label.setProperty("value", "true")
+        self.periodic_enabled_checkbox.setProperty("value", "true")
+        self.periodic_last_run_label.setProperty("value", "true")
+        self.periodic_next_run_label.setProperty("value", "true")
+
+        interval_label = QLabel("Interval:")
+        interval_label.setProperty("title", "true")
+        periodic_layout.addRow(interval_label, self.periodic_interval_label)
+        direction_label = QLabel("Direction:")
+        direction_label.setProperty("title", "true")
+        periodic_layout.addRow(direction_label, self.periodic_direction_label)
+        enabled_label = QLabel("Enabled:")
+        enabled_label.setProperty("title", "true")
+        periodic_layout.addRow(enabled_label, self.periodic_enabled_checkbox)
+        last_run_label = QLabel("Last Run:")
+        last_run_label.setProperty("title", "true")
+        periodic_layout.addRow(last_run_label, self.periodic_last_run_label)
+        next_run_label = QLabel("Next Run:")
+        next_run_label.setProperty("title", "true")
+        periodic_layout.addRow(next_run_label, self.periodic_next_run_label)
 
         sections_layout.addWidget(periodic_group)
 
         # Workstation Lock Section
         workstation_group = QGroupBox("Workstation Lock")
+        workstation_group.setProperty("card", "true")
         workstation_layout = QFormLayout()
         workstation_group.setLayout(workstation_layout)
 
         self.workstation_trigger_label = QLabel()
         self.workstation_direction_label = QLabel()
-        self.workstation_status_label = QLabel()
+        self.workstation_enabled_checkbox = QCheckBox()
+        self.workstation_enabled_checkbox.stateChanged.connect(lambda state: self.on_workstation_enabled_changed(state))
+        self.workstation_last_run_label = QLabel()
+        self.workstation_next_run_label = QLabel()
 
-        workstation_layout.addRow("Trigger:", self.workstation_trigger_label)
-        workstation_layout.addRow("Direction:", self.workstation_direction_label)
-        workstation_layout.addRow("Status:", self.workstation_status_label)
+        self.workstation_trigger_label.setProperty("value", "true")
+        self.workstation_direction_label.setProperty("value", "true")
+        self.workstation_enabled_checkbox.setProperty("value", "true")
+        self.workstation_last_run_label.setProperty("value", "true")
+        self.workstation_next_run_label.setProperty("value", "true")
+
+        trigger_label = QLabel("Trigger:")
+        trigger_label.setProperty("title", "true")
+        workstation_layout.addRow(trigger_label, self.workstation_trigger_label)
+        direction_label = QLabel("Direction:")
+        direction_label.setProperty("title", "true")
+        workstation_layout.addRow(direction_label, self.workstation_direction_label)
+        enabled_label = QLabel("Enabled:")
+        enabled_label.setProperty("title", "true")
+        workstation_layout.addRow(enabled_label, self.workstation_enabled_checkbox)
+        last_run_label = QLabel("Last Run:")
+        last_run_label.setProperty("title", "true")
+        workstation_layout.addRow(last_run_label, self.workstation_last_run_label)
+        next_run_label = QLabel("Next Run:")
+        next_run_label.setProperty("title", "true")
+        workstation_layout.addRow(next_run_label, self.workstation_next_run_label)
 
         sections_layout.addWidget(workstation_group)
 
         # Shutdown Monitor Section
         monitor_group = QGroupBox("Shutdown Monitor")
+        monitor_group.setProperty("card", "true")
         monitor_layout = QFormLayout()
         monitor_group.setLayout(monitor_layout)
 
@@ -138,19 +215,39 @@ class SchedulerPage(QWidget):
         self.startup_time_label = QLabel()
         self.last_error_label = QLabel()
 
-        monitor_layout.addRow("Monitor Status:", self.monitor_status_label)
-        monitor_layout.addRow("Last Detected Event:", self.last_detected_event_label)
-        monitor_layout.addRow("Last Shutdown Sync:", self.last_shutdown_sync_label)
-        monitor_layout.addRow("PID:", self.pid_label)
-        monitor_layout.addRow("Startup Time:", self.startup_time_label)
-        monitor_layout.addRow("Last Error:", self.last_error_label)
+        self.monitor_status_label.setProperty("value", "true")
+        self.last_detected_event_label.setProperty("value", "true")
+        self.last_shutdown_sync_label.setProperty("value", "true")
+        self.pid_label.setProperty("value", "true")
+        self.startup_time_label.setProperty("value", "true")
+        self.last_error_label.setProperty("value", "true")
+
+        monitor_status_label = QLabel("Monitor Status:")
+        monitor_status_label.setProperty("title", "true")
+        monitor_layout.addRow(monitor_status_label, self.monitor_status_label)
+        last_detected_event_label = QLabel("Last Detected Event:")
+        last_detected_event_label.setProperty("title", "true")
+        monitor_layout.addRow(last_detected_event_label, self.last_detected_event_label)
+        last_shutdown_sync_label = QLabel("Last Shutdown Sync:")
+        last_shutdown_sync_label.setProperty("title", "true")
+        monitor_layout.addRow(last_shutdown_sync_label, self.last_shutdown_sync_label)
+        pid_label = QLabel("PID:")
+        pid_label.setProperty("title", "true")
+        monitor_layout.addRow(pid_label, self.pid_label)
+        startup_time_label = QLabel("Startup Time:")
+        startup_time_label.setProperty("title", "true")
+        monitor_layout.addRow(startup_time_label, self.startup_time_label)
+        last_error_label = QLabel("Last Error:")
+        last_error_label.setProperty("title", "true")
+        monitor_layout.addRow(last_error_label, self.last_error_label)
 
         sections_layout.addWidget(monitor_group)
 
         layout.addLayout(sections_layout)
 
-        # Add stretch to push everything to the top
-        layout.addStretch()
+    def on_refresh_clicked(self):
+        """Refresh the scheduler data by reloading from the service."""
+        self.load_scheduler_data()
 
     def load_scheduler_data(self):
         """Load and display scheduler data from the scheduler service."""
@@ -182,24 +279,30 @@ class SchedulerPage(QWidget):
             self.startup_trigger_label.setText(startup_info.get("trigger", "N/A"))
             self.startup_delay_label.setText(startup_info.get("delay", "N/A"))
             self.startup_direction_label.setText(startup_info.get("direction", "N/A"))
-            startup_status = startup_info.get("enabled", "Disabled")
-            self.startup_status_label.setText(startup_status)
+            enabled_str = startup_info.get("enabled", "Disabled")
+            self.startup_enabled_checkbox.setChecked(enabled_str == "Enabled")
+            self.startup_last_run_label.setText(startup_info.get("last_run_time", "N/A"))
+            self.startup_next_run_label.setText(startup_info.get("next_run_time", "N/A"))
 
         # Periodic Sync
         periodic_info = self.scheduler_data.get("periodic")
         if periodic_info:
             self.periodic_interval_label.setText(periodic_info.get("interval", "N/A"))
             self.periodic_direction_label.setText(periodic_info.get("direction", "N/A"))
-            periodic_status = periodic_info.get("enabled", "Disabled")
-            self.periodic_status_label.setText(periodic_status)
+            enabled_str = periodic_info.get("enabled", "Disabled")
+            self.periodic_enabled_checkbox.setChecked(enabled_str == "Enabled")
+            self.periodic_last_run_label.setText(periodic_info.get("last_run_time", "N/A"))
+            self.periodic_next_run_label.setText(periodic_info.get("next_run_time", "N/A"))
 
         # Workstation Lock
         workstation_info = self.scheduler_data.get("workstation_lock")
         if workstation_info:
             self.workstation_trigger_label.setText(workstation_info.get("trigger", "N/A"))
             self.workstation_direction_label.setText(workstation_info.get("direction", "N/A"))
-            workstation_status = workstation_info.get("enabled", "Disabled")
-            self.workstation_status_label.setText(workstation_status)
+            enabled_str = workstation_info.get("enabled", "Disabled")
+            self.workstation_enabled_checkbox.setChecked(enabled_str == "Enabled")
+            self.workstation_last_run_label.setText(workstation_info.get("last_run_time", "N/A"))
+            self.workstation_next_run_label.setText(workstation_info.get("next_run_time", "N/A"))
 
     def update_shutdown_monitor_status(self):
         """Update the shutdown monitor status labels using the monitor service."""
@@ -250,6 +353,111 @@ class SchedulerPage(QWidget):
             self.pid_label.setText("N/A")
             self.startup_time_label.setText("N/A")
             self.last_error_label.setText("N/A")
+
+    def on_startup_enabled_changed(self, state):
+        """Handle startup enabled checkbox state change."""
+        from PySide6.QtWidgets import QMessageBox
+        enabled = state == 2  # Qt.Checked is 2
+        task_name = "Startup Sync"
+        display_name = self.scheduler_service._TASK_NAMES["startup"]
+
+        # Show confirmation dialog
+        reply = QMessageBox.question(
+            self,
+            f"Confirm {task_name} Change",
+            f"Are you sure you want to {'enable' if enabled else 'disable'} {task_name}?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+
+        if reply == QMessageBox.StandardButton.Yes:
+            # Try to change the task status
+            success = self.scheduler_service.set_task_enabled("startup", enabled)
+            if success:
+                # Refresh to update the UI with the actual status
+                self.load_scheduler_data()
+            else:
+                # Show error and revert checkbox
+                QMessageBox.warning(
+                    self,
+                    "Operation Failed",
+                    f"Failed to {'enable' if enabled else 'disable'} {task_name}.",
+                    QMessageBox.StandardButton.Ok
+                )
+                self.startup_enabled_checkbox.setChecked(not enabled)
+        else:
+            # User cancelled, revert checkbox
+            self.startup_enabled_checkbox.setChecked(not enabled)
+
+    def on_periodic_enabled_changed(self, state):
+        """Handle periodic enabled checkbox state change."""
+        from PySide6.QtWidgets import QMessageBox
+        enabled = state == 2  # Qt.Checked is 2
+        task_name = "Periodic Sync"
+        display_name = self.scheduler_service._TASK_NAMES["periodic"]
+
+        # Show confirmation dialog
+        reply = QMessageBox.question(
+            self,
+            f"Confirm {task_name} Change",
+            f"Are you sure you want to {'enable' if enabled else 'disable'} {task_name}?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+
+        if reply == QMessageBox.StandardButton.Yes:
+            # Try to change the task status
+            success = self.scheduler_service.set_task_enabled("periodic", enabled)
+            if success:
+                # Refresh to update the UI with the actual status
+                self.load_scheduler_data()
+            else:
+                # Show error and revert checkbox
+                QMessageBox.warning(
+                    self,
+                    "Operation Failed",
+                    f"Failed to {'enable' if enabled else 'disable'} {task_name}.",
+                    QMessageBox.StandardButton.Ok
+                )
+                self.periodic_enabled_checkbox.setChecked(not enabled)
+        else:
+            # User cancelled, revert checkbox
+            self.periodic_enabled_checkbox.setChecked(not enabled)
+
+    def on_workstation_enabled_changed(self, state):
+        """Handle workstation lock enabled checkbox state change."""
+        from PySide6.QtWidgets import QMessageBox
+        enabled = state == 2  # Qt.Checked is 2
+        task_name = "Workstation Lock Sync"
+        display_name = self.scheduler_service._TASK_NAMES["workstation_lock"]
+
+        # Show confirmation dialog
+        reply = QMessageBox.question(
+            self,
+            f"Confirm {task_name} Change",
+            f"Are you sure you want to {'enable' if enabled else 'disable'} {task_name}?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+
+        if reply == QMessageBox.StandardButton.Yes:
+            # Try to change the task status
+            success = self.scheduler_service.set_task_enabled("workstation_lock", enabled)
+            if success:
+                # Refresh to update the UI with the actual status
+                self.load_scheduler_data()
+            else:
+                # Show error and revert checkbox
+                QMessageBox.warning(
+                    self,
+                    "Operation Failed",
+                    f"Failed to {'enable' if enabled else 'disable'} {task_name}.",
+                    QMessageBox.StandardButton.Ok
+                )
+                self.workstation_enabled_checkbox.setChecked(not enabled)
+        else:
+            # User cancelled, revert checkbox
+            self.workstation_enabled_checkbox.setChecked(not enabled)
 
     def show_no_config_message(self):
         """Show a message when no configuration service is available."""

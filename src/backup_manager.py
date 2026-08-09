@@ -99,7 +99,7 @@ class BackupManager:
             )
             return None
 
-        backup_dir = backup_settings.backup_path / folder_id
+        backup_dir = backup_settings.backup_path_resolved / folder_id
         today = date.today()
         today_str = today.isoformat()  # YYYY-MM-DD
         archive_path = backup_dir / f"{folder_id}_{today_str}.zip"
@@ -164,7 +164,7 @@ class BackupManager:
 
         Failures are logged as warnings and never raised.
         """
-        backup_dir = backup_settings.backup_path / folder_id
+        backup_dir = backup_settings.backup_path_resolved / folder_id
         if not backup_dir.exists():
             return
 

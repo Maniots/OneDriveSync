@@ -25,11 +25,7 @@ class FolderCard(QFrame):
 
     def __init__(self, folder_data=None, parent=None):
         super().__init__(parent)
-        self.setFrameStyle(QFrame.StyledPanel)
-        self.setLineWidth(1)
-        self.setMidLineWidth(0)
-        # Apply card-specific stylesheet from theme
-        self.setStyleSheet(get_card_stylesheet())
+        self.setProperty("card", "true")
         self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
 
         # Store folder data
@@ -88,53 +84,53 @@ class FolderCard(QFrame):
 
         # Sync Direction
         direction_label = QLabel("Sync Direction:")
-        direction_label.setProperty("class", "detail-label")
+        direction_label.setProperty("title", "true")
         direction_value = QLabel(self.folder_data.get('direction', ''))
-        direction_value.setProperty("class", "detail-value")
+        direction_value.setProperty("value", "true")
         details_layout.addRow(direction_label, direction_value)
 
         # Local Path
         local_path_label = QLabel("Local Path:")
-        local_path_label.setProperty("class", "detail-label")
+        local_path_label.setProperty("title", "true")
         local_path_value = QLabel(self.folder_data.get('local_path', ''))
-        local_path_value.setProperty("class", "detail-value")
+        local_path_value.setProperty("value", "true")
         local_path_value.setTextInteractionFlags(Qt.TextSelectableByMouse)
         details_layout.addRow(local_path_label, local_path_value)
 
         # OneDrive Path
         onedrive_path_label = QLabel("OneDrive Path:")
-        onedrive_path_label.setProperty("class", "detail-label")
+        onedrive_path_label.setProperty("title", "true")
         onedrive_path_value = QLabel(self.folder_data.get('onedrive_path', ''))
-        onedrive_path_value.setProperty("class", "detail-value")
+        onedrive_path_value.setProperty("value", "true")
         onedrive_path_value.setTextInteractionFlags(Qt.TextSelectableByMouse)
         details_layout.addRow(onedrive_path_label, onedrive_path_value)
 
         # Safety Threshold
         safety_label = QLabel("Safety Threshold:")
-        safety_label.setProperty("class", "detail-label")
+        safety_label.setProperty("title", "true")
         safety_value = QLabel(f"{self.folder_data.get('safety_threshold', 0)}%")
-        safety_value.setProperty("class", "detail-value")
+        safety_value.setProperty("value", "true")
         details_layout.addRow(safety_label, safety_value)
 
         # Backup Status
         backup_label = QLabel("Backup Status:")
-        backup_label.setProperty("class", "detail-label")
+        backup_label.setProperty("title", "true")
         backup_value = QLabel(self.folder_data.get('backup_status', ''))
-        backup_value.setProperty("class", "detail-value")
+        backup_value.setProperty("value", "true")
         details_layout.addRow(backup_label, backup_value)
 
         # Last Sync
         last_sync_label = QLabel("Last Sync:")
-        last_sync_label.setProperty("class", "detail-label")
+        last_sync_label.setProperty("title", "true")
         last_sync_value = QLabel(self.folder_data.get('last_sync', ''))
-        last_sync_value.setProperty("class", "detail-value")
+        last_sync_value.setProperty("value", "true")
         details_layout.addRow(last_sync_label, last_sync_value)
 
         # Sync Status
         sync_status_label = QLabel("Sync Status:")
-        sync_status_label.setProperty("class", "detail-label")
+        sync_status_label.setProperty("title", "true")
         sync_status_value = QLabel(self.folder_data.get('sync_status', ''))
-        sync_status_value.setProperty("class", "detail-value")
+        sync_status_value.setProperty("value", "true")
         # Set color based on sync status
         status = self.folder_data.get('sync_status', '').lower()
         if 'success' in status or 'synced' in status:
@@ -159,20 +155,17 @@ class FolderCard(QFrame):
         # Sync Now button
         self.sync_now_button = QPushButton("Sync Now")
         self.sync_now_button.setIcon(get_icon("sync"))
-        self.sync_now_button.setProperty("class", "action-button")
         self.sync_now_button.clicked.connect(self.sync_now_clicked.emit)
         actions_layout.addWidget(self.sync_now_button)
 
         # Edit button
         self.edit_button = QPushButton("Edit")
         self.edit_button.setIcon(get_icon("edit"))
-        self.edit_button.setProperty("class", "action-button")
         self.edit_button.clicked.connect(self.edit_clicked.emit)
         actions_layout.addWidget(self.edit_button)
 
         # Enable/Disable toggle button
         self.toggle_enabled_button = QPushButton()
-        self.toggle_enabled_button.setProperty("class", "action-button")
         self.update_toggle_button()
         self.toggle_enabled_button.clicked.connect(self.toggle_enabled)
         actions_layout.addWidget(self.toggle_enabled_button)

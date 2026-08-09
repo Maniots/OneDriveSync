@@ -1,5 +1,6 @@
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel
 from PySide6.QtCore import Qt
+from ..themes import spacing
 
 
 class AboutPage(QWidget):
@@ -10,7 +11,9 @@ class AboutPage(QWidget):
 
     def setup_ui(self):
         layout = QVBoxLayout(self)
-        layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.setContentsMargins(spacing.LARGE, spacing.LARGE, spacing.LARGE, spacing.LARGE)
+        layout.setSpacing(spacing.MEDIUM)
+        layout.setAlignment(Qt.AlignmentFlag.AlignTop)
 
         label = QLabel("About")
         label.setProperty("h2", "true")
@@ -23,8 +26,9 @@ class AboutPage(QWidget):
             "Version: 1.0.0\n"
             "© 2026 OneDrive PC Sync Team"
         )
-        about_text.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        about_text.setAlignment(Qt.AlignmentFlag.AlignLeft)
         about_text.setWordWrap(True)
+        about_text.setProperty("value", "true")
         layout.addWidget(about_text)
 
         layout.addStretch()

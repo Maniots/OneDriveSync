@@ -15,6 +15,7 @@ from PySide6.QtGui import QColor
 from backend.services.configuration_service import ConfigurationService
 from backend.services.backup_service import BackupService
 from ..resources.icons import get_icon
+from ..themes import colors, spacing
 import datetime
 
 
@@ -34,17 +35,19 @@ class BackupsPage(QWidget):
 
     def setup_ui(self):
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(12, 12, 12, 12)
-        layout.setSpacing(12)
+        layout.setContentsMargins(spacing.LARGE, spacing.LARGE, spacing.LARGE, spacing.LARGE)
+        layout.setSpacing(spacing.MEDIUM)
 
         # Toolbar
         toolbar_layout = QHBoxLayout()
         toolbar_layout.setContentsMargins(0, 0, 0, 0)
-        toolbar_layout.setSpacing(8)
+        toolbar_layout.setSpacing(spacing.SMALL)
 
         # Refresh button
         self.refresh_btn = QPushButton("Refresh")
         self.refresh_btn.setIcon(get_icon("refresh"))
+        self.refresh_btn.setToolTip("Refresh backup list")
+        self.refresh_btn.setProperty("value", "true")
         self.refresh_btn.clicked.connect(self.refresh_backups)
         toolbar_layout.addWidget(self.refresh_btn)
 
@@ -56,19 +59,24 @@ class BackupsPage(QWidget):
         self.table = QTableWidget()
         self.table.setColumnCount(6)
         self.table.setHorizontalHeaderLabels(["Folder", "Timestamp", "Size", "Age", "Status", "Actions"])
-        self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
-        self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
-        self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
-        self.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeToContents)
-        self.table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeToContents)
-        self.table.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeToContents)
+        header = self.table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.Stretch)
+        header.setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(2, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(3, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(4, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(5, QHeaderView.ResizeToContents)
         self.table.setEditTriggers(QTableWidget.NoEditTriggers)
         self.table.setSelectionBehavior(QTableWidget.SelectRows)
+        self.table.setShowGrid(False)
+        self.table.setAlternatingRowColors(True)
+        self.table.verticalHeader().setVisible(False)
         layout.addWidget(self.table, 1)  # stretch factor 1
 
         # Status label
         self.status_label = QLabel("Ready")
         self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.status_label.setProperty("value", "true")
         layout.addWidget(self.status_label)
 
     def load_configuration_data(self):
@@ -103,18 +111,24 @@ class BackupsPage(QWidget):
                         self.table.setItem(row, 3, age_item)
                         # Status (we don't have real status, so we'll show "Available" if backup exists)
                         status_item = QTableWidgetItem("Available")
-                        status_item.setForeground(QColor("#107c10"))  # Green
+                        status_item.setForeground(colors.SUCCESS)
                         self.table.setItem(row, 4, status_item)
                         # Actions placeholder
                         actions_layout = QHBoxLayout()
                         actions_layout.setContentsMargins(0, 0, 0, 0)
-                        actions_layout.setSpacing(4)
+                        actions_layout.setSpacing(spacing.XSMALL)
                         restore_btn = QPushButton("Restore")
                         restore_btn.setIcon(get_icon("restore"))
+                        restore_btn.setToolTip("Restore backup")
+                        restore_btn.setProperty("value", "true")
                         open_btn = QPushButton("Open")
                         open_btn.setIcon(get_icon("open"))
+                        open_btn.setToolTip("Open backup location")
+                        open_btn.setProperty("value", "true")
                         delete_btn = QPushButton("Delete")
                         delete_btn.setIcon(get_icon("delete"))
+                        delete_btn.setToolTip("Delete backup")
+                        delete_btn.setProperty("value", "true")
                         actions_layout.addWidget(restore_btn)
                         actions_layout.addWidget(open_btn)
                         actions_layout.addWidget(delete_btn)

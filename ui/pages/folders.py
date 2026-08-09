@@ -43,16 +43,17 @@ class FoldersPage(QWidget):
 
     def setup_ui(self):
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(12, 12, 12, 12)
-        layout.setSpacing(12)
+        layout.setContentsMargins(spacing.MEDIUM, spacing.MEDIUM, spacing.MEDIUM, spacing.MEDIUM)
+        layout.setSpacing(spacing.SMALL)
 
         # Toolbar
         toolbar_layout = QHBoxLayout()
         toolbar_layout.setContentsMargins(0, 0, 0, 0)
-        toolbar_layout.setSpacing(8)
+        toolbar_layout.setSpacing(spacing.XSMALL)
 
         # Search
         search_label = QLabel("Search:")
+        search_label.setProperty("title", "true")
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("Search folders...")
         self.search_input.textChanged.connect(self.on_search_text_changed)
@@ -61,6 +62,7 @@ class FoldersPage(QWidget):
 
         # Filter
         filter_label = QLabel("Filter:")
+        filter_label.setProperty("title", "true")
         self.filter_combo = QComboBox()
         self.filter_combo.addItems(["All", "Enabled", "Disabled"])
         self.filter_combo.setCurrentText("All")
@@ -73,7 +75,6 @@ class FoldersPage(QWidget):
         # Add Folder button
         self.add_folder_btn = QPushButton("Add Folder")
         self.add_folder_btn.setIcon(get_icon("folder-plus"))
-        self.add_folder_btn.setProperty("class", "primary")
         self.add_folder_btn.clicked.connect(self.on_add_folder_requested)
         toolbar_layout.addWidget(self.add_folder_btn)
 
@@ -91,15 +92,16 @@ class FoldersPage(QWidget):
         scroll_area.setFrameShape(QFrame.NoFrame)
         self.folders_container = QWidget()
         self.folders_layout = QGridLayout(self.folders_container)
-        self.folders_layout.setContentsMargins(0, 0, 0, 0)
-        self.folders_layout.setHorizontalSpacing(12)
-        self.folders_layout.setVerticalSpacing(12)
+        self.folders_layout.setContentsMargins(spacing.SMALL, spacing.SMALL, spacing.SMALL, spacing.SMALL)
+        self.folders_layout.setHorizontalSpacing(spacing.SMALL)
+        self.folders_layout.setVerticalSpacing(spacing.SMALL)
         scroll_area.setWidget(self.folders_container)
         layout.addWidget(scroll_area, 1)  # stretch factor 1
 
         # Status label
         self.status_label = QLabel("Ready")
         self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.status_label.setProperty("value", "true")
         layout.addWidget(self.status_label)
 
     def load_configuration_data(self, app_config: AppConfig):

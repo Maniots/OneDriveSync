@@ -35,17 +35,17 @@ from backend.services.log_service import LogService
 
 
 class MainWindow(QMainWindow):
-    def __init__(self):
+    def __init__(self, configuration_service=None, sync_service=None, backup_service=None, scheduler_service=None, monitor_service=None, log_service=None):
         super().__init__()
         self.setWindowTitle("OneDrive PC Sync")
         self.setMinimumSize(1100, 700)
         # Services
-        self.configuration_service = None
-        self.sync_service = None
-        self.backup_service = None
-        self.scheduler_service = None
-        self.monitor_service = None
-        self.log_service = None
+        self.configuration_service = configuration_service if configuration_service is not None else ConfigurationService()
+        self.sync_service = sync_service if sync_service is not None else SyncService(self.configuration_service)
+        self.backup_service = backup_service if backup_service is not None else BackupService(self.configuration_service)
+        self.scheduler_service = scheduler_service if scheduler_service is not None else SchedulerService(self.configuration_service)
+        self.monitor_service = monitor_service if monitor_service is not None else MonitorService(self.configuration_service)
+        self.log_service = log_service if log_service is not None else LogService()
         self.config_error = None
         self.setup_ui()
         self.load_services()
@@ -86,16 +86,8 @@ class MainWindow(QMainWindow):
         self.status_bar.showMessage("Ready")
 
     def load_services(self):
-        """Initialize services and handle any configuration errors."""
+        """Handle any configuration errors."""
         try:
-            # Initialize services
-            self.configuration_service = ConfigurationService()
-            self.sync_service = SyncService(self.configuration_service)
-            self.backup_service = BackupService(self.configuration_service)
-            self.scheduler_service = SchedulerService(self.configuration_service)
-            self.monitor_service = MonitorService(self.configuration_service)
-            self.log_service = LogService()
-
             # Check if configuration is available
             app_config = self.configuration_service.get_app_config()
             if app_config is None:
@@ -107,14 +99,16 @@ class MainWindow(QMainWindow):
             # Set initial header text
             self.update_header("Dashboard", "Overview of sync status")
             self.status_bar.showMessage("Services initialized successfully")
+
+            # Connect to sync service signals
+            if self.sync_service:
+                self.sync_service.started.connect(self.on_sync_started)
+                self.sync_service.completed.connect(self.on_sync_completed)
+                self.sync_service.failed.connect(self.on_sync_failed)
+                self.sync_service.finished.connect(self.on_sync_finished)
         except Exception as e:
             self.config_error = str(e)
-            self.configuration_service = None
-            self.sync_service = None
-            self.backup_service = None
-            self.scheduler_service = None
-            self.monitor_service = None
-            self.log_service = None
+            # We don't set the services to None because they are already created.
             # Show error state
             self.add_error_page()
             self.status_bar.showMessage(f"Service initialization error: {e}")
@@ -151,13 +145,6 @@ class MainWindow(QMainWindow):
 
         self.tray_icon.setContextMenu(self.tray_menu)
         self.tray_icon.show()
-
-        # Connect to sync service signals if service is available
-        if self.sync_service:
-            self.sync_service.started.connect(self.on_sync_started)
-            self.sync_service.completed.connect(self.on_sync_completed)
-            self.sync_service.failed.connect(self.on_sync_failed)
-            self.sync_service.finished.connect(self.on_sync_finished)
 
         # Pause state
         self.is_paused = False

@@ -49,6 +49,22 @@ class ConfigurationService:
         """
         return self._app_config
 
+    def save(self, app_config: AppConfig) -> None:
+        """Save the given AppConfig to the configuration file.
+
+        This method delegates to the ConfigManager to perform the actual
+        write, then updates the cached configuration.
+
+        Args:
+            app_config: The configuration to save.
+
+        Raises:
+            ConfigurationError: If the configuration cannot be saved.
+        """
+        self._config_manager.save(app_config)
+        # Update the cached configuration to the saved one.
+        self._app_config = app_config
+
     def reload(self) -> None:
         """Reload the configuration from disk."""
         self._load_config()

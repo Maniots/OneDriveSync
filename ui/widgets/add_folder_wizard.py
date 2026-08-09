@@ -98,18 +98,27 @@ class BasicInfoPage(QWizardPage):
         self.id_edit = QLineEdit()
         self.id_edit.setPlaceholderText("e.g., my_folder")
         self.id_edit.setToolTip("Unique identifier for the folder (letters, numbers, underscores)")
-        form_layout.addRow("ID:", self.id_edit)
+        self.id_edit.setProperty("value", "true")
+        id_label = QLabel("ID:")
+        id_label.setProperty("title", "true")
+        form_layout.addRow(id_label, self.id_edit)
 
         # Name field
         self.name_edit = QLineEdit()
         self.name_edit.setPlaceholderText("e.g., My Folder")
         self.name_edit.setToolTip("Display name for the folder")
-        form_layout.addRow("Name:", self.name_edit)
+        self.name_edit.setProperty("value", "true")
+        name_label = QLabel("Name:")
+        name_label.setProperty("title", "true")
+        form_layout.addRow(name_label, self.name_edit)
 
         # Enabled checkbox
         self.enabled_check = QCheckBox("Enabled")
         self.enabled_check.setChecked(True)
-        form_layout.addRow("", self.enabled_check)
+        self.enabled_check.setProperty("value", "true")
+        enabled_label = QLabel("Enabled:")
+        enabled_label.setProperty("title", "true")
+        form_layout.addRow(enabled_label, self.enabled_check)
 
         layout.addLayout(form_layout)
         layout.addStretch()
@@ -124,10 +133,12 @@ class BasicInfoPage(QWizardPage):
         name_text = self.name_edit.text().strip()
 
         if not id_text:
+            self.id_edit.setToolTip("Please enter an ID")
             self.setField("id*", False)
             return False
 
         if not name_text:
+            self.name_edit.setToolTip("Please enter a name")
             self.setField("name*", False)
             return False
 
@@ -179,21 +190,25 @@ class LocalFolderPage(QWizardPage):
 
         # Path field with browse button
         path_layout = QHBoxLayout()
+        path_layout.setSpacing(spacing.SMALL)
         self.path_edit = QLineEdit()
         self.path_edit.setPlaceholderText("e.g., C:\\Users\\Name\\Documents\\MyFolder")
         self.path_edit.setToolTip("Full path to the local folder")
+        self.path_edit.setProperty("value", "true")
         self.browse_button = QPushButton("Browse...")
         self.browse_button.setIcon(get_icon("folder-open"))
         self.browse_button.clicked.connect(self._browse_local_folder)
         path_layout.addWidget(self.path_edit, 1)
         path_layout.addWidget(self.browse_button)
 
-        form_layout.addRow("Local Path:", path_layout)
+        local_path_label = QLabel("Local Path:")
+        local_path_label.setProperty("title", "true")
+        form_layout.addRow(local_path_label, path_layout)
         layout.addLayout(form_layout)
 
         # Validation hint
         self.hint_label = QLabel("Please select an existing local folder")
-        self.hint_label.setProperty("class", "hint")
+        self.hint_label.setProperty("description", "true")
         layout.addWidget(self.hint_label)
         layout.addStretch()
 
@@ -274,21 +289,25 @@ class OneDriveFolderPage(QWizardPage):
 
         # Path field with browse button
         path_layout = QHBoxLayout()
+        path_layout.setSpacing(spacing.SMALL)
         self.path_edit = QLineEdit()
         self.path_edit.setPlaceholderText("e.g., OneDrive\\MyFolder")
         self.path_edit.setToolTip("Path relative to OneDrive root")
+        self.path_edit.setProperty("value", "true")
         self.browse_button = QPushButton("Browse...")
         self.browse_button.setIcon(get_icon("folder-open"))
         self.browse_button.clicked.connect(self._browse_onedrive_folder)
         path_layout.addWidget(self.path_edit, 1)
         path_layout.addWidget(self.browse_button)
 
-        form_layout.addRow("OneDrive Path:", path_layout)
+        onedrive_path_label = QLabel("OneDrive Path:")
+        onedrive_path_label.setProperty("title", "true")
+        form_layout.addRow(onedrive_path_label, path_layout)
         layout.addLayout(form_layout)
 
         # Validation hint
         self.hint_label = QLabel("Please enter a valid OneDrive relative path")
-        self.hint_label.setProperty("class", "hint")
+        self.hint_label.setProperty("description", "true")
         layout.addWidget(self.hint_label)
         layout.addStretch()
 
@@ -378,19 +397,28 @@ class SafetyPage(QWizardPage):
         self.percentage_spin.setValue(80)
         self.percentage_spin.setSuffix("%")
         self.percentage_spin.setToolTip("Minimum percentage of files that must sync successfully")
-        form_layout.addRow("Minimum Sync Percentage:", self.percentage_spin)
+        self.percentage_spin.setProperty("value", "true")
+        percentage_label = QLabel("Minimum Sync Percentage:")
+        percentage_label.setProperty("title", "true")
+        form_layout.addRow(percentage_label, self.percentage_spin)
 
         # Verification enabled
         self.verify_check = QCheckBox("Verify files after synchronization")
         self.verify_check.setChecked(True)
         self.verify_check.setToolTip("Check that files were copied correctly after sync")
-        form_layout.addRow("", self.verify_check)
+        self.verify_check.setProperty("value", "true")
+        verify_label = QLabel("Verify files after synchronization:")
+        verify_label.setProperty("title", "true")
+        form_layout.addRow(verify_label, self.verify_check)
 
         # Destination creation enabled
         self.create_dest_check = QCheckBox("Create destination folder if it doesn't exist")
         self.create_dest_check.setChecked(True)
         self.create_dest_check.setToolTip("Automatically create the OneDrive folder if missing")
-        form_layout.addRow("", self.create_dest_check)
+        self.create_dest_check.setProperty("value", "true")
+        create_dest_label = QLabel("Create destination folder if it doesn't exist:")
+        create_dest_label.setProperty("title", "true")
+        form_layout.addRow(create_dest_label, self.create_dest_check)
 
         layout.addLayout(form_layout)
         layout.addStretch()
@@ -444,28 +472,36 @@ class BackupPage(QWizardPage):
         self.enabled_check = QCheckBox("Enable backup for this folder")
         self.enabled_check.setChecked(False)
         self.enabled_check.toggled.connect(self._on_backup_toggled)
-        form_layout.addRow("", self.enabled_check)
+        self.enabled_check.setProperty("value", "true")
+        enabled_label = QLabel("Enable backup for this folder:")
+        enabled_label.setProperty("title", "true")
+        form_layout.addRow(enabled_label, self.enabled_check)
 
         # Backup path (conditionally visible)
         self.backup_path_label = QLabel("Backup Path:")
+        self.backup_path_label.setProperty("title", "true")
         self.backup_path_edit = QLineEdit()
         self.backup_path_edit.setPlaceholderText("e.g., OneDrive\\Backups\\MyFolder")
         self.backup_path_edit.setToolTip("Path where backups will be stored")
+        self.backup_path_edit.setProperty("value", "true")
         self.backup_browse_button = QPushButton("Browse...")
         self.backup_browse_button.setIcon(get_icon("folder-open"))
         self.backup_browse_button.clicked.connect(self._browse_backup_folder)
 
         backup_path_layout = QHBoxLayout()
+        backup_path_layout.setSpacing(spacing.SMALL)
         backup_path_layout.addWidget(self.backup_path_edit, 1)
         backup_path_layout.addWidget(self.backup_browse_button)
 
         # Retention days (conditionally visible)
         self.retention_label = QLabel("Retention Days:")
+        self.retention_label.setProperty("title", "true")
         self.retention_spin = QSpinBox()
         self.retention_spin.setRange(0, 365)
         self.retention_spin.setValue(7)
         self.retention_spin.setSuffix(" days")
         self.retention_spin.setToolTip("Number of days to retain backups")
+        self.retention_spin.setProperty("value", "true")
 
         # Add conditionally visible widgets to form
         form_layout.addRow("", self.enabled_check)

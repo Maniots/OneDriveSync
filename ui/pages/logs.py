@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, QTimer, QDateTime, QDate
 from PySide6.QtGui import QColor, QBrush
 from backend.services.log_service import LogService
+from ..themes import spacing
 
 
 class LogsPage(QWidget):
@@ -32,18 +33,19 @@ class LogsPage(QWidget):
 
     def setup_ui(self):
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(8, 8, 8, 8)
-        layout.setSpacing(6)
+        layout.setContentsMargins(spacing.MEDIUM, spacing.MEDIUM, spacing.MEDIUM, spacing.MEDIUM)
+        layout.setSpacing(spacing.SMALL)
 
         # Toolbar
         toolbar = QFrame()
-        toolbar.setFrameShape(QFrame.StyledPanel)
+        toolbar.setProperty("card", "true")
         toolbar_layout = QHBoxLayout(toolbar)
-        toolbar_layout.setContentsMargins(4, 4, 4, 4)
-        toolbar_layout.setSpacing(8)
+        toolbar_layout.setContentsMargins(spacing.SMALL, spacing.SMALL, spacing.SMALL, spacing.SMALL)
+        toolbar_layout.setSpacing(spacing.SMALL)
 
         # Search
         search_label = QLabel("Search:")
+        search_label.setProperty("title", "true")
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("Search logs...")
         self.search_input.textChanged.connect(self.apply_filters)
@@ -52,19 +54,24 @@ class LogsPage(QWidget):
 
         # Level filters
         levels_label = QLabel("Levels:")
+        levels_label.setProperty("title", "true")
         toolbar_layout.addWidget(levels_label)
         self.info_cb = QCheckBox("INFO")
         self.info_cb.setChecked(True)
         self.info_cb.stateChanged.connect(self.apply_filters)
+        self.info_cb.setProperty("value", "true")
         self.warning_cb = QCheckBox("WARNING")
         self.warning_cb.setChecked(True)
         self.warning_cb.stateChanged.connect(self.apply_filters)
+        self.warning_cb.setProperty("value", "true")
         self.error_cb = QCheckBox("ERROR")
         self.error_cb.setChecked(True)
         self.error_cb.stateChanged.connect(self.apply_filters)
+        self.error_cb.setProperty("value", "true")
         self.success_cb = QCheckBox("SUCCESS")
         self.success_cb.setChecked(False)  # We don't have SUCCESS logs by default
         self.success_cb.stateChanged.connect(self.apply_filters)
+        self.success_cb.setProperty("value", "true")
         toolbar_layout.addWidget(self.info_cb)
         toolbar_layout.addWidget(self.warning_cb)
         toolbar_layout.addWidget(self.error_cb)
@@ -72,6 +79,7 @@ class LogsPage(QWidget):
 
         # Date filter
         date_label = QLabel("Date:")
+        date_label.setProperty("title", "true")
         toolbar_layout.addWidget(date_label)
         self.date_combo = QComboBox()
         self.date_combo.addItems(["All", "Today", "Yesterday", "Last 7 Days", "Last 30 Days"])
@@ -83,15 +91,18 @@ class LogsPage(QWidget):
 
         # Buttons
         self.refresh_btn = QPushButton("Refresh")
+        self.refresh_btn.setToolTip("Refresh logs")
         self.refresh_btn.clicked.connect(self.refresh_logs)
         toolbar_layout.addWidget(self.refresh_btn)
 
         self.copy_btn = QPushButton("Copy Selected")
+        self.copy_btn.setToolTip("Copy selected log entries to clipboard")
         self.copy_btn.clicked.connect(self.copy_selected_rows)
         toolbar_layout.addWidget(self.copy_btn)
 
         self.autoscroll_cb = QCheckBox("Auto-scroll")
         self.autoscroll_cb.setChecked(True)
+        self.autoscroll_cb.setProperty("value", "true")
         toolbar_layout.addWidget(self.autoscroll_cb)
 
         layout.addWidget(toolbar)
@@ -100,12 +111,13 @@ class LogsPage(QWidget):
         self.log_table = QTableWidget()
         self.log_table.setColumnCount(3)
         self.log_table.setHorizontalHeaderLabels(["Timestamp", "Level", "Message"])
-        self.log_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Fixed)
-        self.log_table.setColumnWidth(0, 150)  # Timestamp
-        self.log_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Fixed)
-        self.log_table.setColumnWidth(1, 100)  # Level
-        self.log_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
-        self.log_table.setShowGrid(True)
+        header = self.log_table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.Interactive)
+        self.log_table.setColumnWidth(0, 180)  # Timestamp
+        header.setSectionResizeMode(1, QHeaderView.Interactive)
+        self.log_table.setColumnWidth(1, 80)   # Level
+        header.setSectionResizeMode(2, QHeaderView.Stretch)
+        self.log_table.setShowGrid(False)
         self.log_table.setAlternatingRowColors(True)
         self.log_table.setSelectionBehavior(QTableWidget.SelectRows)
         self.log_table.setSelectionMode(QTableWidget.ExtendedSelection)
@@ -115,6 +127,8 @@ class LogsPage(QWidget):
 
         # Status bar
         self.status_label = QLabel("Ready")
+        self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.status_label.setProperty("value", "true")
         layout.addWidget(self.status_label)
 
     def setup_timer(self):

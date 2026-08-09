@@ -138,8 +138,8 @@ class ConfigManager:
             local_raw = str(entry["local_path"])
             onedrive_raw = str(entry["onedrive_path"])
 
-            local_path = Path(expand_env_vars(local_raw)).resolve()
-            onedrive_path = Path(expand_env_vars(onedrive_raw)).resolve()
+            local_path_resolved = Path(expand_env_vars(local_raw)).resolve()
+            onedrive_path_resolved = Path(expand_env_vars(onedrive_raw)).resolve()
 
             minimum_sync_percentage = float(entry.get("minimum_sync_percentage", 80))
             if not 0 <= minimum_sync_percentage <= 100:
@@ -154,22 +154,22 @@ class ConfigManager:
             backup = self._parse_backup(folder_id, entry.get("backup"))
 
             # Reject dangerous roots at load time, before any sync ever runs.
-            if is_dangerous_root_path(local_path):
+            if is_dangerous_root_path(local_path_resolved):
                 raise PathValidationError(
-                    f"Folder '{folder_id}': local_path '{local_path}' is a forbidden "
+                    f"Folder '{folder_id}': local_path '{local_path_resolved}' is a forbidden "
                     f"dangerous root folder (e.g. AppData, AppData\\Local, "
                     f"AppData\\Roaming). Only explicit subfolders are allowed."
                 )
-            if is_dangerous_root_path(onedrive_path):
+            if is_dangerous_root_path(onedrive_path_resolved):
                 raise PathValidationError(
-                    f"Folder '{folder_id}': onedrive_path '{onedrive_path}' is a "
+                    f"Folder '{folder_id}': onedrive_path '{onedrive_path_resolved}' is a "
                     f"forbidden dangerous root folder."
                 )
 
-            if local_path == onedrive_path:
+            if local_path_resolved == onedrive_path_resolved:
                 raise PathValidationError(
                     f"Folder '{folder_id}': local_path and onedrive_path resolve to "
-                    f"the same location ('{local_path}')."
+                    f"the same location ('{local_path_resolved}')."
                 )
 
             folders.append(
@@ -177,8 +177,8 @@ class ConfigManager:
                     id=folder_id,
                     name=name,
                     enabled=enabled,
-                    local_path=local_path,
-                    onedrive_path=onedrive_path,
+                    local_path=local_raw,
+                    onedrive_path=onedrive_raw,
                     minimum_sync_percentage=minimum_sync_percentage,
                     verify_after_sync=verify_after_sync,
                     create_destination=create_destination,
@@ -212,18 +212,18 @@ class ConfigManager:
                 f"Folder '{folder_id}': backup.enabled is true but backup_path is missing."
             )
 
-        backup_path = Path(expand_env_vars(str(backup_path_raw))).resolve()
+        backup_path_resolved = Path(expand_env_vars(str(backup_path_raw))).resolve()
 
-        if not is_under_onedrive_root(backup_path):
+        if not is_under_onedrive_root(backup_path_resolved):
             raise ConfigurationError(
-                f"Folder '{folder_id}': backup_path '{backup_path}' is not inside "
+                f"Folder '{folder_id}': backup_path '{backup_path_resolved}' is not inside "
                 f"the OneDrive folder (%OneDrive% must be set and backup_path must "
                 f"resolve underneath it). Backups are never permitted on local disk."
             )
 
-        if is_dangerous_root_path(backup_path):
+        if is_dangerous_root_path(backup_path_resolved):
             raise PathValidationError(
-                f"Folder '{folder_id}': backup_path '{backup_path}' is a forbidden "
+                f"Folder '{folder_id}': backup_path '{backup_path_resolved}' is a forbidden "
                 f"dangerous root folder."
             )
 
@@ -236,7 +236,7 @@ class ConfigManager:
 
         return BackupSettings(
             enabled=True,
-            backup_path=backup_path,
+            backup_path=str(backup_path_raw),
             retention_days=retention_days,
         )
 
@@ -247,6 +247,94 @@ class ConfigManager:
             if folder.id in seen_ids:
                 raise ConfigurationError(f"Duplicate folder id detected in config: '{folder.id}'")
             seen_ids.add(folder.id)
+
+    @staticmethod
+    def _app_config_to_raw_dict(app_config: AppConfig) -> Dict[str, Any]:
+        """Convert an AppConfig to a raw dictionary suitable for JSON serialization.
+
+        This is the inverse of the parsing functions in ConfigManager.
+        """
+        raw: Dict[str, Any] = {}
+
+        # General settings
+        raw["general"] = {
+            "log_level": app_config.general.log_level.value,
+            "dry_run": app_config.general.dry_run,
+            "verify_after_sync": app_config.general.verify_after_sync,
+            "create_destination": app_config.general.create_destination,
+            "max_parallel_jobs": app_config.general.max_parallel_jobs,
+        }
+
+        # Sync settings
+        raw["sync"] = {
+            "startup": {
+                "enabled": app_config.sync.startup.enabled,
+                "direction": app_config.sync.startup.direction.value,
+            },
+            "shutdown": {
+                "enabled": app_config.sync.shutdown.enabled,
+                "direction": app_config.sync.shutdown.direction.value,
+            },
+        }
+
+        # Copy engine settings
+        raw["copy_engine"] = {
+            "retry_count": app_config.copy_engine.retry_count,
+            "retry_wait_seconds": app_config.copy_engine.retry_wait_seconds,
+            "multithreading": app_config.copy_engine.multithreading,
+            "copy_subdirectories": app_config.copy_engine.copy_subdirectories,
+            "copy_empty_directories": app_config.copy_engine.copy_empty_directories,
+            "exclude_junctions": app_config.copy_engine.exclude_junctions,
+            "fat_file_times": app_config.copy_engine.fat_file_times,
+            "monitor_mode": app_config.copy_engine.monitor_mode,
+        }
+
+        # Folders
+        raw["folders"] = []
+        for folder in app_config.folders:
+            folder_raw: Dict[str, Any] = {
+                "id": folder.id,
+                "name": folder.name,
+                "enabled": folder.enabled,
+                "local_path": folder.local_path,
+                "onedrive_path": folder.onedrive_path,
+                "minimum_sync_percentage": folder.minimum_sync_percentage,
+                "verify_after_sync": folder.verify_after_sync,
+                "create_destination": folder.create_destination,
+            }
+            if folder.backup is not None:
+                folder_raw["backup"] = {
+                    "enabled": folder.backup.enabled,
+                    "backup_path": folder.backup.backup_path,
+                    "retention_days": folder.backup.retention_days,
+                }
+            else:
+                folder_raw["backup"] = None
+            raw["folders"].append(folder_raw)
+
+        return raw
+
+    def save(self, app_config: AppConfig) -> None:
+        """Save the given AppConfig to the configuration file as JSON.
+
+        This method converts the AppConfig to a raw dictionary (with original
+        strings, including environment variable references) and writes it to
+        the config file.
+
+        Args:
+            app_config: The configuration to save.
+
+        Raises:
+            ConfigurationError: If the file cannot be written.
+        """
+        raw_dict = self._app_config_to_raw_dict(app_config)
+        try:
+            with self._config_path.open("w", encoding="utf-8") as f:
+                json.dump(raw_dict, f, indent=2)
+        except OSError as exc:
+            raise ConfigurationError(
+                f"Failed to write configuration file '{self._config_path}': {exc}"
+            ) from exc
 
     def get_shutdown_monitor_status(self) -> dict:
         """Return the shutdown monitor status as a dictionary.

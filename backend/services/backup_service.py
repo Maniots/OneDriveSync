@@ -54,7 +54,7 @@ class BackupService:
             return []
 
         backup_settings: BackupSettings = folder_config.backup
-        backup_dir = backup_settings.backup_path / folder_id
+        backup_dir = backup_settings.backup_path_resolved / folder_id
 
         if not backup_dir.exists() or not backup_dir.is_dir():
             return []

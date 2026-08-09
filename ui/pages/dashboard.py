@@ -19,6 +19,7 @@ from backend.services.monitor_service import MonitorService
 from backend.services.log_service import LogService
 from ..widgets.sync_chart import SyncChartWidget
 from ..workers.sync_worker import SyncWorker
+from ..themes import spacing
 
 
 class DashboardPage(QWidget):
@@ -46,8 +47,8 @@ class DashboardPage(QWidget):
 
     def setup_ui(self):
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(24, 24, 24, 24)
-        layout.setSpacing(16)
+        layout.setContentsMargins(spacing.LARGE, spacing.LARGE, spacing.LARGE, spacing.LARGE)
+        layout.setSpacing(spacing.MEDIUM)
 
         # Title
         title = QLabel("Dashboard")
@@ -60,68 +61,104 @@ class DashboardPage(QWidget):
 
         # Stats grid
         stats_frame = QFrame()
-        stats_frame.setFrameShape(QFrame.StyledPanel)
+        stats_frame.setProperty("card", "true")
         stats_layout = QGridLayout(stats_frame)
-        stats_layout.setContentsMargins(16, 16, 16, 16)
-        stats_layout.setSpacing(12)
+        stats_layout.setContentsMargins(spacing.MEDIUM, spacing.MEDIUM, spacing.MEDIUM, spacing.MEDIUM)
+        stats_layout.setSpacing(spacing.SMALL)
 
         # Status
-        stats_layout.addWidget(QLabel("Sync Status:"), 0, 0)
+        status_label_text = QLabel("Sync Status:")
+        status_label_text.setProperty("title", "true")
+        stats_layout.addWidget(status_label_text, 0, 0)
         self.status_label = QLabel("Idle")
-        self.status_label.setProperty("h3", "true")
+        self.status_label.setProperty("value", "true")
         stats_layout.addWidget(self.status_label, 0, 1)
 
         # Last Sync
-        stats_layout.addWidget(QLabel("Last Sync:"), 0, 2)
+        last_sync_label_text = QLabel("Last Sync:")
+        last_sync_label_text.setProperty("title", "true")
+        stats_layout.addWidget(last_sync_label_text, 0, 2)
         self.last_sync_label = QLabel("Never")
+        self.last_sync_label.setProperty("value", "true")
         stats_layout.addWidget(self.last_sync_label, 0, 3)
 
         # Next Sync
-        stats_layout.addWidget(QLabel("Next Sync:"), 1, 0)
+        next_sync_label_text = QLabel("Next Sync:")
+        next_sync_label_text.setProperty("title", "true")
+        stats_layout.addWidget(next_sync_label_text, 1, 0)
         self.next_sync_label = QLabel("N/A")
+        self.next_sync_label.setProperty("value", "true")
         stats_layout.addWidget(self.next_sync_label, 1, 1)
 
         # Storage
-        stats_layout.addWidget(QLabel("Storage:"), 1, 2)
+        storage_label_text = QLabel("Storage:")
+        storage_label_text.setProperty("title", "true")
+        stats_layout.addWidget(storage_label_text, 1, 2)
         self.storage_label = QLabel("N/A")
+        self.storage_label.setProperty("value", "true")
         stats_layout.addWidget(self.storage_label, 1, 3)
 
         # Backup Status
-        stats_layout.addWidget(QLabel("Backup Status:"), 2, 0)
+        backup_status_label_text = QLabel("Backup Status:")
+        backup_status_label_text.setProperty("title", "true")
+        stats_layout.addWidget(backup_status_label_text, 2, 0)
         self.backup_status_label = QLabel("No backups")
+        self.backup_status_label.setProperty("value", "true")
         stats_layout.addWidget(self.backup_status_label, 2, 1)
 
         # New fields for sync state
-        stats_layout.addWidget(QLabel("Current Operation:"), 3, 0)
+        current_operation_label_text = QLabel("Current Operation:")
+        current_operation_label_text.setProperty("title", "true")
+        stats_layout.addWidget(current_operation_label_text, 3, 0)
         self.current_operation_label = QLabel("None")
+        self.current_operation_label.setProperty("value", "true")
         stats_layout.addWidget(self.current_operation_label, 3, 1)
 
-        stats_layout.addWidget(QLabel("Current Folder:"), 3, 2)
+        current_folder_label_text = QLabel("Current Folder:")
+        current_folder_label_text.setProperty("title", "true")
+        stats_layout.addWidget(current_folder_label_text, 3, 2)
         self.current_folder_label = QLabel("N/A")
+        self.current_folder_label.setProperty("value", "true")
         stats_layout.addWidget(self.current_folder_label, 3, 3)
 
-        stats_layout.addWidget(QLabel("Direction:"), 4, 0)
+        direction_label_text = QLabel("Direction:")
+        direction_label_text.setProperty("title", "true")
+        stats_layout.addWidget(direction_label_text, 4, 0)
         self.direction_label = QLabel("N/A")
+        self.direction_label.setProperty("value", "true")
         stats_layout.addWidget(self.direction_label, 4, 1)
 
-        stats_layout.addWidget(QLabel("Elapsed Time:"), 4, 2)
+        elapsed_time_label_text = QLabel("Elapsed Time:")
+        elapsed_time_label_text.setProperty("title", "true")
+        stats_layout.addWidget(elapsed_time_label_text, 4, 2)
         self.elapsed_time_label = QLabel("00:00:00")
+        self.elapsed_time_label.setProperty("value", "true")
         stats_layout.addWidget(self.elapsed_time_label, 4, 3)
 
-        stats_layout.addWidget(QLabel("Result:"), 5, 0)
+        result_label_text = QLabel("Result:")
+        result_label_text.setProperty("title", "true")
+        stats_layout.addWidget(result_label_text, 5, 0)
         self.result_label = QLabel("N/A")
+        self.result_label.setProperty("value", "true")
         stats_layout.addWidget(self.result_label, 5, 1)
 
-        stats_layout.addWidget(QLabel("Last Successful Sync:"), 5, 2)
+        last_successful_label_text = QLabel("Last Successful Sync:")
+        last_successful_label_text.setProperty("title", "true")
+        stats_layout.addWidget(last_successful_label_text, 5, 2)
         self.last_successful_label = QLabel("None")
+        self.last_successful_label.setProperty("value", "true")
         stats_layout.addWidget(self.last_successful_label, 5, 3)
 
-        stats_layout.addWidget(QLabel("Last Failed Sync:"), 6, 0)
+        last_failed_label_text = QLabel("Last Failed Sync:")
+        last_failed_label_text.setProperty("title", "true")
+        stats_layout.addWidget(last_failed_label_text, 6, 0)
         self.last_failed_label = QLabel("None")
+        self.last_failed_label.setProperty("value", "true")
         stats_layout.addWidget(self.last_failed_label, 6, 1)
 
         # Buttons to start sync (for demonstration)
         button_layout = QHBoxLayout()
+        button_layout.setSpacing(spacing.SMALL)
         self.startup_button = QPushButton("Start Startup Sync")
         self.startup_button.clicked.connect(self.start_startup_sync)
         button_layout.addWidget(self.startup_button)
@@ -131,9 +168,6 @@ class DashboardPage(QWidget):
         button_layout.addWidget(self.shutdown_button)
 
         stats_layout.addLayout(button_layout, 7, 0, 1, 4)
-
-        # Add spacer to push everything to the top
-        layout.addItem(QSpacerItem(20, 40, QSizePolicy.Minimum, QSizePolicy.Expanding))
 
         layout.addWidget(stats_frame)
 
@@ -261,9 +295,9 @@ class DashboardPage(QWidget):
     def update_elapsed_time(self):
         """Update the elapsed time label."""
         if self.sync_start_time == 0:
-            self.sync_start_time = self.elapsed_timer.interval() / 1000.0  # approximate start
-        elapsed_seconds = int(self.elapsed_timer.interval() * self.elapsed_timer.timerId() / 1000.0)  # This is not accurate
-        # Better to use the start time
+            # If not started, show 00:00:00
+            self.elapsed_time_label.setText("00:00:00")
+            return
         import time
         elapsed_seconds = int(time.time() - self.sync_start_time)
         hours = elapsed_seconds // 3600

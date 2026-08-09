@@ -9,6 +9,7 @@ from ..resources.icons import get_icon
 class Card(QFrame):
     def __init__(self, title="", value="", icon_name="", description="", parent=None):
         super().__init__(parent)
+        self.setProperty("card", "true")
         self.setFrameStyle(QFrame.StyledPanel)
         self.setLineWidth(1)
         self.setMidLineWidth(0)
