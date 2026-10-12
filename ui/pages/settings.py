@@ -262,7 +262,9 @@ class SettingsPage(QWidget):
             self.monitor_check.setChecked(copy_engine.monitor_mode)
             self.monitor_check.setEnabled(True)
             self.monitor_check.setProperty("value", "true")
-            monitor_label = QLabel("Monitor Mode:")
+            self.monitor_check.setToolTip("While the app is open, changes trigger the configured shutdown sync. Pause UI Sync postpones monitored runs.")
+            self.exclude_junc_check.setToolTip("When disabled, links within the source tree are followed once. Links outside the source remain excluded for safety.")
+            monitor_label = QLabel("Monitor Changes:")
             monitor_label.setProperty("title", "true")
             copy_layout.addRow(monitor_label, self.monitor_check)
 

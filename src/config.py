@@ -47,6 +47,10 @@ class GeneralSettings:
     create_destination: bool = True
     max_parallel_jobs: int = 1
 
+    def __post_init__(self):
+        if not 1 <= self.max_parallel_jobs <= 16:
+            raise ValueError("max_parallel_jobs must be between 1 and 16")
+
 
 @dataclass(frozen=True)
 class SyncTriggerSettings:
@@ -82,6 +86,11 @@ class CopyEngineSettings:
     exclude_junctions: bool = True
     fat_file_times: bool = True
     monitor_mode: bool = False
+
+    def __post_init__(self):
+        for name, maximum, minimum in (("retry_count", 10, 0), ("retry_wait_seconds", 60, 0), ("multithreading", 32, 1)):
+            if not minimum <= getattr(self, name) <= maximum:
+                raise ValueError(f"{name} must be between {minimum} and {maximum}")
 
 
 @dataclass(frozen=True)

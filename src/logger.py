@@ -26,12 +26,21 @@ _MAX_BYTES = 5 * 1024 * 1024  # 5 MB per log file
 _BACKUP_COUNT = 5
 
 
+def set_log_level(log_level: str) -> logging.Logger:
+    """Apply settings without creating a log file before the runner starts."""
+    root_logger = logging.getLogger(_ROOT_LOGGER_NAME)
+    level = getattr(logging, log_level.upper(), logging.INFO)
+    root_logger.setLevel(level)
+    for handler in root_logger.handlers:
+        handler.setLevel(level)
+    return root_logger
+
+
 def setup_logger(log_dir: Path, log_level: str = "INFO") -> logging.Logger:
     """Configure the application-wide root logger.
 
-    This must be called exactly once, early in main.py, before any
-    other module logs a message. Subsequent calls are no-ops to avoid
-    duplicate handlers.
+    Initialize before logging. Subsequent calls update levels on the existing
+    logger and handlers without attaching duplicates.
 
     Args:
         log_dir: Directory in which log files will be created. Created
@@ -44,9 +53,11 @@ def setup_logger(log_dir: Path, log_level: str = "INFO") -> logging.Logger:
     global _LOGGER_INITIALIZED
 
     root_logger = logging.getLogger(_ROOT_LOGGER_NAME)
+    logging.addLevelName(25, "SUCCESS")
+    level = getattr(logging, log_level.upper(), logging.INFO)
 
     if _LOGGER_INITIALIZED:
-        return root_logger
+        return set_log_level(log_level)
 
     log_dir.mkdir(parents=True, exist_ok=True)
     log_file = log_dir / "onedrive_pcsync.log"

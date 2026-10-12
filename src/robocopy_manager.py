@@ -26,6 +26,9 @@ from __future__ import annotations
 import os
 import shutil
 import stat
+import tempfile
+import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Tuple
@@ -81,12 +84,14 @@ def _is_junction_or_symlink(path: Path) -> bool:
         return False
     try:
         st = path.lstat()
-        return stat.S_ISLNK(st.st_mode)
+        return stat.S_ISLNK(st.st_mode) or getattr(st, "st_reparse_tag", 0) in (
+            getattr(stat, "IO_REPARSE_TAG_MOUNT_POINT", 0xA0000003),
+            getattr(stat, "IO_REPARSE_TAG_SYMLINK", 0xA000000C))
     except OSError:
         return False
 
 
-def _compare_files(src_file: Path, dst_file: Path) -> Tuple[bool, str]:
+def _compare_files(src_file: Path, dst_file: Path, fat_file_times: bool = False) -> Tuple[bool, str]:
     """Compare two files and return (should_copy, reason).
 
     Implements XO semantics: the destination file is never overwritten if it
@@ -100,7 +105,7 @@ def _compare_files(src_file: Path, dst_file: Path) -> Tuple[bool, str]:
         src_stat = src_file.stat()
         dst_stat = dst_file.stat()
     except OSError as exc:
-        return False, f"Cannot stat files for comparison: {exc}"
+        raise CopyEngineError(f"Cannot compare files: {exc}") from exc
 
     src_mtime = src_stat.st_mtime
     dst_mtime = dst_stat.st_mtime
@@ -110,7 +115,7 @@ def _compare_files(src_file: Path, dst_file: Path) -> Tuple[bool, str]:
         return False, f"XO: dest is newer (dst_mtime={dst_mtime}, src_mtime={src_mtime}) — skipping"
 
     # Same mtime — compare sizes to decide.
-    if dst_mtime == src_mtime:
+    if dst_mtime == src_mtime or (fat_file_times and abs(dst_mtime - src_mtime) <= 2):
         if src_stat.st_size != dst_stat.st_size:
             return True, f"Same mtime but size differs (src={src_stat.st_size}, dst={dst_stat.st_size}) — will copy"
         return False, "XO: dest is same age and size — skipping"
@@ -126,31 +131,56 @@ def _copy_single_file(src_file: Path, dst_file: Path) -> Tuple[bool, str]:
     """
     try:
         dst_file.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(str(src_file), str(dst_file))
+        # A failed copy must leave an existing destination intact.
+        with tempfile.NamedTemporaryFile(dir=dst_file.parent, prefix=".pcsync-", delete=False) as temporary:
+            staging = Path(temporary.name)
+        try:
+            shutil.copy2(str(src_file), str(staging))
+            if dst_file.exists() and dst_file.stat().st_mtime > src_file.stat().st_mtime:
+                return True, f"Skipped: destination was updated during copy: {dst_file}"
+            os.replace(staging, dst_file)
+        finally:
+            staging.unlink(missing_ok=True)
         return True, f"Copied: {src_file} -> {dst_file}"
     except OSError as exc:
         return False, f"Failed: {src_file} -> {dst_file}: {exc}"
 
 
-def _collect_files(source: Path) -> List[Path]:
+def _walk_source(source: Path, recursive: bool = True, exclude_junctions: bool = True):
+    """Follow explicitly allowed in-tree links once; never escape the source."""
+    source_root = source.resolve()
+    visited = set()
+    for root, dirs, filenames in os.walk(source, followlinks=not exclude_junctions):
+        current = Path(root)
+        resolved = current.resolve()
+        if resolved in visited or not resolved.is_relative_to(source_root):
+            dirs[:] = []
+            continue
+        visited.add(resolved)
+        dirs[:] = [name for name in dirs if (not exclude_junctions or not _is_junction_or_symlink(current / name))
+                   and (current / name).resolve().is_relative_to(source_root)] if recursive else []
+        yield current, dirs, filenames
+
+
+def _collect_files(source: Path, recursive: bool = True, exclude_junctions: bool = True) -> List[Path]:
     """Recursively collect all regular files under *source*, skipping
     junctions and symlinks."""
     files: List[Path] = []
-    for root, _, filenames in os.walk(str(source), followlinks=False):
+    for root, _, filenames in _walk_source(source, recursive, exclude_junctions):
         for filename in filenames:
             full_path = Path(root) / filename
-            if _is_junction_or_symlink(full_path):
+            if (exclude_junctions and _is_junction_or_symlink(full_path)) or not full_path.resolve().is_relative_to(source.resolve()):
                 continue
             files.append(full_path)
     return files
 
 
-def _collect_empty_dirs(source: Path, destination: Path) -> List[Path]:
+def _collect_empty_dirs(source: Path, destination: Path, recursive: bool = True, exclude_junctions: bool = True) -> List[Path]:
     """Collect empty directories under *source* so they can be recreated
     at *destination* (matching the /E behaviour of the previous robocopy
     engine)."""
     empty_dirs: List[Path] = []
-    for root, dirs, filenames in os.walk(str(source), followlinks=False):
+    for root, dirs, filenames in _walk_source(source, recursive, exclude_junctions):
         if not dirs and not filenames:
             rel = Path(root).relative_to(source)
             empty_dirs.append(destination / rel)
@@ -240,11 +270,11 @@ class CopyEngine:
         if self._dry_run:
             return True, f"[DRY RUN] Would copy {src_file} -> {dst_file}"
 
-        should_copy, reason = _compare_files(src_file, dst_file)
+        should_copy, reason = self.compare_files(src_file, dst_file)
         if not should_copy:
             return False, reason
 
-        return _copy_single_file(src_file, dst_file)
+        return self._copy_with_retries(src_file, dst_file)
 
     def compare_files(self, src_file: Path, dst_file: Path) -> Tuple[bool, str]:
         """Compare two files and return (should_copy, reason).
@@ -254,7 +284,28 @@ class CopyEngine:
         newer or identical; (True, reason) when the source is newer or the
         destination does not exist.
         """
-        return _compare_files(src_file, dst_file)
+        return _compare_files(src_file, dst_file, self._settings.fat_file_times)
+
+    def _copy_with_retries(self, source: Path, destination: Path) -> Tuple[bool, str]:
+        for attempt in range(self._settings.retry_count + 1):
+            # Recheck XO on retries: another writer may have updated the target.
+            should_copy, reason = self.compare_files(source, destination)
+            if not should_copy:
+                return True, f"Skipped on retry: {reason}"
+            copied, message = _copy_single_file(source, destination)
+            if copied:
+                return copied, message
+            if attempt < self._settings.retry_count:
+                time.sleep(self._settings.retry_wait_seconds)
+        return False, message
+
+    def source_files(self, source: Path) -> List[Path]:
+        return _collect_files(source, self._settings.copy_subdirectories, self._settings.exclude_junctions)
+
+    def empty_directories(self, source: Path, destination: Path) -> List[Path]:
+        if not self._settings.copy_empty_directories or not self._settings.copy_subdirectories:
+            return []
+        return _collect_empty_dirs(source, destination, True, self._settings.exclude_junctions)
 
     # -- Internal implementation -----------------------------------------
 
@@ -262,8 +313,8 @@ class CopyEngine:
         """Log what would be copied without touching any files."""
         logger.info("[DRY RUN] Copy engine: would copy %s -> %s", source, destination)
 
-        files = _collect_files(source)
-        empty_dirs = _collect_empty_dirs(source, destination)
+        files = self.source_files(source)
+        empty_dirs = self.empty_directories(source, destination)
 
         stdout_lines = [f"[DRY RUN] Would copy {len(files)} file(s) and {len(empty_dirs)} empty dir(s)"]
         for f in files:
@@ -291,37 +342,49 @@ class CopyEngine:
         dirs_created = 0
 
         # Collect and copy regular files
-        all_files = _collect_files(source)
+        all_files = self.source_files(source)
         logger.info(
             "Copy engine: found %d file(s) in source '%s'.",
             len(all_files),
             source,
         )
 
-        for src_file in all_files:
+        def copy_one(src_file):
             rel = src_file.relative_to(source)
             dst_file = destination / rel
-
-            should_copy, reason = _compare_files(src_file, dst_file)
+            if not dst_file.resolve().is_relative_to(destination.resolve()):
+                return "error", f"Unsafe destination link: {dst_file}", False
+            current = dst_file
+            while current != destination and current != current.parent:
+                if _is_junction_or_symlink(current):
+                    return "error", f"Unsafe destination link: {current}", False
+                current = current.parent
+            should_copy, reason = self.compare_files(src_file, dst_file)
             if not should_copy:
-                files_skipped += 1
-                stdout_lines.append(f"Skipped: {src_file} ({reason})")
-                continue
+                return "skipped", f"Skipped: {src_file} ({reason})", False
+            existed = dst_file.exists()
+            copied, msg = self._copy_with_retries(src_file, dst_file)
+            return ("copied" if copied else "error"), msg, existed
 
-            copied, msg = _copy_single_file(src_file, dst_file)
-            if copied:
+        with ThreadPoolExecutor(max_workers=self._settings.multithreading) as executor:
+            results = list(executor.map(copy_one, all_files))
+        for state, msg, existed in results:
+            if state == "copied":
                 files_copied += 1
-                files_overwritten += 1 if dst_file.exists() else 0
-                stdout_lines.append(msg)
+                files_overwritten += int(existed)
+            elif state == "skipped":
+                files_skipped += 1
             else:
                 file_errors += 1
                 logger.warning("%s", msg)
-                stdout_lines.append(msg)
+            stdout_lines.append(msg)
 
         # Recreate empty directories (matching /E behaviour)
-        empty_dirs = _collect_empty_dirs(source, destination)
+        empty_dirs = self.empty_directories(source, destination)
         for empty_dir in empty_dirs:
             try:
+                if not empty_dir.resolve().is_relative_to(destination.resolve()):
+                    raise OSError("Destination directory escapes through a link")
                 empty_dir.mkdir(parents=True, exist_ok=True)
                 dirs_created += 1
                 stdout_lines.append(f"Created empty dir: {empty_dir}")

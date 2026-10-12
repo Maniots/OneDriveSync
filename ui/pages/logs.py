@@ -86,6 +86,13 @@ class LogsPage(QWidget):
         filters_layout.addWidget(self.warning_cb)
         filters_layout.addWidget(self.error_cb)
         filters_layout.addWidget(self.success_cb)
+        self.debug_cb = QCheckBox("DEBUG")
+        self.critical_cb = QCheckBox("CRITICAL")
+        for checkbox in (self.debug_cb, self.critical_cb):
+            checkbox.setChecked(True)
+            checkbox.stateChanged.connect(self.apply_filters)
+            checkbox.setProperty("value", "true")
+            filters_layout.addWidget(checkbox)
         filters_layout.addStretch()
 
         # Date filter
@@ -125,7 +132,7 @@ class LogsPage(QWidget):
         header.setSectionResizeMode(0, QHeaderView.Interactive)
         self.log_table.setColumnWidth(0, 180)  # Timestamp
         header.setSectionResizeMode(1, QHeaderView.Interactive)
-        self.log_table.setColumnWidth(1, 80)   # Level
+        self.log_table.setColumnWidth(1, 105)   # Keep WARNING and CRITICAL readable.
         header.setSectionResizeMode(2, QHeaderView.Stretch)
         self.log_table.setShowGrid(False)
         self.log_table.setAlternatingRowColors(True)
@@ -211,7 +218,9 @@ class LogsPage(QWidget):
             show_warning=show_warning,
             show_error=show_error,
             show_success=show_success,
-            date_index=date_index
+            date_index=date_index,
+            show_debug=self.debug_cb.isChecked(),
+            show_critical=self.critical_cb.isChecked(),
         )
         # Convert back to our internal format with raw line (empty string)
         self.log_entries = [(timestamp, level, message, "") for (timestamp, level, message) in filtered_internal]
@@ -250,7 +259,7 @@ class LogsPage(QWidget):
             return QColor(colors.SECONDARY)
         elif level == "WARNING":
             return QColor(colors.WARNING)
-        elif level == "ERROR":
+        elif level in ("ERROR", "CRITICAL"):
             return QColor(colors.ERROR)
         elif level == "SUCCESS":
             return QColor(colors.SUCCESS)

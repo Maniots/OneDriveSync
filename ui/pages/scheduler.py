@@ -25,6 +25,8 @@ class SchedulerPage(QWidget):
         self.config_service = config_service
         self.scheduler_service = scheduler_service
         self.monitor_service = monitor_service
+        if hasattr(self.scheduler_service, "wait_for_finished"):
+            self.destroyed.connect(self.scheduler_service.wait_for_finished)
         self.scheduler_data: Optional[Dict] = None
         self.monitor_status: Optional[Dict] = None
         self.setup_ui()
@@ -251,6 +253,8 @@ class SchedulerPage(QWidget):
 
     def on_refresh_clicked(self):
         """Refresh the scheduler data by reloading from the service."""
+        if hasattr(self.scheduler_service, "invalidate_cache"):
+            self.scheduler_service.invalidate_cache()
         self.load_scheduler_data()
 
     def load_scheduler_data(self):
@@ -260,6 +264,13 @@ class SchedulerPage(QWidget):
                 self.show_error("Configuration service not available")
                 return
 
+            if hasattr(self.scheduler_service, "request_refresh"):
+                if not getattr(self, "_scheduler_updates_connected", False):
+                    self.scheduler_service.updated.connect(self.apply_scheduler_summary)
+                    self._scheduler_updates_connected = True
+                self.refresh_button.setEnabled(False)
+                self.scheduler_service.request_refresh(force=True)
+                return
             # Get scheduler summary from the scheduler service
             scheduler_summary = self.scheduler_service.get_scheduler_summary()
             if scheduler_summary is None:
@@ -272,6 +283,15 @@ class SchedulerPage(QWidget):
 
         except Exception as e:
             self.show_error(f"Error loading scheduler data: {e}")
+
+    def apply_scheduler_summary(self, summary):
+        self.refresh_button.setEnabled(True)
+        if summary is None:
+            self.show_error("Scheduler information not available")
+            return
+        self.error_label.hide()
+        self.scheduler_data = summary
+        self.update_ui_from_scheduler_data()
 
     def update_ui_from_scheduler_data(self):
         """Update the UI with the scheduler data from the scheduler service."""

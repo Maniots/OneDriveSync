@@ -46,6 +46,10 @@ class ConfigManager:
         """
         self._config_path = config_path
 
+    @property
+    def config_path(self) -> Path:
+        return self._config_path
+
     def load(self) -> AppConfig:
         """Load, expand, validate, and return the application configuration.
 

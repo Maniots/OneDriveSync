@@ -56,6 +56,8 @@ class MainWindow(QMainWindow):
         self.create_tray_icon()
         if isinstance(self.sync_service, SyncService):
             QApplication.instance().aboutToQuit.connect(self.sync_service.wait_for_finished)
+        if isinstance(self.scheduler_service, SchedulerService):
+            self.destroyed.connect(self.scheduler_service.wait_for_finished)
 
     def setup_ui(self):
         # Central widget

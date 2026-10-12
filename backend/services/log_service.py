@@ -100,7 +100,9 @@ class LogService:
         show_warning: bool = True,
         show_error: bool = True,
         show_success: bool = False,
-        date_index: int = 0  # 0: All, 1: Today, 2: Yesterday, 3: Last 7 Days, 4: Last 30 Days
+        date_index: int = 0,  # 0: All, 1: Today, 2: Yesterday, 3: Last 7 Days, 4: Last 30 Days
+        show_debug: bool = True,
+        show_critical: bool = True,
     ) -> List[Tuple[QDateTime, str, str]]:
         """
         Filter log entries based on search text, level, and date range.
@@ -153,6 +155,10 @@ class LogService:
             elif level == "ERROR" and show_error:
                 level_match = True
             elif level == "SUCCESS" and show_success:
+                level_match = True
+            elif level == "DEBUG" and show_debug:
+                level_match = True
+            elif level == "CRITICAL" and show_critical:
                 level_match = True
 
             if not level_match:

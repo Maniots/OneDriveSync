@@ -53,6 +53,10 @@ class ConfigurationService(QObject):
         """
         return self._app_config
 
+    @property
+    def history_path(self) -> Path:
+        return self._config_manager.config_path.with_suffix(".history.sqlite3")
+
     def save(self, app_config: AppConfig) -> None:
         """Save the given AppConfig to the configuration file.
 
@@ -68,6 +72,8 @@ class ConfigurationService(QObject):
         self._config_manager.save(app_config)
         # Update the cached configuration to the saved one.
         self._app_config = app_config
+        from src.logger import set_log_level
+        set_log_level(app_config.general.log_level.value)
         self.changed.emit(app_config)
 
     def reload(self) -> None:

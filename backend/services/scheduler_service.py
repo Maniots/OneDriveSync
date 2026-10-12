@@ -6,12 +6,35 @@ Isolates the UI from the core scheduling logic (which is handled by Windows Sche
 """
 
 import subprocess
+import base64
+import json
+import re
+import time
 from typing import Optional, Dict, Any
 from .configuration_service import ConfigurationService
 from src.config import AppConfig, SyncTriggerSettings, SyncDirection
+from PySide6.QtCore import QObject, QThread, QCoreApplication, Qt, Signal, Slot
 
 
-class SchedulerService:
+class _SchedulerQuery(QObject):
+    completed = Signal(object)
+    finished = Signal()
+
+    def __init__(self, service):
+        super().__init__()
+        self.service = service
+
+    @Slot()
+    def run(self):
+        try:
+            self.completed.emit(self.service.get_scheduler_summary())
+        except Exception:
+            self.completed.emit(None)
+        finally:
+            self.finished.emit()
+
+
+class SchedulerService(QObject):
     """Service for managing scheduler information."""
 
     # Task Scheduler folder where OneDrivePCSync tasks are stored
@@ -23,6 +46,7 @@ class SchedulerService:
         "periodic": "OneDrivePCSync - Periodic Upload",
         "workstation_lock": "OneDrivePCSync - Shutdown (Upload on Lock)",
     }
+    updated = Signal(object)
 
     def __init__(self, config_service: ConfigurationService):
         """
@@ -31,118 +55,117 @@ class SchedulerService:
         Args:
             config_service: Service to provide application configuration.
         """
+        super().__init__()
         self._config_service = config_service
+        self._cache = {}
+        self.cached_summary = None
+        self._last_refresh = 0
+        self._thread = None
+        self._worker = None
+        self._refresh_pending = False
+        if QCoreApplication.instance():
+            QCoreApplication.instance().aboutToQuit.connect(self.wait_for_finished)
+
+    def request_refresh(self, force=False):
+        if self._thread is not None:
+            self._refresh_pending |= force
+            return False
+        if not force and time.monotonic() - self._last_refresh < 30:
+            return False
+        if force:
+            self.invalidate_cache()
+        self._thread = QThread(QCoreApplication.instance())
+        self._worker = _SchedulerQuery(self)
+        self._worker.moveToThread(self._thread)
+        self._thread.started.connect(self._worker.run)
+        self._worker.completed.connect(self._query_completed)
+        self._worker.finished.connect(self._thread.quit, Qt.ConnectionType.DirectConnection)
+        self._worker.finished.connect(self._worker.deleteLater)
+        self._thread.finished.connect(self._query_finished)
+        self._thread.finished.connect(self._thread.deleteLater)
+        self._thread.start()
+        return True
+
+    @Slot(object)
+    def _query_completed(self, summary):
+        self.cached_summary = summary
+        self._last_refresh = time.monotonic()
+        self.updated.emit(summary)
+
+    @Slot()
+    def _query_finished(self):
+        self._thread = None
+        self._worker = None
+        if self._refresh_pending:
+            self._refresh_pending = False
+            self.request_refresh(force=True)
+
+    @Slot()
+    def wait_for_finished(self):
+        self._refresh_pending = False
+        if self._thread is not None:
+            self._thread.wait()
+
+    def invalidate_cache(self):
+        self._cache.clear()
+
+    @staticmethod
+    def _duration(value):
+        if not value:
+            return "Not configured"
+        match = re.fullmatch(r"P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+(?:\.\d+)?)S)?)?", value)
+        if not match:
+            return value
+        units = ("day", "hour", "minute", "second")
+        parts = [f"{float(n):g} {unit}{'s' if float(n) != 1 else ''}"
+                 for n, unit in zip(match.groups(), units) if n and float(n)]
+        return ", ".join(parts) or "No delay"
 
     def _get_task_info(self, task_name: str) -> Optional[Dict[str, Any]]:
-        """
-        Get information about a scheduled task by querying schtasks.exe.
-
-        Args:
-            task_name: The name of the task (without folder path).
-
-        Returns:
-            Dictionary with keys: exists (bool), enabled (bool), status (str),
-            last_run_time (str or None), next_run_time (str or None).
-            Returns None if an error occurred querying the task.
-        """
-        # Build the full task path
-        full_task_path = f"{self._TASK_FOLDER}\\{task_name}"
-
+        """Read stable COM properties instead of localized schtasks CSV."""
+        cached = self._cache.get(task_name)
+        if cached and time.monotonic() - cached[0] < 30:
+            return cached[1]
+        folder = self._TASK_FOLDER.replace("'", "''")
+        name = task_name.replace("'", "''")
+        script = """
+$ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+$svc = New-Object -ComObject 'Schedule.Service'
+$svc.Connect()
+try {
+    $task = $svc.GetFolder('FOLDER').GetTask('NAME')
+} catch {
+    if ($_.Exception.HResult -in @(-2147024894,-2147024893) -or $_.Exception.InnerException.HResult -in @(-2147024894,-2147024893)) {
+        @{exists=$false;enabled=$false;status='Not Found';last_run_time=$null;next_run_time=$null;triggers=@()} | ConvertTo-Json -Compress
+        exit 0
+    }
+    throw
+}
+$triggers = @($task.Definition.Triggers | ForEach-Object {
+    @{type=[int]$_.Type;delay=[string]$_.Delay;interval=[string]$_.Repetition.Interval;enabled=[bool]$_.Enabled}
+})
+$last = if ($task.LastRunTime.Year -gt 1900) { $task.LastRunTime.ToString('o') } else { $null }
+$next = if ($task.Enabled -and $task.NextRunTime.Year -gt 1900) { $task.NextRunTime.ToString('o') } else { $null }
+$states = @('Unknown','Disabled','Queued','Ready','Running')
+@{exists=$true;enabled=[bool]$task.Enabled;status=$states[[int]$task.State];last_run_time=$last;next_run_time=$next;triggers=$triggers} | ConvertTo-Json -Compress -Depth 4
+""".replace('FOLDER', folder).replace('NAME', name)
         try:
-            # Query the task in CSV format with verbose output
-            # /fo CSV gives comma-separated values, /v includes verbose columns
             output = subprocess.check_output(
-                ["schtasks", "/query", "/tn", full_task_path, "/fo", "CSV", "/v"],
-                stderr=subprocess.STDOUT,
-                text=True,
-                encoding="utf-8",
-                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)  # Hide console window on Windows
-            )
-        except subprocess.CalledProcessError as e:
-            # If the task is not found, schtasks returns error code 1
-            # We'll treat this as the task not existing
-            if "ERROR: The system cannot find the file specified." in e.output:
-                return {
-                    "exists": False,
-                    "enabled": False,
-                    "status": "Not Found",
-                    "last_run_time": None,
-                    "next_run_time": None
-                }
-            else:
-                # Other error (e.g., access denied)
+                ["powershell.exe", "-NoProfile", "-NonInteractive", "-EncodedCommand",
+                 base64.b64encode(script.encode("utf-16-le")).decode("ascii")],
+                stderr=subprocess.STDOUT, text=True, encoding="utf-8-sig", timeout=8,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+            info = json.loads(output)
+            if not isinstance(info, dict) or not isinstance(info.get("enabled"), bool) or not isinstance(info.get("exists"), bool):
+                self._cache[task_name] = (time.monotonic(), None)
                 return None
-        except Exception:
-            # Any other exception (e.g., subprocess not found)
+        except (OSError, subprocess.SubprocessError, ValueError):
+            self._cache[task_name] = (time.monotonic(), None)
             return None
-
-        # Parse CSV output
-        lines = output.strip().splitlines()
-        if len(lines) < 2:
-            # No data lines (only header or empty)
-            return None
-
-        # The first line is header, second line is data
-        header = lines[0].strip()
-        data_line = lines[1].strip()
-
-        # Simple CSV parsing: split by commas, but values may be quoted.
-        # We'll use a more robust approach: split by comma and then strip quotes.
-        # Since the output is from schtasks, we can rely on consistent quoting.
-        # We'll split by ',' and then remove surrounding double quotes.
-        parts = [part.strip().strip('"') for part in data_line.split(',')]
-
-        # We need to map header to parts.
-        header_parts = [part.strip().strip('"') for part in header.split(',')]
-
-        # Create a mapping from header to value
-        task_info = {}
-        for h, v in zip(header_parts, parts):
-            task_info[h] = v
-
-        # Extract the fields we care about
-        # Note: The exact header names may vary by Windows version/language.
-        # We'll try to match common ones.
-        # We'll look for keys that contain certain substrings (case-insensitive).
-        def get_field(*keys):
-            for k in keys:
-                for h in header_parts:
-                    if k.lower() in h.lower():
-                        return task_info.get(h)
-            return None
-
-        task_name_field = get_field("TaskName")
-        next_run = get_field("Next Run Time")
-        status = get_field("Status")
-        last_run = get_field("Last Run Time")
-        # Determine enabled status: a task is disabled if its status is "Disabled" or if it's ready but disabled?
-        # Actually, schtasks /query shows a column "Status" that can be "Ready", "Running", etc.
-        # To know if the task is enabled, we need to look at the "Status" column? Actually, there is a separate
-        # column for whether the task is enabled? In verbose output, there is a column "Enabled"?
-        # Let's check: In schtasks /query /fo CSV /v, there is a column "Enabled" (I think).
-        # We'll try to get the "Enabled" field.
-        enabled_str = get_field("Enabled")
-        enabled = False
-        if enabled_str is not None:
-            enabled = enabled_str.lower() == "true"
-        else:
-            # Fallback: if we can't find Enabled, we can infer from Status? Not reliable.
-            # We'll assume that if the task exists and we can query it, it's enabled unless status says disabled.
-            # Actually, there is a separate output for disabled tasks? Let's just try to get the "Enabled" column.
-            # If not present, we'll set enabled to True if the task exists (since we can query it).
-            # But a disabled task can still be queried; it just won't run.
-            # We'll leave enabled as False if we can't determine, but we'll try to get it from the task's XML maybe.
-            # For simplicity, we'll assume that if the task exists, it is enabled (since the setup script enables them).
-            # We'll later improve if needed.
-            enabled = True
-
-        return {
-            "exists": True,
-            "enabled": enabled,
-            "status": status if status else "Unknown",
-            "last_run_time": last_run if last_run else None,
-            "next_run_time": next_run if next_run else None
-        }
+        self._cache[task_name] = (time.monotonic(), info)
+        return info
 
     def get_startup_sync_info(self) -> Optional[Dict[str, Any]]:
         """
@@ -161,7 +184,7 @@ class SchedulerService:
         # Base info from configuration
         info = {
             "trigger": "Logon",  # Hardcoded as per the application design
-            "delay": f"{2 if trigger.enabled else 0} minutes",  # Fixed 2 minutes delay if enabled
+            "delay": "Unknown",
             "direction": trigger.direction.value.capitalize(),
         }
 
@@ -187,6 +210,9 @@ class SchedulerService:
                 "exists": False
             })
 
+        if task_info:
+            delays = [self._duration(t.get("delay")) for t in task_info.get("triggers", []) if t.get("type") == 9]
+            info["delay"] = ", ".join(delays) if delays else "Not configured"
         return info
 
     def get_periodic_sync_info(self) -> Optional[Dict[str, Any]]:
@@ -202,12 +228,11 @@ class SchedulerService:
         if app_config is None:
             return None
 
-        # Note: The periodic sync is not explicitly in the configuration.
-        # The application has a fixed periodic interval of 15 minutes for upload.
-        # We'll hardcode the interval and direction.
+        # The task's repetition comes from Windows; its shutdown-mode action
+        # obeys the configured shutdown direction.
         info = {
-            "interval": "15 minutes",
-            "direction": "Upload",  # Fixed as per the application design
+            "interval": "Unknown",
+            "direction": app_config.sync.shutdown.direction.value.capitalize(),
         }
 
         # Get task status
@@ -232,6 +257,9 @@ class SchedulerService:
                 "exists": False
             })
 
+        if task_info:
+            intervals = [self._duration(t.get("interval")) for t in task_info.get("triggers", []) if t.get("interval")]
+            info["interval"] = ", ".join(intervals) if intervals else "Not configured"
         return info
 
     def get_workstation_lock_info(self) -> Optional[Dict[str, Any]]:
@@ -324,6 +352,7 @@ class SchedulerService:
                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)
             )
             if result.returncode == 0:
+                self.invalidate_cache()
                 # Log success
                 action = "enabled" if enable else "disabled"
                 print(f"Task '{task_name}' {action} successfully.")

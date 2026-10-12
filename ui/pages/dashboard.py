@@ -9,7 +9,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QScrollArea,
 )
-from PySide6.QtCore import Qt, QTimer, QSize
+from PySide6.QtCore import Qt, QTimer, QSize, Slot
 from backend.services.configuration_service import ConfigurationService
 from backend.services.sync_service import SyncService
 from backend.services.backup_service import BackupService
@@ -19,6 +19,7 @@ from backend.services.log_service import LogService
 from ..widgets.sync_chart import SyncChartWidget
 import time
 from datetime import datetime
+import shutil
 from ..themes import spacing
 from ..resources.icons import get_icon
 
@@ -32,6 +33,9 @@ class DashboardPage(QWidget):
         self.scheduler_service = scheduler_service
         self.monitor_service = monitor_service
         self.log_service = log_service
+        if hasattr(self.scheduler_service, "updated"):
+            self.scheduler_service.updated.connect(self.on_scheduler_updated)
+            self.destroyed.connect(self.scheduler_service.wait_for_finished)
         self.chart_data = []  # For the sync chart
         self.elapsed_timer = QTimer(self)
         self.elapsed_timer.timeout.connect(self.update_elapsed_time)
@@ -138,7 +142,7 @@ class DashboardPage(QWidget):
         activity_title = QLabel("Sync activity")
         activity_title.setProperty("h3", "true")
         activity_layout.addWidget(activity_title)
-        activity_hint = QLabel("Successful folders per run · current session")
+        activity_hint = QLabel("Successful folders per run · recent history")
         activity_hint.setProperty("description", "true")
         activity_layout.addWidget(activity_hint)
         self.chart_widget = SyncChartWidget()
@@ -162,7 +166,7 @@ class DashboardPage(QWidget):
             ("Direction", "direction_label", "N/A"),
             ("Elapsed time", "elapsed_time_label", "00:00:00"),
             ("Result", "result_label", "N/A"),
-            ("Storage", "storage_label", "N/A"),
+            ("OneDrive disk", "storage_label", "N/A"),
             ("Last successful folder", "last_successful_label", "None"),
             ("Last failed folder", "last_failed_label", "None"),
         ]
@@ -274,6 +278,10 @@ class DashboardPage(QWidget):
         seconds = elapsed_seconds % 60
         self.elapsed_time_label.setText(f"{hours:02d}:{minutes:02d}:{seconds:02d}")
 
+    @Slot(object)
+    def on_scheduler_updated(self, summary):
+        self.update_data()
+
     def update_data(self):
         """Update all dashboard data from the services."""
         try:
@@ -285,16 +293,60 @@ class DashboardPage(QWidget):
             # We'll get the backup information for all folders and show if there are any backups.
             app_config = self.config_service.get_app_config()
             if app_config:
+                history = self.sync_service.get_history() if hasattr(self.sync_service, "get_history") else []
+                if getattr(self.sync_service, "history_error", None):
+                    self.last_sync_label.setText("History unavailable")
+                    self.last_sync_label.setToolTip(self.sync_service.history_error)
+                if history:
+                    latest = history[0]
+                    self.last_sync_label.setText(datetime.fromisoformat(latest["timestamp"]).astimezone().strftime("%Y-%m-%d %H:%M:%S"))
+                    self.chart_data = [sum(o["succeeded"] for o in run["outcomes"]) for run in reversed(history)]
+                    self.chart_widget.set_data(list(range(len(self.chart_data))), self.chart_data)
+                    if not self.sync_service.is_syncing:
+                        outcomes = latest["outcomes"]
+                        successes = [o["folder_name"] for o in outcomes if o["succeeded"]]
+                        failures = [o["folder_name"] for o in outcomes if not o["succeeded"]]
+                        self.result_label.setText(f"Succeeded: {len(successes)}, Failed: {len(failures)}" + (" (dry run)" if latest["dry_run"] else ""))
+                        self.last_successful_label.setText(successes[-1] if successes else "None")
+                        self.last_failed_label.setText(failures[-1] if failures else "None")
+                        self.current_operation_label.setText(latest["mode"].capitalize())
+                        self.direction_label.setText(outcomes[0]["direction"].capitalize() if outcomes else "N/A")
+                if self.scheduler_service and hasattr(self.scheduler_service, "request_refresh"):
+                    self.scheduler_service.request_refresh()
+                    summary = self.scheduler_service.cached_summary
+                else:
+                    summary = self.scheduler_service.get_scheduler_summary() if self.scheduler_service else None
+                tasks = list((summary or {}).values())
+                times = [datetime.fromisoformat(t["next_run_time"]).astimezone() for t in tasks if t and t.get("enabled") == "Enabled" and t.get("next_run_time")]
+                if times:
+                    self.next_sync_label.setText(min(times).strftime("%d %b %H:%M"))
+                elif any(t and t.get("enabled") == "Enabled" for t in tasks):
+                    self.next_sync_label.setText("On logon / lock")
+                else:
+                    self.next_sync_label.setText("No scheduled sync" if summary and all(t and t.get("enabled") != "Unknown" for t in tasks) else "Unavailable")
+                if app_config.folders:
+                    disk_path = app_config.folders[0].onedrive_path_resolved
+                    while not disk_path.exists() and disk_path != disk_path.parent:
+                        disk_path = disk_path.parent
+                    disk = shutil.disk_usage(disk_path)
+                    self.storage_label.setText(f"{disk.free / 1024**3:.1f} GB free")
+                    self.storage_label.setToolTip(f"Free space on the disk containing {disk_path}")
+                else:
+                    self.storage_label.setText("No folders configured")
                 # We'll check if there are any backups for any folder
                 has_backups = False
+                backups_configured = False
                 for folder in app_config.folders:
                     if folder.backup and folder.backup.enabled:
+                        backups_configured = True
                         backup_info = self.backup_service.get_backup_info(folder.id)
                         if backup_info:
                             has_backups = True
                             break
                 if has_backups:
                     self.backup_status_label.setText("Backups available")
+                elif backups_configured:
+                    self.backup_status_label.setText("No archives yet")
                 else:
                     self.backup_status_label.setText("No backups configured")
             else:
@@ -302,4 +354,5 @@ class DashboardPage(QWidget):
 
         except Exception as e:
             # In case of error, we don't want to crash the dashboard
-            pass
+            self.backup_status_label.setText("Status unavailable")
+            self.backup_status_label.setToolTip(str(e))

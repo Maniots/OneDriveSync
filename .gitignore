@@ -39,6 +39,10 @@ RunHidden.vbs
 # Runtime single-instance lock file
 onedrive_pcsync.lock
 onedrive_pcsync_shutdown_monitor.lock
+*.history.sqlite3
+*.history.sqlite3-journal
+*.history.sqlite3-wal
+*.history.sqlite3-shm
 
 # claude APIs
 .claude/

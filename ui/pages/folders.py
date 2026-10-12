@@ -22,6 +22,7 @@ from ..models.folder_model import FolderModel
 from backend.services.configuration_service import ConfigurationService
 from src.config import AppConfig, BackupSettings, FolderSyncConfig
 from dataclasses import asdict, replace
+from datetime import datetime
 from ..widgets.add_folder_wizard import AddFolderWizard
 
 
@@ -38,6 +39,7 @@ class FoldersPage(QWidget):
         self.sync_service = sync_service
         self._wizard = None
         self.folders = []  # List of FolderModel
+        self._folder_history = {}
         self.setup_ui()
         self.add_folder_requested.connect(self.open_add_folder_wizard)
         self.refresh_requested.connect(self.refresh_configuration)
@@ -45,6 +47,12 @@ class FoldersPage(QWidget):
         self.filter_changed.connect(lambda text: self.display_folders())
         if hasattr(self.config_service, "changed"):
             self.config_service.changed.connect(self.load_configuration_data)
+        if self.sync_service is not None:
+            self.sync_service.completed.connect(lambda outcomes: self.load_configuration_data(self.config_service.get_app_config()))
+            self.sync_service.state_changed.connect(self.update_sync_buttons)
+        self.history_timer = QTimer(self)
+        self.history_timer.timeout.connect(self.refresh_history)
+        self.history_timer.start(10000)
         # Load data from configuration if backend is available, otherwise use mock data
         app_config = self.config_service.get_app_config()
         if app_config:
@@ -131,6 +139,7 @@ class FoldersPage(QWidget):
                 self.show_no_config_message()
                 return
             # Convert each folder config to a UI model
+            self._folder_history = self.sync_service.get_folder_history() if self.sync_service else {}
             folder_models = []
             for folder_config in app_config.folders:
                 folder_model = self.convert_folder_to_ui_model(folder_config)
@@ -139,6 +148,8 @@ class FoldersPage(QWidget):
             self.folders = folder_models
             self.display_folders()
             self.status_label.setText(f"Loaded {len(self.folders)} folder(s)")
+            if self.sync_service and self.sync_service.history_error:
+                self.status_label.setText(f"Loaded {len(self.folders)} folder(s). Sync history unavailable.")
         except Exception as e:
             self.show_error(f"Error loading folder data: {e}")
 
@@ -171,6 +182,7 @@ class FoldersPage(QWidget):
             # If anything goes wrong, just use the expanded paths
             pass
 
+        history = self._folder_history.get(folder_config.id, {})
         return FolderModel(
             id=folder_config.id,
             name=folder_config.name,
@@ -181,8 +193,8 @@ class FoldersPage(QWidget):
             verify_after_sync=folder_config.verify_after_sync,
             create_destination=folder_config.create_destination,
             # UI-specific fields - these would normally come from a sync status service
-            last_sync_status=None,
-            last_sync_time=None,
+            last_sync_status=(("Dry run" if history.get("dry_run") else "Success") if history.get("succeeded") else ("Failed (dry run)" if history.get("dry_run") else "Failed")) if history else None,
+            last_sync_time=datetime.fromisoformat(history["timestamp"]).astimezone().strftime("%Y-%m-%d %H:%M:%S") if history else None,
             backup_enabled=folder_config.backup is not None and folder_config.backup.enabled,
             backup_retention_days=folder_config.backup.retention_days if folder_config.backup else 0
         )
@@ -204,7 +216,7 @@ class FoldersPage(QWidget):
                 'icon': 'folder',
                 'name': folder_model.name,
                 'enabled': folder_model.enabled,
-                'direction': 'Upload',  # Default direction since not in FolderModel
+                'direction': self.config_service.get_app_config().sync.shutdown.direction.value.capitalize(),
                 'local_path': folder_model.local_path,
                 'onedrive_path': folder_model.onedrive_path,
                 'safety_threshold': folder_model.minimum_sync_percentage,
@@ -219,6 +231,18 @@ class FoldersPage(QWidget):
             card.enabled_toggled.connect(lambda enabled, f_id=folder_model.id: self.on_folder_toggle_requested(f_id, enabled))
             # A full-width row keeps paths readable at the minimum window size.
             self.folders_layout.addWidget(card, i, 0)
+        self.update_sync_buttons()
+
+    def update_sync_buttons(self):
+        if self.sync_service is None:
+            return
+        available = not self.sync_service.is_syncing and not self.sync_service.is_paused and self.sync_service.is_shutdown_sync_enabled()
+        for card in self.findChildren(FolderCard):
+            card.sync_now_button.setEnabled(available and card.folder_data.get("enabled", False))
+
+    def refresh_history(self):
+        if self.sync_service and self.sync_service.get_folder_history() != self._folder_history:
+            self.load_configuration_data(self.config_service.get_app_config())
 
     def clear_folders(self):
         """Clear all folder cards from the layout."""
