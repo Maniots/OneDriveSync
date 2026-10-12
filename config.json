@@ -4,7 +4,7 @@
     "dry_run": false,
     "verify_after_sync": true,
     "create_destination": true,
-    "max_parallel_jobs": 1
+    "max_parallel_jobs": 2
   },
   "sync": {
     "startup": {
@@ -70,6 +70,21 @@
         "enabled": true,
         "backup_path": "%OneDrive%\\PCSync\\Backups",
         "retention_days": 7
+      }
+    },
+    {
+      "id": "vaults",
+      "name": "Obsidian Vaults",
+      "enabled": true,
+      "local_path": "C:/Vaults",
+      "onedrive_path": "C:/Users/Utente/OneDrive/PCSync",
+      "minimum_sync_percentage": 80,
+      "verify_after_sync": true,
+      "create_destination": true,
+      "backup": {
+        "enabled": true,
+        "backup_path": "C:/Users/Utente/OneDrive/PCSync/Backups",
+        "retention_days": 30
       }
     }
   ]
