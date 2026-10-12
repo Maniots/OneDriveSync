@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QColor, QBrush
 from backend.services.log_service import LogService
-from ..themes import spacing
+from ..themes import spacing, colors
 
 
 class LogsPage(QWidget):
@@ -40,23 +40,32 @@ class LogsPage(QWidget):
         # Toolbar
         toolbar = QFrame()
         toolbar.setProperty("card", "true")
-        toolbar_layout = QHBoxLayout(toolbar)
-        toolbar_layout.setContentsMargins(spacing.SMALL, spacing.SMALL, spacing.SMALL, spacing.SMALL)
-        toolbar_layout.setSpacing(spacing.SMALL)
+        toolbar_body = QVBoxLayout(toolbar)
+        toolbar_body.setContentsMargins(spacing.SMALL, spacing.SMALL, spacing.SMALL, spacing.SMALL)
+        toolbar_body.setSpacing(12)
+        toolbar_layout = QHBoxLayout()
+        toolbar_layout.setSpacing(12)
+        toolbar_body.addLayout(toolbar_layout)
+        filters_layout = QHBoxLayout()
+        filters_layout.setSpacing(12)
+        toolbar_body.addLayout(filters_layout)
 
         # Search
         search_label = QLabel("Search:")
         search_label.setProperty("title", "true")
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("Search logs...")
+        self.search_input.setAccessibleName("Search logs")
+        self.search_input.setMinimumWidth(160)
+        search_label.setBuddy(self.search_input)
         self.search_input.textChanged.connect(self.apply_filters)
         toolbar_layout.addWidget(search_label)
-        toolbar_layout.addWidget(self.search_input)
+        toolbar_layout.addWidget(self.search_input, 1)
 
         # Level filters
         levels_label = QLabel("Levels:")
         levels_label.setProperty("title", "true")
-        toolbar_layout.addWidget(levels_label)
+        filters_layout.addWidget(levels_label)
         self.info_cb = QCheckBox("INFO")
         self.info_cb.setChecked(True)
         self.info_cb.stateChanged.connect(self.apply_filters)
@@ -73,10 +82,11 @@ class LogsPage(QWidget):
         self.success_cb.setChecked(False)  # We don't have SUCCESS logs by default
         self.success_cb.stateChanged.connect(self.apply_filters)
         self.success_cb.setProperty("value", "true")
-        toolbar_layout.addWidget(self.info_cb)
-        toolbar_layout.addWidget(self.warning_cb)
-        toolbar_layout.addWidget(self.error_cb)
-        toolbar_layout.addWidget(self.success_cb)
+        filters_layout.addWidget(self.info_cb)
+        filters_layout.addWidget(self.warning_cb)
+        filters_layout.addWidget(self.error_cb)
+        filters_layout.addWidget(self.success_cb)
+        filters_layout.addStretch()
 
         # Date filter
         date_label = QLabel("Date:")
@@ -84,11 +94,10 @@ class LogsPage(QWidget):
         toolbar_layout.addWidget(date_label)
         self.date_combo = QComboBox()
         self.date_combo.addItems(["All", "Today", "Yesterday", "Last 7 Days", "Last 30 Days"])
+        self.date_combo.setAccessibleName("Filter logs by date")
+        date_label.setBuddy(self.date_combo)
         self.date_combo.currentIndexChanged.connect(self.apply_filters)
         toolbar_layout.addWidget(self.date_combo)
-
-        # Spacer
-        toolbar_layout.addStretch()
 
         # Buttons
         self.refresh_btn = QPushButton("Refresh")
@@ -104,7 +113,7 @@ class LogsPage(QWidget):
         self.autoscroll_cb = QCheckBox("Auto-scroll")
         self.autoscroll_cb.setChecked(True)
         self.autoscroll_cb.setProperty("value", "true")
-        toolbar_layout.addWidget(self.autoscroll_cb)
+        filters_layout.addWidget(self.autoscroll_cb)
 
         layout.addWidget(toolbar)
 
@@ -124,12 +133,13 @@ class LogsPage(QWidget):
         self.log_table.setSelectionMode(QTableWidget.ExtendedSelection)
         self.log_table.setEditTriggers(QTableWidget.NoEditTriggers)
         self.log_table.verticalHeader().setVisible(False)
+        self.log_table.verticalHeader().setDefaultSectionSize(40)
         layout.addWidget(self.log_table)
 
         # Status bar
         self.status_label = QLabel("Ready")
         self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.status_label.setProperty("value", "true")
+        self.status_label.setProperty("description", "true")
         layout.addWidget(self.status_label)
 
     def setup_timer(self):
@@ -225,10 +235,9 @@ class LogsPage(QWidget):
             # Level
             level_item = QTableWidgetItem(level)
             level_item.setFlags(level_item.flags() & ~Qt.ItemIsEditable)
-            # Set background color based on level
+            # Use readable semantic text colors on the shared table surface.
             color = self.get_level_color(level)
-            level_item.setBackground(QBrush(color))
-            level_item.setForeground(QBrush(Qt.white))
+            level_item.setForeground(QBrush(color))
             self.log_table.setItem(row, 1, level_item)
             # Message
             message_item = QTableWidgetItem(message)
@@ -238,15 +247,15 @@ class LogsPage(QWidget):
     def get_level_color(self, level: str) -> QColor:
         """Return the color for a given log level."""
         if level == "INFO":
-            return QColor("#0078d4")  # PRIMARY from theme
+            return QColor(colors.SECONDARY)
         elif level == "WARNING":
-            return QColor("#ffb900")  # WARNING from theme
+            return QColor(colors.WARNING)
         elif level == "ERROR":
-            return QColor("#d13434")  # ERROR from theme
+            return QColor(colors.ERROR)
         elif level == "SUCCESS":
-            return QColor("#107c10")  # SUCCESS from theme
+            return QColor(colors.SUCCESS)
         else:
-            return QColor("#6e6e6e")  # TEXT_DISABLED for unknown
+            return QColor(colors.TEXT_SECONDARY)
 
     def update_status(self):
         """Update the status label."""

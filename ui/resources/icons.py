@@ -5,6 +5,7 @@ Provides semantic icon names mapped to actual icon library icons.
 
 from PySide6.QtGui import QIcon
 import qtawesome as qta
+from ..themes import colors
 
 
 def get_icon(name: str) -> QIcon:
@@ -22,6 +23,10 @@ def get_icon(name: str) -> QIcon:
         # Navigation icons
         'dashboard': 'fa5s.tachometer-alt',
         'folders': 'fa5s.folder',
+        'folder': 'fa5s.folder',
+        'folder-plus': 'fa5s.folder-plus',
+        'folder-open': 'fa5s.folder-open',
+        'backups': 'fa5s.archive',
         'backup': 'fa5s.save',
         'scheduler': 'fa5s.calendar-alt',
         'logs': 'fa5s.list-alt',
@@ -46,8 +51,14 @@ def get_icon(name: str) -> QIcon:
         'edit': 'fa5s.edit',
         'delete': 'fa5s.trash-alt',
         'browse': 'fa5s.folder-open',
+        'open': 'fa5s.folder-open',
+        'toggle-on': 'fa5s.toggle-on',
+        'toggle-off': 'fa5s.toggle-off',
+        'cloud': 'fa5s.cloud',
     }
 
     # Get the icon name from the map, default to a question mark if not found
     icon_name = icon_map.get(name, 'fa5s.question-circle')
-    return qta.icon(icon_name)
+    return qta.icon(icon_name, color=colors.ICON_PRIMARY,
+                    color_active=colors.SELECTED_TEXT,
+                    color_disabled=colors.TEXT_DISABLED)

@@ -36,6 +36,7 @@ class Card(QFrame):
 
         title_label = QLabel(title)
         title_label.setProperty("title", "true")
+        title_label.setWordWrap(True)
         top_layout.addWidget(title_label)
         top_layout.addStretch()
         layout.addLayout(top_layout)
@@ -43,12 +44,15 @@ class Card(QFrame):
         # Value
         value_label = QLabel(value)
         value_label.setProperty("value", "true")
+        value_label.setProperty("metric", "true")
+        value_label.setWordWrap(True)
         layout.addWidget(value_label)
 
         # Description (optional)
         if description:
             desc_label = QLabel(description)
             desc_label.setProperty("description", "true")
+            desc_label.setWordWrap(True)
             layout.addWidget(desc_label)
 
         layout.addStretch()

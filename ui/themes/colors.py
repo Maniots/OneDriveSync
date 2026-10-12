@@ -3,31 +3,34 @@ Color palette for the OneDrive PC Sync UI.
 """
 
 # Dark graphite background
-BACKGROUND = "#202020"
+BACKGROUND = "#0e1521"
 # Elevated surfaces (cards, sidebar, etc.)
-SURFACE = "#252525"
+SURFACE = "#161f2e"
 # Input fields, etc.
-INPUT_BACKGROUND = "#2d2d2d"
+INPUT_BACKGROUND = "#111a28"
 # Borders and dividers
-BORDER = "#3a3a3a"
+BORDER = "#2c3b50"
 # Primary accent color (restrained)
-PRIMARY = "#0078d4"
+PRIMARY = "#2865ce"
 # Secondary accent (for less emphasis)
-SECONDARY = "#6ba6d9"
+SECONDARY = "#90bcff"
 # Success / positive
-SUCCESS = "#107c10"
+SUCCESS = "#62d9ac"
 # Warning
-WARNING = "#ffb900"
+WARNING = "#f5c66d"
 # Error / negative
-ERROR = "#d13434"
+ERROR = "#ff929c"
 # Text on surface
-TEXT_PRIMARY = "#ffffff"
-TEXT_SECONDARY = "#b0b0b0"
-TEXT_DISABLED = "#6e6e6e"
+TEXT_PRIMARY = "#edf2fa"
+TEXT_SECONDARY = "#a6b5ca"
+TEXT_DISABLED = "#78879d"
 # Icon color (same as primary)
-ICON_PRIMARY = PRIMARY
+ICON_PRIMARY = SECONDARY
 # Hover state for items
-HOVER = "#2a2a2a"
+HOVER = "#223149"
 # Selected state
-SELECTED = PRIMARY
+SELECTED = "#213b61"
 SELECTED_TEXT = "#ffffff"
+
+SIDEBAR = "#111a28"
+FOCUS = "#90bcff"

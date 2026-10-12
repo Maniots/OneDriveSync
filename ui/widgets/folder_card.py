@@ -53,23 +53,27 @@ class FolderCard(QFrame):
 
         # Folder name
         name_label = QLabel(self.folder_data.get('name', ''))
-        name_label.setProperty("title", "true")
+        name_label.setProperty("h3", "true")
+        name_label.setWordWrap(True)
         header_layout.addWidget(name_label)
         header_layout.addStretch()
 
         # Enabled/Disabled status indicator
         self.enabled_indicator = QLabel()
         self.enabled_indicator.setProperty("statusSuccess" if self.folder_data.get('enabled', False) else "statusError", "true")
-        self.enabled_indicator.setFixedSize(12, 12)
-        self.enabled_indicator.setStyleSheet("""
-            QLabel[statusSuccess="true"] {
-                background-color: #107c10;
-                border-radius: 6px;
-            }
-            QLabel[statusError="true"] {
-                background-color: #d13434;
-                border-radius: 6px;
-            }
+        self.enabled_indicator.setProperty("enabledState", "true" if self.folder_data.get('enabled', False) else "false")
+        self.enabled_indicator.setProperty("badge", "true")
+        self.enabled_indicator.setText("Enabled" if self.folder_data.get('enabled', False) else "Disabled")
+        self.enabled_indicator.setToolTip("Enabled" if self.folder_data.get('enabled', False) else "Disabled")
+        self.enabled_indicator.setStyleSheet(f"""
+            QLabel[enabledState="true"] {{
+                color: {colors.SUCCESS}; background-color: {colors.INPUT_BACKGROUND};
+                border-radius: 6px; padding: 5px 10px;
+            }}
+            QLabel[enabledState="false"] {{
+                color: {colors.TEXT_SECONDARY}; background-color: {colors.INPUT_BACKGROUND};
+                border-radius: 6px; padding: 5px 10px;
+            }}
         """)
         header_layout.addWidget(self.enabled_indicator)
 
@@ -95,6 +99,10 @@ class FolderCard(QFrame):
         local_path_value = QLabel(self.folder_data.get('local_path', ''))
         local_path_value.setProperty("value", "true")
         local_path_value.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        local_path_value.setWordWrap(True)
+        local_path_value.setMinimumWidth(0)
+        local_path_value.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+        local_path_value.setToolTip(local_path_value.text())
         details_layout.addRow(local_path_label, local_path_value)
 
         # OneDrive Path
@@ -103,6 +111,10 @@ class FolderCard(QFrame):
         onedrive_path_value = QLabel(self.folder_data.get('onedrive_path', ''))
         onedrive_path_value.setProperty("value", "true")
         onedrive_path_value.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        onedrive_path_value.setWordWrap(True)
+        onedrive_path_value.setMinimumWidth(0)
+        onedrive_path_value.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+        onedrive_path_value.setToolTip(onedrive_path_value.text())
         details_layout.addRow(onedrive_path_label, onedrive_path_value)
 
         # Safety Threshold
@@ -155,6 +167,7 @@ class FolderCard(QFrame):
         # Sync Now button
         self.sync_now_button = QPushButton("Sync Now")
         self.sync_now_button.setIcon(get_icon("sync"))
+        self.sync_now_button.setProperty("primary", "true")
         self.sync_now_button.clicked.connect(self.sync_now_clicked.emit)
         actions_layout.addWidget(self.sync_now_button)
 
@@ -169,6 +182,7 @@ class FolderCard(QFrame):
         self.update_toggle_button()
         self.toggle_enabled_button.clicked.connect(self.toggle_enabled)
         actions_layout.addWidget(self.toggle_enabled_button)
+        actions_layout.addStretch()
 
         main_layout.addLayout(actions_layout)
 
@@ -188,10 +202,11 @@ class FolderCard(QFrame):
         """Toggle the enabled state and emit signal."""
         current = self.folder_data.get('enabled', False)
         self.folder_data['enabled'] = not current
-        # Update the enabled indicator
-        self.enabled_indicator.setProperty(
-            "statusSuccess" if not current else "statusError", "true"
-        )
+        self.enabled_indicator.setProperty("enabledState", "true" if not current else "false")
+        self.enabled_indicator.setText("Enabled" if not current else "Disabled")
+        self.enabled_indicator.setProperty("statusSuccess", "true" if not current else "false")
+        self.enabled_indicator.setProperty("statusError", "true" if current else "false")
+        self.enabled_indicator.setToolTip("Enabled" if not current else "Disabled")
         # Force style update
         self.enabled_indicator.style().unpolish(self.enabled_indicator)
         self.enabled_indicator.style().polish(self.enabled_indicator)

@@ -13,13 +13,15 @@ from PySide6.QtWidgets import (
     QGroupBox,
     QFrame,
     QSizePolicy,
+    QScrollArea,
 )
 from PySide6.QtCore import Qt, Signal
 import ntpath
 import os
 from src.utils import expand_env_vars
 from PySide6.QtGui import QFont
-from ..themes import spacing
+from ..themes import spacing, colors
+from html import escape
 from ..resources.icons import get_icon
 
 
@@ -66,7 +68,7 @@ class AddFolderWizard(QWizard):
         self.finished.connect(self._on_finished)
 
         # Set initial sizes
-        self.resize(500, 400)
+        self.resize(640, 540)
 
     def _on_finished(self, result):
         """Handle wizard finish."""
@@ -591,8 +593,13 @@ class ReviewPage(QWizardPage):
         self.review_text.setTextFormat(Qt.RichText)
         self.review_text.setWordWrap(True)
         self.review_text.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        layout.addWidget(self.review_text)
-        layout.addStretch()
+        self.review_text.setAlignment(Qt.AlignmentFlag.AlignTop)
+        self.review_text.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+        review_scroll = QScrollArea()
+        review_scroll.setWidgetResizable(True)
+        review_scroll.setFrameShape(QFrame.NoFrame)
+        review_scroll.setWidget(self.review_text)
+        layout.addWidget(review_scroll)
 
     def initializePage(self):
         """Initialize the review page with collected data."""
@@ -614,6 +621,8 @@ class ReviewPage(QWizardPage):
 
     def _format_review(self, data):
         """Format the review data as HTML."""
+        data = {key: escape(value) if isinstance(value, str) else value
+                for key, value in data.items()}
         html = """
         <style>
             .field-label { font-weight: bold; margin-right: 10px; }
@@ -622,25 +631,27 @@ class ReviewPage(QWizardPage):
         </style>
         """
 
-        # Basic Information
-        html += '<div class="section-title">Basic Information</div>'
+        html = html.replace("#0078d4", colors.SECONDARY)
+
+        # Qt rich text supports paragraph blocks for reliable section spacing.
+        html += '<p class="section-title">Basic Information</p>'
         html += f'<span class="field-label">ID:</span> <span class="field-value">{data.get("id", "N/A")}</span><br/>'
         html += f'<span class="field-label">Name:</span> <span class="field-value">{data.get("name", "N/A")}</span><br/>'
         html += f'<span class="field-label">Enabled:</span> <span class="field-value">{"Yes" if data.get("enabled", False) else "No"}</span><br/>'
 
         # Paths
-        html += '<div class="section-title">Paths</div>'
+        html += '<p class="section-title">Paths</p>'
         html += f'<span class="field-label">Local Path:</span> <span class="field-value">{data.get("local_path", "N/A")}</span><br/>'
         html += f'<span class="field-label">OneDrive Path:</span> <span class="field-value">{data.get("onedrive_path", "N/A")}</span><br/>'
 
         # Safety Settings
-        html += '<div class="section-title">Safety Settings</div>'
+        html += '<p class="section-title">Safety Settings</p>'
         html += f'<span class="field-label">Minimum Sync Percentage:</span> <span class="field-value">{data.get("minimum_sync_percentage", 0)}%</span><br/>'
         html += f'<span class="field-label">Verify After Sync:</span> <span class="field-value">{"Yes" if data.get("verify_after_sync", False) else "No"}</span><br/>'
         html += f'<span class="field-label">Create Destination:</span> <span class="field-value">{"Yes" if data.get("create_destination", False) else "No"}</span><br/>'
 
         # Backup Settings
-        html += '<div class="section-title">Backup Settings</div>'
+        html += '<p class="section-title">Backup Settings</p>'
         html += f'<span class="field-label">Backup Enabled:</span> <span class="field-value">{"Yes" if data.get("backup_enabled", False) else "No"}</span><br/>'
         if data.get("backup_enabled", False):
             html += f'<span class="field-label">Backup Path:</span> <span class="field-value">{data.get("backup_path", "N/A")}</span><br/>'

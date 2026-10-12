@@ -5,12 +5,11 @@ from PySide6.QtWidgets import (
     QLabel,
     QFrame,
     QSizePolicy,
-    QSpacerItem,
     QGridLayout,
     QPushButton,
+    QScrollArea,
 )
-from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QPainter, QColor, QPen, QBrush
+from PySide6.QtCore import Qt, QTimer, QSize
 from backend.services.configuration_service import ConfigurationService
 from backend.services.sync_service import SyncService
 from backend.services.backup_service import BackupService
@@ -21,6 +20,7 @@ from ..widgets.sync_chart import SyncChartWidget
 import time
 from datetime import datetime
 from ..themes import spacing
+from ..resources.icons import get_icon
 
 
 class DashboardPage(QWidget):
@@ -54,129 +54,138 @@ class DashboardPage(QWidget):
 
     def setup_ui(self):
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(spacing.LARGE, spacing.LARGE, spacing.LARGE, spacing.LARGE)
-        layout.setSpacing(spacing.MEDIUM)
+        layout.setContentsMargins(0, 0, 0, 0)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+        content = QWidget()
+        body = QVBoxLayout(content)
+        body.setContentsMargins(spacing.LARGE, spacing.MEDIUM, spacing.LARGE, spacing.LARGE)
+        body.setSpacing(spacing.MEDIUM)
+        scroll.setWidget(content)
+        layout.addWidget(scroll)
 
-        # Title
-        title = QLabel("Dashboard")
-        title.setProperty("h2", "true")
-        layout.addWidget(title)
-
-        # Sync Chart
-        self.chart_widget = SyncChartWidget()
-        layout.addWidget(self.chart_widget, 1)  # stretch factor 1
-
-        # Stats grid
-        stats_frame = QFrame()
-        stats_frame.setProperty("card", "true")
-        stats_layout = QGridLayout(stats_frame)
-        stats_layout.setContentsMargins(spacing.MEDIUM, spacing.MEDIUM, spacing.MEDIUM, spacing.MEDIUM)
-        stats_layout.setSpacing(spacing.SMALL)
-
-        # Status
-        status_label_text = QLabel("Sync Status:")
-        status_label_text.setProperty("title", "true")
-        stats_layout.addWidget(status_label_text, 0, 0)
+        # Existing actions and signal connections, surfaced above the details.
+        hero = QFrame()
+        hero.setProperty("card", "true")
+        hero_layout = QVBoxLayout(hero)
+        hero_layout.setContentsMargins(24, 22, 24, 22)
+        hero_layout.setSpacing(12)
+        eyebrow = QLabel("SYNC CONTROL")
+        eyebrow.setProperty("eyebrow", "true")
+        hero_layout.addWidget(eyebrow)
         self.status_label = QLabel("Idle")
-        self.status_label.setProperty("value", "true")
-        stats_layout.addWidget(self.status_label, 0, 1)
-
-        # Last Sync
-        last_sync_label_text = QLabel("Last Sync:")
-        last_sync_label_text.setProperty("title", "true")
-        stats_layout.addWidget(last_sync_label_text, 0, 2)
-        self.last_sync_label = QLabel("Never")
-        self.last_sync_label.setProperty("value", "true")
-        stats_layout.addWidget(self.last_sync_label, 0, 3)
-
-        # Next Sync
-        next_sync_label_text = QLabel("Next Sync:")
-        next_sync_label_text.setProperty("title", "true")
-        stats_layout.addWidget(next_sync_label_text, 1, 0)
-        self.next_sync_label = QLabel("N/A")
-        self.next_sync_label.setProperty("value", "true")
-        stats_layout.addWidget(self.next_sync_label, 1, 1)
-
-        # Storage
-        storage_label_text = QLabel("Storage:")
-        storage_label_text.setProperty("title", "true")
-        stats_layout.addWidget(storage_label_text, 1, 2)
-        self.storage_label = QLabel("N/A")
-        self.storage_label.setProperty("value", "true")
-        stats_layout.addWidget(self.storage_label, 1, 3)
-
-        # Backup Status
-        backup_status_label_text = QLabel("Backup Status:")
-        backup_status_label_text.setProperty("title", "true")
-        stats_layout.addWidget(backup_status_label_text, 2, 0)
-        self.backup_status_label = QLabel("No backups")
-        self.backup_status_label.setProperty("value", "true")
-        stats_layout.addWidget(self.backup_status_label, 2, 1)
-
-        # New fields for sync state
-        current_operation_label_text = QLabel("Current Operation:")
-        current_operation_label_text.setProperty("title", "true")
-        stats_layout.addWidget(current_operation_label_text, 3, 0)
-        self.current_operation_label = QLabel("None")
-        self.current_operation_label.setProperty("value", "true")
-        stats_layout.addWidget(self.current_operation_label, 3, 1)
-
-        current_folder_label_text = QLabel("Current Folder:")
-        current_folder_label_text.setProperty("title", "true")
-        stats_layout.addWidget(current_folder_label_text, 3, 2)
-        self.current_folder_label = QLabel("N/A")
-        self.current_folder_label.setProperty("value", "true")
-        stats_layout.addWidget(self.current_folder_label, 3, 3)
-
-        direction_label_text = QLabel("Direction:")
-        direction_label_text.setProperty("title", "true")
-        stats_layout.addWidget(direction_label_text, 4, 0)
-        self.direction_label = QLabel("N/A")
-        self.direction_label.setProperty("value", "true")
-        stats_layout.addWidget(self.direction_label, 4, 1)
-
-        elapsed_time_label_text = QLabel("Elapsed Time:")
-        elapsed_time_label_text.setProperty("title", "true")
-        stats_layout.addWidget(elapsed_time_label_text, 4, 2)
-        self.elapsed_time_label = QLabel("00:00:00")
-        self.elapsed_time_label.setProperty("value", "true")
-        stats_layout.addWidget(self.elapsed_time_label, 4, 3)
-
-        result_label_text = QLabel("Result:")
-        result_label_text.setProperty("title", "true")
-        stats_layout.addWidget(result_label_text, 5, 0)
-        self.result_label = QLabel("N/A")
-        self.result_label.setProperty("value", "true")
-        stats_layout.addWidget(self.result_label, 5, 1)
-
-        last_successful_label_text = QLabel("Last Successful Sync:")
-        last_successful_label_text.setProperty("title", "true")
-        stats_layout.addWidget(last_successful_label_text, 5, 2)
-        self.last_successful_label = QLabel("None")
-        self.last_successful_label.setProperty("value", "true")
-        stats_layout.addWidget(self.last_successful_label, 5, 3)
-
-        last_failed_label_text = QLabel("Last Failed Sync:")
-        last_failed_label_text.setProperty("title", "true")
-        stats_layout.addWidget(last_failed_label_text, 6, 0)
-        self.last_failed_label = QLabel("None")
-        self.last_failed_label.setProperty("value", "true")
-        stats_layout.addWidget(self.last_failed_label, 6, 1)
-
-        # Buttons to start sync (for demonstration)
-        button_layout = QHBoxLayout()
-        button_layout.setSpacing(spacing.SMALL)
-        self.startup_button = QPushButton("Start Startup Sync")
+        self.status_label.setProperty("h2", "true")
+        self.status_label.setWordWrap(True)
+        hero_layout.addWidget(self.status_label)
+        hint = QLabel("Run your configured startup or shutdown sync without leaving your desktop.")
+        hint.setProperty("description", "true")
+        hint.setWordWrap(True)
+        hero_layout.addWidget(hint)
+        actions = QHBoxLayout()
+        actions.setSpacing(12)
+        self.startup_button = QPushButton("Run startup sync")
+        self.startup_button.setIcon(get_icon("download"))
+        self.startup_button.setToolTip("Run the startup synchronization with its configured direction.")
         self.startup_button.clicked.connect(self.start_startup_sync)
-        button_layout.addWidget(self.startup_button)
-
-        self.shutdown_button = QPushButton("Start Shutdown Sync")
+        self.shutdown_button = QPushButton("Run shutdown sync")
+        self.shutdown_button.setIcon(get_icon("upload"))
+        self.shutdown_button.setProperty("primary", "true")
+        self.shutdown_button.setToolTip("Run the shutdown synchronization with its configured direction.")
         self.shutdown_button.clicked.connect(self.start_shutdown_sync)
-        button_layout.addWidget(self.shutdown_button)
+        actions.addWidget(self.startup_button)
+        actions.addWidget(self.shutdown_button)
+        actions.addStretch()
+        hero_layout.addLayout(actions)
+        body.addWidget(hero)
 
-        stats_layout.addLayout(button_layout, 7, 0, 1, 4)
+        # Keep the original label attributes so service updates remain intact.
+        summary = QHBoxLayout()
+        summary.setSpacing(16)
+        for title, attribute, initial, icon in [
+            ("Last sync", "last_sync_label", "Never", "sync"),
+            ("Next sync", "next_sync_label", "N/A", "scheduler"),
+            ("Backups", "backup_status_label", "No backups", "backups"),
+        ]:
+            card = QFrame()
+            card.setProperty("card", "true")
+            card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+            card_layout = QVBoxLayout(card)
+            card_layout.setContentsMargins(18, 16, 18, 16)
+            card_layout.setSpacing(10)
+            caption_row = QHBoxLayout()
+            caption = QLabel(title)
+            caption.setProperty("title", "true")
+            caption_row.addWidget(caption)
+            caption_row.addStretch()
+            icon_label = QLabel()
+            icon_label.setPixmap(get_icon(icon).pixmap(QSize(16, 16)))
+            caption_row.addWidget(icon_label)
+            card_layout.addLayout(caption_row)
+            value = QLabel(initial)
+            value.setProperty("value", "true")
+            value.setWordWrap(True)
+            setattr(self, attribute, value)
+            card_layout.addWidget(value)
+            summary.addWidget(card, 1)
+        body.addLayout(summary)
 
-        layout.addWidget(stats_frame)
+        activity = QFrame()
+        activity.setProperty("card", "true")
+        activity_layout = QVBoxLayout(activity)
+        activity_layout.setContentsMargins(20, 18, 20, 16)
+        activity_layout.setSpacing(8)
+        activity_title = QLabel("Sync activity")
+        activity_title.setProperty("h3", "true")
+        activity_layout.addWidget(activity_title)
+        activity_hint = QLabel("Successful folders per run · current session")
+        activity_hint.setProperty("description", "true")
+        activity_layout.addWidget(activity_hint)
+        self.chart_widget = SyncChartWidget()
+        activity_layout.addWidget(self.chart_widget)
+        body.addWidget(activity)
+
+        details = QFrame()
+        details.setProperty("card", "true")
+        details_layout = QVBoxLayout(details)
+        details_layout.setContentsMargins(20, 18, 20, 20)
+        details_layout.setSpacing(16)
+        details_title = QLabel("Run details")
+        details_title.setProperty("h3", "true")
+        details_layout.addWidget(details_title)
+        grid = QGridLayout()
+        grid.setHorizontalSpacing(24)
+        grid.setVerticalSpacing(12)
+        fields = [
+            ("Operation", "current_operation_label", "None"),
+            ("Current folder", "current_folder_label", "N/A"),
+            ("Direction", "direction_label", "N/A"),
+            ("Elapsed time", "elapsed_time_label", "00:00:00"),
+            ("Result", "result_label", "N/A"),
+            ("Storage", "storage_label", "N/A"),
+            ("Last successful folder", "last_successful_label", "None"),
+            ("Last failed folder", "last_failed_label", "None"),
+        ]
+        for index, (title, attribute, initial) in enumerate(fields):
+            row, column = divmod(index, 2)
+            field = QVBoxLayout()
+            field.setSpacing(4)
+            caption = QLabel(title)
+            caption.setProperty("title", "true")
+            value = QLabel(initial)
+            value.setProperty("value", "true")
+            value.setWordWrap(True)
+            value.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+            value.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+            setattr(self, attribute, value)
+            field.addWidget(caption)
+            field.addWidget(value)
+            grid.addLayout(field, row, column)
+        grid.setColumnStretch(0, 1)
+        grid.setColumnStretch(1, 1)
+        details_layout.addLayout(grid)
+        body.addWidget(details)
+        body.addStretch()
 
     def start_startup_sync(self):
         self.sync_service.request_sync("startup")

@@ -54,6 +54,7 @@ class SettingsPage(QWidget):
         button_layout = QHBoxLayout()
         button_layout.setSpacing(spacing.SMALL)
         self.apply_button = QPushButton("Apply")
+        self.apply_button.setProperty("primary", "true")
         self.apply_button.setToolTip("Apply changes")
         self.cancel_button = QPushButton("Cancel")
         self.cancel_button.setToolTip("Cancel changes")
@@ -73,7 +74,7 @@ class SettingsPage(QWidget):
         # Status label
         self.status_label = QLabel("Ready")
         self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.status_label.setProperty("value", "true")
+        self.status_label.setProperty("description", "true")
         layout.addWidget(self.status_label)
 
     def load_configuration_data(self, app_config: AppConfig):

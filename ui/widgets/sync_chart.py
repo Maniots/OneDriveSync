@@ -1,6 +1,6 @@
-from PySide6.QtWidgets import QSizePolicy
+from PySide6.QtWidgets import QSizePolicy, QVBoxLayout, QLabel
 from PySide6.QtGui import QFont
-import pyqtgraph as pg
+from PySide6.QtCore import Qt
 from pyqtgraph import PlotWidget, mkPen
 
 
@@ -19,6 +19,7 @@ class SyncChartWidget(PlotWidget):
         """Initialize the chart appearance."""
         # Import theme colors
         from ..themes import colors
+        from ..themes import typography
 
         # Dark background
         self.setBackground(colors.SURFACE)
@@ -29,6 +30,8 @@ class SyncChartWidget(PlotWidget):
         self.getAxis('bottom').setPen(axis_pen)
         self.getAxis('left').setTextPen(colors.TEXT_SECONDARY)
         self.getAxis('bottom').setTextPen(colors.TEXT_SECONDARY)
+        for name in ('left', 'bottom'):
+            self.getAxis(name).setStyle(tickFont=QFont("Segoe UI", typography.FONT_SIZE_XSMALL))
 
         # Grid lines - subtle
         self.showGrid(x=True, y=True, alpha=0.15)
@@ -38,16 +41,27 @@ class SyncChartWidget(PlotWidget):
 
         # Set minimum size for visibility
         self.setMinimumHeight(200)
+        self.setMaximumHeight(240)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
         # Initialize empty data line
         self._data_line = self.plot(
-            pen=mkPen(colors.PRIMARY, width=2),
+            pen=mkPen(colors.SECONDARY, width=2),
             symbol='o',
             symbolSize=6,
-            symbolBrush=colors.PRIMARY,
+            symbolBrush=colors.SECONDARY,
             symbolPen=mkPen(colors.TEXT_PRIMARY, width=1)
         )
+
+        # Overlay a truthful empty state rather than drawing invented activity.
+        overlay = QVBoxLayout(self)
+        overlay.setContentsMargins(64, 24, 24, 24)
+        self.empty_label = QLabel("No sync activity yet\nCompleted runs will appear here.")
+        self.empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.empty_label.setWordWrap(True)
+        self.empty_label.setStyleSheet(f"background: transparent; color: {colors.TEXT_SECONDARY};")
+        self.empty_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        overlay.addWidget(self.empty_label)
 
     def set_data(self, x, y):
         """
@@ -59,10 +73,13 @@ class SyncChartWidget(PlotWidget):
         if not x or not y or len(x) != len(y):
             # Clear data if invalid
             self._data_line.setData([], [])
+            self.empty_label.show()
             return
 
         self._data_line.setData(x, y)
+        self.empty_label.hide()
 
     def clear_data(self):
         """Clear all data from the chart."""
         self._data_line.setData([], [])
+        self.empty_label.show()

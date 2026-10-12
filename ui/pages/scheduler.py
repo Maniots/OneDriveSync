@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QPushButton,
     QMessageBox,
+    QScrollArea,
 )
 from PySide6.QtCore import Qt, QTimer, QSignalBlocker
 from ..themes import spacing
@@ -40,15 +41,23 @@ class SchedulerPage(QWidget):
         self.update_shutdown_monitor_status()
 
     def setup_ui(self):
-        layout = QVBoxLayout(self)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+        content = QWidget()
+        layout = QVBoxLayout(content)
+        scroll.setWidget(content)
+        outer.addWidget(scroll)
         layout.setContentsMargins(spacing.LARGE, spacing.LARGE, spacing.LARGE, spacing.LARGE)
         layout.setSpacing(spacing.MEDIUM)
 
         # Title and refresh button
         title_layout = QHBoxLayout()
         title_layout.setSpacing(spacing.SMALL)
-        title = QLabel("Scheduler")
-        title.setProperty("h2", "true")
+        title = QLabel("Automation")
+        title.setProperty("h3", "true")
         title_layout.addWidget(title)
         title_layout.addStretch()
         self.refresh_button = QPushButton("Refresh")
@@ -64,26 +73,14 @@ class SchedulerPage(QWidget):
         timeline_layout.setContentsMargins(spacing.MEDIUM, spacing.MEDIUM, spacing.MEDIUM, spacing.MEDIUM)
         timeline_layout.setSpacing(spacing.SMALL)
 
-        timeline_label = QLabel(
-            "Logon\n"
-            "   ������� ����� ����� ��� ����� ��� ��� � ����� ��� ��� � ��� � � ↓ (2 min delay)\n"
-            "Startup Download\n\n"
-            "Lock\n"
-            "   ������� ����� ����� ��� ����� ��� ��� � ����� ��� ��� � ��� � � ↓\n"
-            "Upload\n\n"
-            "Every 15 minutes\n"
-            "   ������� ����� ����� ��� ����� ��� ��� � ����� ��� ��� � ��� � � ↓\n"
-            "Upload\n\n"
-            "Shutdown\n"
-            "   ������� ����� ����� ��� ����� ��� ��� � ����� ��� ��� � ��� � � ↓\n"
-            "Monitor\n"
-            "   ������� ����� ����� ��� ����� ��� ��� � ����� ��� ��� � ��� � � ↓\n"
-            "Upload"
-        )
-        timeline_label.setAlignment(Qt.AlignmentFlag.AlignLeft)
-        timeline_label.setProperty("value", "true")
-        timeline_label.setProperty("class", "monospace")
+        timeline_label = QLabel("Configured sync triggers")
+        timeline_label.setProperty("h3", "true")
         timeline_layout.addWidget(timeline_label)
+        hint = QLabel("Review startup, periodic, lock, and shutdown behavior below. "
+                      "Windows tasks run independently of UI sync.")
+        hint.setProperty("description", "true")
+        hint.setWordWrap(True)
+        timeline_layout.addWidget(hint)
         layout.addWidget(timeline_frame)
 
         # Sections
@@ -248,6 +245,9 @@ class SchedulerPage(QWidget):
         sections_layout.addWidget(monitor_group)
 
         layout.addLayout(sections_layout)
+        layout.addStretch()
+        for label in content.findChildren(QLabel):
+            label.setWordWrap(True)
 
     def on_refresh_clicked(self):
         """Refresh the scheduler data by reloading from the service."""

@@ -54,7 +54,7 @@ class FoldersPage(QWidget):
 
     def setup_ui(self):
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(spacing.MEDIUM, spacing.MEDIUM, spacing.MEDIUM, spacing.MEDIUM)
+        layout.setContentsMargins(spacing.LARGE, spacing.MEDIUM, spacing.LARGE, spacing.MEDIUM)
         layout.setSpacing(spacing.SMALL)
 
         # Toolbar
@@ -67,6 +67,8 @@ class FoldersPage(QWidget):
         search_label.setProperty("title", "true")
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("Search folders...")
+        self.search_input.setAccessibleName("Search folders")
+        search_label.setBuddy(self.search_input)
         self.search_input.textChanged.connect(self.on_search_text_changed)
         toolbar_layout.addWidget(search_label)
         toolbar_layout.addWidget(self.search_input)
@@ -77,6 +79,8 @@ class FoldersPage(QWidget):
         self.filter_combo = QComboBox()
         self.filter_combo.addItems(["All", "Enabled", "Disabled"])
         self.filter_combo.setCurrentText("All")
+        self.filter_combo.setAccessibleName("Filter folders by enabled status")
+        filter_label.setBuddy(self.filter_combo)
         self.filter_combo.currentTextChanged.connect(self.on_filter_changed)
         toolbar_layout.addWidget(filter_label)
         toolbar_layout.addWidget(self.filter_combo)
@@ -86,6 +90,7 @@ class FoldersPage(QWidget):
         # Add Folder button
         self.add_folder_btn = QPushButton("Add Folder")
         self.add_folder_btn.setIcon(get_icon("folder-plus"))
+        self.add_folder_btn.setProperty("primary", "true")
         self.add_folder_btn.clicked.connect(self.on_add_folder_requested)
         toolbar_layout.addWidget(self.add_folder_btn)
 
@@ -103,7 +108,8 @@ class FoldersPage(QWidget):
         scroll_area.setFrameShape(QFrame.NoFrame)
         self.folders_container = QWidget()
         self.folders_layout = QGridLayout(self.folders_container)
-        self.folders_layout.setContentsMargins(spacing.SMALL, spacing.SMALL, spacing.SMALL, spacing.SMALL)
+        self.folders_layout.setContentsMargins(0, 0, 8, 0)
+        self.folders_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         self.folders_layout.setHorizontalSpacing(spacing.SMALL)
         self.folders_layout.setVerticalSpacing(spacing.SMALL)
         scroll_area.setWidget(self.folders_container)
@@ -112,7 +118,7 @@ class FoldersPage(QWidget):
         # Status label
         self.status_label = QLabel("Ready")
         self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.status_label.setProperty("value", "true")
+        self.status_label.setProperty("description", "true")
         layout.addWidget(self.status_label)
 
     def load_configuration_data(self, app_config: AppConfig):
@@ -211,9 +217,8 @@ class FoldersPage(QWidget):
             card.sync_now_clicked.connect(lambda f_id=folder_model.id: self.on_folder_sync_requested(f_id))
             card.edit_clicked.connect(lambda f_id=folder_model.id: self.on_folder_edit_requested(f_id))
             card.enabled_toggled.connect(lambda enabled, f_id=folder_model.id: self.on_folder_toggle_requested(f_id, enabled))
-            row = i // 3  # 3 columns
-            col = i % 3
-            self.folders_layout.addWidget(card, row, col)
+            # A full-width row keeps paths readable at the minimum window size.
+            self.folders_layout.addWidget(card, i, 0)
 
     def clear_folders(self):
         """Clear all folder cards from the layout."""

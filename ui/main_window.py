@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QSystemTrayIcon,
     QMenu,
     QApplication,
+    QSizePolicy,
 )
 from PySide6.QtGui import QAction
 from PySide6.QtCore import Qt, QSize, QTimer, QObject
@@ -39,6 +40,8 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle("OneDrive PC Sync")
         self.setMinimumSize(1100, 700)
+        self.resize(1360, 900)
+        self.setWindowIcon(get_icon("cloud"))
         # Services
         self.configuration_service = configuration_service if configuration_service is not None else ConfigurationService()
         self.sync_service = sync_service if sync_service is not None else SyncService(self.configuration_service)
@@ -59,29 +62,25 @@ class MainWindow(QMainWindow):
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
 
-        # Main vertical layout: header + content area
-        main_layout = QVBoxLayout(central_widget)
+        # Full-height navigation with a separate header and content column.
+        main_layout = QHBoxLayout(central_widget)
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
 
-        # Header bar
-        self.header = self.create_header()
-        main_layout.addWidget(self.header)
+        self.sidebar = self.create_sidebar()
+        main_layout.addWidget(self.sidebar)
 
-        # Content area: sidebar + stacked widget
-        content_layout = QHBoxLayout()
+        content_layout = QVBoxLayout()
         content_layout.setContentsMargins(0, 0, 0, 0)
         content_layout.setSpacing(0)
-
-        # Left sidebar
-        self.sidebar = self.create_sidebar()
-        content_layout.addWidget(self.sidebar)
+        self.header = self.create_header()
+        content_layout.addWidget(self.header)
 
         # Central content area (stacked widget)
         self.content_stack = QStackedWidget()
         content_layout.addWidget(self.content_stack, 1)  # stretch factor 1
 
-        main_layout.addLayout(content_layout, 1)  # stretch factor 1
+        main_layout.addLayout(content_layout, 1)
 
         # Status bar
         self.status_bar = QStatusBar()
@@ -343,27 +342,22 @@ class MainWindow(QMainWindow):
     def create_header(self):
         header_frame = QFrame()
         header_frame.setObjectName("header")
-        header_frame.setMinimumHeight(spacing.LARGE * 2)  # 64px minimum
-        header_frame.setMaximumHeight(spacing.LARGE * 4)   # Allow up to 256px
+        header_frame.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         header_layout = QVBoxLayout(header_frame)
-        header_layout.setContentsMargins(spacing.LARGE, spacing.MEDIUM, spacing.LARGE, spacing.MEDIUM)
-        header_layout.setSpacing(spacing.XSMALL)
-        header_layout.setAlignment(Qt.AlignmentFlag.AlignVCenter)  # Align vertically center
-        # Transparent background, no border
-        header_frame.setStyleSheet("""
-            QFrame#header {
-                background: transparent;
-                border: none;
-            }
-        """)
+        header_layout.setContentsMargins(spacing.LARGE, 22, spacing.LARGE, 20)
+        header_layout.setSpacing(5)
 
         self.header_title = QLabel()
+        self.header_title.setTextFormat(Qt.TextFormat.PlainText)
+        self.header_title.setWordWrap(True)
+        self.header_title.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         self.header_title.setProperty("h1", "true")
         header_layout.addWidget(self.header_title)
 
         self.header_subtitle = QLabel()
-        self.header_subtitle.setProperty("h2", "true")
+        self.header_subtitle.setTextFormat(Qt.TextFormat.PlainText)
         self.header_subtitle.setProperty("class", "subtitle")
+        self.header_subtitle.setWordWrap(True)
         header_layout.addWidget(self.header_subtitle)
 
         return header_frame
@@ -372,19 +366,26 @@ class MainWindow(QMainWindow):
         sidebar_frame = QFrame()
         sidebar_frame.setObjectName("sidebar")
         sidebar_frame.setFixedWidth(spacing.SIDEBAR_WIDTH)
-        base_style = get_sidebar_stylesheet()
-        # Remove right border to avoid unnecessary border
-        sidebar_frame.setStyleSheet(base_style + "\nQFrame#sidebar { border-right: none; }")
+        sidebar_frame.setStyleSheet(get_sidebar_stylesheet())
 
         sidebar_layout = QVBoxLayout(sidebar_frame)
-        sidebar_layout.setContentsMargins(0, 0, 0, 0)
-        sidebar_layout.setSpacing(0)
+        sidebar_layout.setContentsMargins(16, 26, 16, 20)
+        sidebar_layout.setSpacing(12)
 
         # Sidebar title (logo/name)
+        brand_icon = QLabel()
+        brand_icon.setPixmap(get_icon("cloud").pixmap(QSize(30, 30)))
+        sidebar_layout.addWidget(brand_icon)
         title_label = QLabel("OneDrive PC Sync")
         title_label.setObjectName("sidebarTitle")
-        title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         sidebar_layout.addWidget(title_label)
+        caption = QLabel("Your folders. In sync.")
+        caption.setObjectName("sidebarCaption")
+        sidebar_layout.addWidget(caption)
+        sidebar_layout.addSpacing(24)
+        workspace_label = QLabel("WORKSPACE")
+        workspace_label.setProperty("title", "true")
+        sidebar_layout.addWidget(workspace_label)
 
         # Navigation list
         self.nav_list = QListWidget()
@@ -392,6 +393,8 @@ class MainWindow(QMainWindow):
         self.nav_list.setSpacing(0)
         self.nav_list.setVerticalScrollMode(QListWidget.ScrollMode.ScrollPerPixel)
         self.nav_list.setProperty("class", "nav-list")
+        self.nav_list.setAccessibleName("Main navigation")
+        self.nav_list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 
         # Add sidebar entries (top section)
         nav_entries = [
@@ -413,7 +416,6 @@ class MainWindow(QMainWindow):
         separator.setFrameShape(QFrame.Shape.HLine)
         separator.setFrameShadow(QFrame.Shadow.Sunken)
         separator.setProperty("class", "separator")
-        sidebar_layout.addWidget(separator)
 
         # Bottom section (Settings, About)
         bottom_entries = [
@@ -430,8 +432,15 @@ class MainWindow(QMainWindow):
         # Select first item by default
         self.nav_list.setCurrentRow(0)
 
-        sidebar_layout.addWidget(self.nav_list)
-        sidebar_layout.addStretch()
+        sidebar_layout.addWidget(self.nav_list, 1)
+        sidebar_layout.addWidget(separator)
+        footer = QLabel("Local PC  /  OneDrive")
+        footer.setObjectName("sidebarCaption")
+        sidebar_layout.addWidget(footer)
+        detail = QLabel("Only the folders you choose.")
+        detail.setObjectName("sidebarCaption")
+        detail.setWordWrap(True)
+        sidebar_layout.addWidget(detail)
 
         # Connect navigation
         self.nav_list.currentItemChanged.connect(self.change_page)

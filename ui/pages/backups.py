@@ -76,6 +76,7 @@ class BackupsPage(QWidget):
         self.table.setShowGrid(False)
         self.table.setAlternatingRowColors(True)
         self.table.verticalHeader().setVisible(False)
+        self.table.verticalHeader().setDefaultSectionSize(52)
         layout.addWidget(self.table, 1)  # stretch factor 1
 
         self.error_label = QLabel(self)
@@ -87,7 +88,7 @@ class BackupsPage(QWidget):
         # Status label
         self.status_label = QLabel("Ready")
         self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.status_label.setProperty("value", "true")
+        self.status_label.setProperty("description", "true")
         layout.addWidget(self.status_label)
 
     @Slot()
