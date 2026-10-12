@@ -3,6 +3,7 @@
 param(
     [string]$PythonExe,
     [string]$InnoCompiler,
+    [int]$BuildNumber = 0,
     [switch]$BundleOnly
 )
 $ErrorActionPreference = 'Stop'
@@ -12,6 +13,8 @@ if (-not (Test-Path -LiteralPath $PythonExe -PathType Leaf)) {
 }
 Push-Location $PSScriptRoot
 try {
+    $ReleaseVersion = & $PythonExe scripts\release_metadata.py build --build-number $BuildNumber
+    if ($LASTEXITCODE -ne 0) { throw 'Build metadata generation failed.' }
     & $PythonExe -m PyInstaller --noconfirm --workpath build\windows packaging\OneDrivePCSync.spec
     if ($LASTEXITCODE -ne 0) { throw 'PyInstaller build failed.' }
     Copy-Item -LiteralPath Setup-ScheduledTasks.ps1,Setup-ShutdownMonitor.ps1 -Destination dist\OneDrivePCSync
@@ -27,7 +30,9 @@ try {
     if (-not $InnoCompiler) { throw 'Inno Setup compiler not found. Supply -InnoCompiler or use -BundleOnly.' }
     & $InnoCompiler /Qp packaging\windows-installer.iss
     if ($LASTEXITCODE -ne 0) { throw 'Installer compilation failed.' }
-    Write-Host 'Installer: dist\installer\OneDrivePCSync-Setup-1.0.0.exe'
+    & $PythonExe scripts\release_metadata.py manifest
+    if ($LASTEXITCODE -ne 0) { throw 'Update manifest generation failed.' }
+    Write-Host "Installer: dist\installer\OneDrivePCSync-Setup-$ReleaseVersion.exe"
 } finally {
     Pop-Location
 }

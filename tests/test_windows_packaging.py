@@ -77,6 +77,8 @@ def test_monitor_persists_completed_sync_status(monkeypatch):
     from src import shutdown_monitor as module
     snapshots = []
     monkeypatch.setattr(module, "run_sync", lambda **kwargs: 0)
+    from unittest.mock import Mock
+    monkeypatch.setattr(module, "acquire_single_instance_lock", lambda path: Mock())
     monkeypatch.setattr(module, "_emergency_log", lambda message: None)
     monkeypatch.setattr(module, "_write_status", snapshots.append)
     monitor = module.ShutdownMonitorWindow()

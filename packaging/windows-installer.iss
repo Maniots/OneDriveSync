@@ -1,5 +1,5 @@
 #define AppName "OneDrive PC Sync"
-#define AppVersion "1.0.0"
+#include "build-version.iss"
 #define AppExe "OneDrivePCSync.exe"
 #ifdef ValidationBuild
   #define InstallerAppId "{{4B0E3CEC-590C-44E8-A819-FDA7F10DDAF8}"

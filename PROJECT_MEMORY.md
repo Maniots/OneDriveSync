@@ -4,6 +4,44 @@ The main window features a modern header with page title and optional subtitle, 
 
 Last updated: 2026-10-12
 
+## Updates from master (2026-10-12)
+
+- `src/app_info.py` owns version/repository identity. Build metadata generates
+  the EXE version, Inno include and matching SHA-256/size update manifest.
+  Local builds use 1.1.0.0; GitHub builds use the run number as component four.
+- `.github/workflows/windows-release.yml` tests and builds Windows on pushes
+  to master, validates the frozen EXE, and publishes a `master-N` GitHub release
+  only for the still-current master commit. It becomes active when merged and
+  pushed to master; local commits alone do not publish a release.
+- `src/updater.py` reads only the public Maniots/OneDriveSync release channel,
+  validates bounded manifests, numeric versions, asset origin, size and hash,
+  and stages downloads without shipping repository credentials.
+- `backend/services/update_service.py` coordinates background check/download
+  workers. The app checks at startup and every four hours while open. The user
+  explicitly selected automatic notification plus a manual install button;
+  automatic installation remains an optional, initially disabled preference.
+  About/Updates and the tray expose availability, progress, retry and install.
+- `--check-updates` checks in the desktop update view; `--update` requests
+  verified installation if newer. Existing-instance activation carries the
+  selected action. Existing sync/monitor commands remain supported.
+- The detached `packaging/Apply-Update.ps1` waits for the UI and canonical sync
+  lock, temporarily suspends only tasks belonging to this installed EXE, runs
+  the existing installer, restores enabled states and restarts the app and any
+  previously running task monitor. Configuration/history/backups persist.
+  Failed installation is reported on restart and disables automatic retries.
+  The shutdown monitor now also acquires the shared sync/update lock.
+- Native teardown tests exposed pyqtgraph's requirement to close PlotItem
+  before scene destruction. MainWindow now prepares services and charts before
+  deferred deletion/event-loop exit; Qt test disposal respects parent ownership
+  and explicitly closes independent plots. Updater cancellation prevents queued
+  completion from starting installation after exit.
+- Verification: 208 tests passed, 2 skipped; actionlint passed; actual frozen
+  UI, dry-run, copy and native monitor passed. An isolated real upgrade from
+  1.0 to 1.1 preserved configuration and four task enabled states, waited for
+  the sync lock and removed the verified staged download. Task-triggered
+  restart of an already-running monitor and the first hosted GitHub publication
+  remain unverified. Live public API currently reports no release.
+
 ## Windows executable and per-user installation (2026-10-12)
 
 - `desktop_entry.py` is the unified frozen entry point: no arguments opens

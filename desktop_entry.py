@@ -8,8 +8,7 @@ import traceback
 from pathlib import Path
 
 from src.runtime_paths import data_root, default_config_path, ensure_default_config, log_dir
-
-VERSION = "1.0.0"
+from src.app_info import VERSION
 
 
 def parse_arguments(argv):
@@ -20,6 +19,8 @@ def parse_arguments(argv):
     action.add_argument("--init-config", action="store_true")
     action.add_argument("--diagnostics", type=Path, metavar="REPORT.json")
     action.add_argument("--smoke-test", type=Path, metavar="REPORT.json")
+    action.add_argument("--check-updates", action="store_true")
+    action.add_argument("--update", action="store_true")
     parser.add_argument("--config", type=Path)
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--version", action="version", version=VERSION)
@@ -76,7 +77,7 @@ def write_diagnostics(path: Path, smoke_test: bool, config_path: Path) -> int:
         if not window.grab().save(str(screenshot)):
             raise RuntimeError("Could not render the desktop window")
         report["ui_rendered"] = True
-        window.scheduler_service.wait_for_finished()
+        window.prepare_for_exit()
         window.hide()
         window.deleteLater()
         app.processEvents()
@@ -108,7 +109,12 @@ def main(argv=None) -> int:
         from src.shutdown_monitor import main as monitor_main
         return monitor_main()
     from ui.app import main as ui_main
-    return ui_main(["--config", str(args.config)] if args.config else [])
+    ui_args = ["--config", str(args.config)] if args.config else []
+    if args.check_updates or args.update:
+        ui_args += ["--updates"]
+    if args.update:
+        ui_args += ["--install-update"]
+    return ui_main(ui_args)
 
 
 def launch() -> int:

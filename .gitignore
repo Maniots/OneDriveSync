@@ -6,6 +6,8 @@ __pycache__/
 .eggs/
 build/
 dist/
+src/build-info.json
+packaging/build-version.iss
 
 # Virtual environments
 .venv/

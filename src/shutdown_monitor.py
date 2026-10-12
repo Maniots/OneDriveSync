@@ -76,7 +76,7 @@ sys.path.append(str(Path(__file__).resolve().parent.parent))
 from src.logger import get_logger, setup_logger
 from src.sync_runner import run_sync
 from src.single_instance import acquire_single_instance_lock
-from src.runtime_paths import data_root, default_config_path, log_dir
+from src.runtime_paths import data_root, default_config_path, log_dir, sync_lock_path
 
 try:
     import win32gui
@@ -98,6 +98,17 @@ WM_QUERYENDSESSION = 0x0011
 WM_ENDSESSION = 0x0016
 
 logger = get_logger(__name__)
+
+
+def _run_shutdown_sync():
+    """Coordinate with CLI/UI sync and the detached update installer."""
+    lock = acquire_single_instance_lock(sync_lock_path())
+    if lock is None:
+        raise RuntimeError("Another synchronization or update is in progress; shutdown upload skipped.")
+    try:
+        return run_sync(mode="shutdown", config_path=DEFAULT_CONFIG_PATH, dry_run=False)
+    finally:
+        lock.close()
 
 
 def _write_status(status_dict: dict) -> None:
@@ -214,11 +225,7 @@ class ShutdownMonitorWindow:
             _write_status(self._get_status_dict())
 
             try:
-                exit_code = run_sync(
-                    mode="shutdown",
-                    config_path=DEFAULT_CONFIG_PATH,
-                    dry_run=False,
-                )
+                exit_code = _run_shutdown_sync()
                 _emergency_log(f"run_sync returned exit_code={exit_code}")
                 try:
                     if exit_code == 0:

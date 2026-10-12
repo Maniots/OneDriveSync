@@ -59,7 +59,8 @@ OneDrivePCSync/
 
 ### Windows EXE (no Python required on the target PC)
 
-Run `dist/installer/OneDrivePCSync-Setup-1.0.0.exe`. It installs the app for
+Run the versioned `OneDrivePCSync-Setup-*.exe` from a Windows release (or
+`dist/installer` after building locally). It installs the app for
 the current Windows user under `%LOCALAPPDATA%\Programs\OneDrivePCSync`,
 adds Start menu links and registers an uninstaller. A desktop shortcut and
 automatic synchronization are optional installer checkboxes.
@@ -77,6 +78,38 @@ Scheduled tasks invoke the EXE directly without Python or VBS wrappers.
 If enabled, their existing names and timing remain the same. They become
 active at the next logon (periodic uploads can begin during this session).
 
+### Installed application commands and updates
+
+```powershell
+$app = "$env:LOCALAPPDATA\Programs\OneDrivePCSync\OneDrivePCSync.exe"
+& $app                          # Open the desktop app
+& $app --check-updates          # Open Updates and check for a release
+& $app --update                 # Check, download, verify and install if newer
+& $app --mode startup --dry-run # Preview a download from OneDrive
+& $app --mode startup           # Download configured folders
+& $app --mode shutdown          # Upload configured folders
+```
+
+The installed app checks GitHub at startup and every four hours while running.
+By default it notifies you when a new version is available. Open **About >
+Updates** (or use the tray's **Check for updates**) and choose **Download and
+install**. The app downloads the installer itself, checks its size and SHA-256,
+waits for synchronization to finish, updates the existing installation, and
+restarts. Configuration and existing task enabled states are preserved. Optional
+automatic installation can be enabled explicitly in the Updates card.
+
+The workflow in `.github/workflows/windows-release.yml` creates a Windows
+release after a successful push to `master`, including tests, the actual frozen
+EXE acceptance check, and a matching `update.json` manifest. Commits only on a
+local PC do not trigger GitHub. The workflow must first be present on GitHub's
+`master` branch, with Actions enabled and permission to create releases.
+The application reads the public `Maniots/OneDriveSync` repository without a
+GitHub token. Network errors leave synchronization available and allow retry;
+before the first release the Updates card reports that none has been published.
+
+Existing installations from version 1.0 need the new installer once to gain
+the updater; subsequent updates are downloaded from inside the app.
+
 ### Building the Windows release
 
 Build on Windows x64, using Python 3.12+ and Inno Setup 6.7+:
@@ -90,6 +123,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\Build-Windows.ps1 -BundleO
 ```
 
 Supply `-InnoCompiler C:\path\ISCC.exe` if it is not in a detected location.
+`src/app_info.py` owns the base version. `-BuildNumber N` stamps the fourth
+numeric component; CI uses the workflow run number. Installer, EXE and update
+manifest share that build identity.
 The bundle is `dist/OneDrivePCSync`; keep its `_internal` directory with the
 EXE. The installer contains the entire bundle in a single setup EXE.
 Builds do not automatically download or install build tools.
@@ -105,6 +141,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\Verify-WindowsAutoma
 # Separate validation installer identity and data location:
 ISCC.exe /DValidationBuild packaging\windows-installer.iss
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\Verify-WindowsInstaller.ps1
+# Keep a previous validation installer before compiling the next one:
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\Verify-WindowsUpdate.ps1 -BaselineInstaller build\update-baseline-validation.exe -UpdateInstaller dist\installer\OneDrivePCSync-Validation-Setup.exe -ExpectedVersion 1.1.0.0
 ```
 
 The automation and installer checks need access to the Windows Task Scheduler
