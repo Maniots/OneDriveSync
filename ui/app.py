@@ -5,7 +5,7 @@ import os
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import QIODevice
+from PySide6.QtCore import QElapsedTimer, QIODevice
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWidgets import QApplication
 
@@ -36,13 +36,27 @@ if sys.platform == "win32":
             kernel32.CloseHandle(handle)
 
 
+def _write_socket_message(socket: QLocalSocket, message: bytes, timeout_ms: int = 500) -> bool:
+    """Handle immediate writes as well as buffered writes on Windows pipes."""
+    if socket.write(message) != len(message):
+        return False
+    timer = QElapsedTimer()
+    timer.start()
+    while socket.bytesToWrite() > 0:
+        remaining = timeout_ms - timer.elapsed()
+        if remaining <= 0:
+            return False
+        if not socket.waitForBytesWritten(remaining):
+            return socket.bytesToWrite() == 0
+    return True
+
+
 def send_show_message(server_name: str = SERVER_NAME) -> bool:
     socket = QLocalSocket()
-    socket.connectToServer(server_name, QIODevice.OpenModeFlag.WriteOnly)
-    if not socket.waitForConnected(500):
+    socket.connectToServer(server_name, QIODevice.OpenModeFlag.ReadWrite)
+    if socket.state() != QLocalSocket.LocalSocketState.ConnectedState and not socket.waitForConnected(500):
         return False
-    socket.write(b"show")
-    sent = socket.waitForBytesWritten(500)
+    sent = _write_socket_message(socket, b"show")
     socket.disconnectFromServer()
     return sent
 

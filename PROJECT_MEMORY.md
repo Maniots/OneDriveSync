@@ -7,6 +7,16 @@ Last updated: 2026-10-12
 
 ## UI and synchronization fixes (2026-10-12)
 
+
+### Follow-up: local Qt compatibility
+
+Validation: 105 automated tests passed on Linux with both Python 3.12.14 / PySide6 6.12.0 and the reported local versions Python 3.14.6 / PySide6 6.11.1. Real Windows named-pipe and native desktop behavior still require local validation.
+
+- BackupsPage now colors status items with QBrush(QColor(...)) instead of an unsupported string passed to QTableWidgetItem.setForeground. Empty/error states keep the same QTableWidget alive and use a separate label, allowing refresh and recovery without dangling wrappers. The initial refresh timer belongs to the page and configuration changes refresh its data.
+- Local socket activation accepts writes that have already completed synchronously (including Windows named-pipe behavior). Buffered writes still require the queue to drain within the timeout. Tests wait for actual connection and activation events, rather than a fixed number of event-loop polls, and retain the fragmented-message assertion.
+- Qt test teardown disposes newly created windows after each UI test, stops their owned timers, and checks shiboken6.isValid before accessing wrappers whose native child may already be destroyed. A regression explicitly covers a snapshot containing an already deleted QTableWidget.
+- Log date filtering uses QDate.startOfDay through LogService. LogsPage filters its bounded cached data, refreshes only when data changes, and clears stale rows when the file is truncated. Today/Yesterday filtering and real backup rendering/error recovery have functional coverage.
+
 - JSON paths retain their original environment-variable strings. Folder and backup dataclasses also accept `Path` inputs from existing Python callers. Core sync uses resolved path properties; configuration saving validates a temporary JSON file and atomically replaces the original only after validation succeeds.
 - `SyncService.request_sync(operation, folder_id=None)` coordinates Dashboard, tray and folder-card requests in one background thread. It reserves the active run before starting the thread, shares pause/busy state, and snapshots the current configuration. Existing synchronous `start_startup_sync` and `start_shutdown_sync` methods remain available to non-interactive callers.
 - `SyncWorker` uses the same `onedrive_pcsync.lock` as the CLI and invokes the public core workflow, including per-folder isolation, safety thresholds, pre-upload backups, dry-run and verification. Optional progress callbacks keep the core independent of Qt. Pause blocks new UI requests, allows the current run to finish, and does not change independent Windows Scheduled Tasks. Exiting waits for any active copy and thread cleanup.

@@ -408,3 +408,91 @@ def test_synchronous_service_api_keeps_existing_copy_behavior(qapp, configuratio
     assert len(outcomes) == 1 and outcomes[0].succeeded
     assert (local / "save.txt").read_text() == "download"
     assert finished == [True] and not sync.is_syncing
+
+
+def test_backup_page_displays_real_archive_and_recovers_from_errors(qapp, configuration, monkeypatch):
+    from backend.services.backup_service import BackupService
+    from ui.pages.backups import BackupsPage
+    from ui.themes import colors
+    from PySide6.QtGui import QColor
+    from shiboken6 import isValid
+    service, _, cloud, path = configuration
+    data = json.loads(path.read_text())
+    data["folders"][0]["backup"] = {"enabled": True, "backup_path": "%OneDrive%/Backups", "retention_days": 7}
+    path.write_text(json.dumps(data))
+    service.reload()
+    directory = cloud.parent / "Backups" / "app"
+    directory.mkdir(parents=True)
+    from datetime import date
+    with zipfile.ZipFile(directory / f"app_{date.today().isoformat()}.zip", "w") as archive:
+        archive.writestr("save.txt", "previous save")
+    page = BackupsPage(service, BackupService(service))
+    table = page.table
+    try:
+        page.load_configuration_data()
+        assert table.rowCount() == 1
+        assert table.item(0, 4).foreground().color() == QColor(colors.SUCCESS)
+        assert page.status_label.text() == "Found 1 backup(s)"
+        page.show_error("temporary failure")
+        QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+        assert isValid(table) and page.table is table
+        page.refresh_backups()
+        assert table.rowCount() == 1 and page.error_label.isHidden()
+        with monkeypatch.context() as temporary:
+            temporary.setattr(service, "get_app_config", lambda: None)
+            page.refresh_backups()
+            QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+            assert isValid(table) and table.rowCount() == 0
+        page.refresh_backups()
+        assert table.rowCount() == 1 and page.error_label.isHidden()
+    finally:
+        page.close()
+
+
+def test_log_page_date_filters_and_file_truncation(qapp, tmp_path):
+    from PySide6.QtCore import QDate
+    from ui.pages.logs import LogsPage
+    today = QDate.currentDate()
+    yesterday = today.addDays(-1)
+    path = tmp_path / "logs.txt"
+    path.write_text(
+        f"{yesterday.toString('yyyy-MM-dd')} 12:00:00 | INFO     | test | yesterday\n"
+        f"{today.toString('yyyy-MM-dd')} 00:00:00 | INFO     | test | today\n"
+    )
+    page = LogsPage(LogService(path))
+    try:
+        assert page.log_table.rowCount() == 2
+        # Call explicitly so exceptions cannot be hidden by Qt signal dispatch.
+        page.date_combo.blockSignals(True)
+        page.date_combo.setCurrentIndex(1)
+        page.date_combo.blockSignals(False)
+        page.apply_filters()
+        assert page.log_table.rowCount() == 1
+        assert "today" in page.log_table.item(0, 2).text()
+        page.date_combo.blockSignals(True)
+        page.date_combo.setCurrentIndex(2)
+        page.date_combo.blockSignals(False)
+        page.apply_filters()
+        assert page.log_table.rowCount() == 1
+        assert "yesterday" in page.log_table.item(0, 2).text()
+        assert page.status_label.text() == "Showing 1 of 2 log entries"
+        path.write_text("")
+        page.check_for_new_logs()
+        assert page.log_table.rowCount() == 0
+    finally:
+        page.timer.stop()
+        page.close()
+
+
+def test_qt_cleanup_accepts_already_destroyed_child_wrapper(qapp):
+    from PySide6.QtWidgets import QWidget, QTableWidget
+    from shiboken6 import isValid
+    from tests.conftest import dispose_qt_widgets
+    parent = QWidget()
+    table = QTableWidget(parent)
+    snapshot = [parent, table]
+    table.deleteLater()
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    assert not isValid(table)
+    dispose_qt_widgets(qapp, snapshot)
+    assert not isValid(parent)

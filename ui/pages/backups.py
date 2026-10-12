@@ -10,8 +10,8 @@ from PySide6.QtWidgets import (
     QFrame,
     QSizePolicy,
 )
-from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QColor
+from PySide6.QtCore import Qt, QTimer, Slot
+from PySide6.QtGui import QColor, QBrush
 from backend.services.configuration_service import ConfigurationService
 from backend.services.backup_service import BackupService
 from ..resources.icons import get_icon
@@ -26,10 +26,15 @@ class BackupsPage(QWidget):
         self.backup_service = backup_service
         self.backup_data = []  # List of backup info dicts for the table
         self.setup_ui()
+        self.refresh_timer = QTimer(self)
+        self.refresh_timer.setSingleShot(True)
+        self.refresh_timer.timeout.connect(self.load_configuration_data)
+        if hasattr(self.config_service, "changed"):
+            self.config_service.changed.connect(self.load_configuration_data)
         # Load configuration data if backend is available
         app_config = self.config_service.get_app_config()
         if app_config:
-            QTimer.singleShot(0, self.load_configuration_data)
+            self.refresh_timer.start(0)
         else:
             self.show_no_config_message()
 
@@ -73,12 +78,19 @@ class BackupsPage(QWidget):
         self.table.verticalHeader().setVisible(False)
         layout.addWidget(self.table, 1)  # stretch factor 1
 
+        self.error_label = QLabel(self)
+        self.error_label.setWordWrap(True)
+        self.error_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.error_label.hide()
+        layout.addWidget(self.error_label)
+
         # Status label
         self.status_label = QLabel("Ready")
         self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.status_label.setProperty("value", "true")
         layout.addWidget(self.status_label)
 
+    @Slot()
     def load_configuration_data(self):
         """Load and display backup data from the configuration and backup service."""
         try:
@@ -88,6 +100,8 @@ class BackupsPage(QWidget):
                 return
 
             self.table.setRowCount(0)
+            self.error_label.hide()
+            self.table.show()
             self.backup_data = []
 
             # We'll gather backup info for each folder that has backup enabled
@@ -111,7 +125,7 @@ class BackupsPage(QWidget):
                         self.table.setItem(row, 3, age_item)
                         # Status (we don't have real status, so we'll show "Available" if backup exists)
                         status_item = QTableWidgetItem("Available")
-                        status_item.setForeground(colors.SUCCESS)
+                        status_item.setForeground(QBrush(QColor(colors.SUCCESS)))
                         self.table.setItem(row, 4, status_item)
                         # Actions placeholder
                         actions_layout = QHBoxLayout()
@@ -171,27 +185,15 @@ class BackupsPage(QWidget):
 
     def show_no_config_message(self):
         """Show a message when no configuration is available."""
-        self.table.setRowCount(0)
-        label = QLabel("No configuration available.\n"
-                       "Backup information cannot be displayed.")
-        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        label.setWordWrap(True)
-        # We'll replace the table with a label for simplicity
-        self.layout().replaceWidget(self.table, label)
-        self.table.hide()
-        self.table.deleteLater()
-        self.table = label  # Keep reference to avoid issues
+        self.show_error("No configuration available. Backup information cannot be displayed.")
 
     def show_error(self, message):
         """Show an error message."""
         self.table.setRowCount(0)
-        label = QLabel(f"Error:\n{message}")
-        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        label.setWordWrap(True)
-        self.layout().replaceWidget(self.table, label)
         self.table.hide()
-        self.table.deleteLater()
-        self.table = label
+        self.error_label.setText(message)
+        self.error_label.show()
+        self.status_label.setText(message)
 
     # For compatibility with the existing MainWindow, we keep the config_backend argument
     # even though we don't use it.

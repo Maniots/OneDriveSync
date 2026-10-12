@@ -126,12 +126,12 @@ class LogService:
             start_date = None
             end_date = None
         elif date_index == 1:  # Today
-            start_date = QDateTime(QDate.currentDate())
+            start_date = QDate.currentDate().startOfDay()
             end_date = now
         elif date_index == 2:  # Yesterday
             yesterday = QDate.currentDate().addDays(-1)
-            start_date = QDateTime(yesterday)
-            end_date = QDateTime(yesterday).addDays(1)
+            start_date = yesterday.startOfDay()
+            end_date = yesterday.addDays(1).startOfDay()
         elif date_index == 3:  # Last 7 Days
             start_date = now.addDays(-7)
             end_date = now
