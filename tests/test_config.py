@@ -93,9 +93,11 @@ def test_env_var_expansion(tmp_path: Path, base_config_dict: dict, monkeypatch) 
     config = ConfigManager(config_path).load()
 
     folder = config.folders[0]
-    assert "%APPDATA%" not in str(folder.local_path)
-    assert "%OneDrive%" not in str(folder.onedrive_path)
-    assert str(folder.local_path).endswith("EldenRing")
+    assert folder.local_path == base_config_dict["folders"][0]["local_path"]
+    assert folder.onedrive_path == base_config_dict["folders"][0]["onedrive_path"]
+    assert "%APPDATA%" not in str(folder.local_path_resolved)
+    assert "%OneDrive%" not in str(folder.onedrive_path_resolved)
+    assert str(folder.local_path_resolved).endswith("EldenRing")
 
 
 def test_dangerous_root_local_path_is_rejected(tmp_path: Path, base_config_dict: dict, monkeypatch) -> None:

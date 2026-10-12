@@ -1,106 +1,115 @@
-from PySide6.QtWidgets import QApplication
+"""Development UI entry point and single-instance activation."""
+
+import argparse
+import os
+import sys
+from pathlib import Path
+
+from PySide6.QtCore import QIODevice
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
-from PySide6.QtCore import QIODevice, Qt
+from PySide6.QtWidgets import QApplication
+
+from backend.services.configuration_service import ConfigurationService
 from .main_window import MainWindow
 from .themes.theme import get_dark_theme
-import sys
-import os
 
-# Windows mutex for single instance enforcement
+SERVER_NAME = "OneDrivePCSyncUIInstance"
+
 if sys.platform == "win32":
     import ctypes
     from ctypes import wintypes
 
-    kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
-    ERROR_ALREADY_EXISTS = 180
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.CreateMutexW.argtypes = [ctypes.c_void_p, wintypes.BOOL, wintypes.LPCWSTR]
+    kernel32.CreateMutexW.restype = wintypes.HANDLE
+    kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+    kernel32.CloseHandle.restype = wintypes.BOOL
+    ERROR_ALREADY_EXISTS = 183
 
     def create_ui_mutex(name: str) -> tuple[int, int]:
-        """Create a named mutex for UI single instance.
-        Returns (handle, last_error)."""
-        handle = kernel32.CreateMutexW(
-            None,  # default security attributes
-            False,  # initially not owned
-            name
-        )
-        if not handle:
-            return 0, ctypes.get_last_error()
-        return handle, ctypes.get_last_error()
+        handle = kernel32.CreateMutexW(None, False, name)
+        return handle or 0, ctypes.get_last_error()
 
     def release_ui_mutex(handle: int) -> None:
+        # Created without ownership: CloseHandle releases our reference.
         if handle:
-            kernel32.ReleaseMutex(handle)
             kernel32.CloseHandle(handle)
 
 
-def send_show_message() -> None:
-    """Send a 'show' message to the running UI instance via local socket."""
+def send_show_message(server_name: str = SERVER_NAME) -> bool:
     socket = QLocalSocket()
-    socket.connectToServer("OneDrivePCSyncUIInstance")
-    if socket.waitForConnected(500):
-        if socket.state() == QLocalSocket.ConnectedState:
-            socket.write(b"show")
-            socket.waitForBytesWritten()
-        socket.disconnectFromServer()
+    socket.connectToServer(server_name, QIODevice.OpenModeFlag.WriteOnly)
+    if not socket.waitForConnected(500):
+        return False
+    socket.write(b"show")
+    sent = socket.waitForBytesWritten(500)
+    socket.disconnectFromServer()
+    return sent
 
 
-def main() -> None:
-    # Skip single instance check in headless/offscreen mode (e.g., for testing)
-    if os.environ.get("QT_QPA_PLATFORM") == "offscreen":
-        print("[UI Single Instance] Skipping single instance check (offscreen mode).")
-        app = QApplication.instance()
-        if app is None:
-            app = QApplication(sys.argv)
-        app.setStyleSheet(get_dark_theme())
-        window = MainWindow()
-        window.show()
-        sys.exit(app.exec())
-        return
+def connect_activation_server(server: QLocalServer, window: MainWindow) -> None:
+    """Retain sockets until their message is read, then activate the window."""
+    def on_connection():
+        while server.hasPendingConnections():
+            socket = server.nextPendingConnection()
 
-    # --- UI Single Instance Enforcement ---
-    mutex_name = "Global\\OneDrivePCSyncUIMutex"
-    if sys.platform == "win32":
-        mutex_handle, last_error = create_ui_mutex(mutex_name)
-        if last_error == ERROR_ALREADY_EXISTS:
-            # Another instance is running, show it and exit
-            print(f"[UI Single Instance] Another instance is running (error {last_error}). Sending show message.")
-            send_show_message()
-            sys.exit(0)
-        print(f"[UI Single Instance] We are the first instance (mutex handle {mutex_handle}).")
-        # We own the mutex; keep the handle alive for the lifetime of the application
-        # (we'll store it in a global variable to prevent garbage collection)
-        global _ui_mutex_handle
-        _ui_mutex_handle = mutex_handle
-    else:
-        # On non-Windows, we fall back to the Qt local socket method (not expected in this project)
-        socket = QLocalSocket()
-        socket.connectToServer("OneDrivePCSyncUIInstance")
-        if socket.waitForConnected(500):
-            print("[UI Single Instance] Another instance is running (socket connected). Sending show message.")
-            send_show_message()
-            sys.exit(0)
-        socket.disconnectFromServer()
-        print("[UI Single Instance] We are the first instance (socket not connected).")
-        # We are the first instance; set up a server to listen for show messages
-        server = QLocalServer()
-        if not server.listen("OneDrivePCSyncUIInstance"):
-            # Should not happen, but if it does, we continue anyway
-            print("[UI Single Instance] Failed to listen for show messages.")
-        # Keep the server reference to prevent garbage collection
-        global _ui_server
-        _ui_server = server
+            def on_ready(s=socket, message=bytearray()):
+                message.extend(bytes(s.readAll()))
+                if len(message) >= 4:
+                    if message == b"show":
+                        window.show_and_activate()
+                    s.disconnectFromServer()
 
-    # --- Normal Application Startup ---
-    app = QApplication.instance()
-    if app is None:
-        app = QApplication(sys.argv)
+            socket.readyRead.connect(on_ready)
+            socket.disconnected.connect(socket.deleteLater)
+            if socket.bytesAvailable():
+                on_ready()
 
-    # Apply the dark theme stylesheet
+    server.newConnection.connect(on_connection)
+
+
+def main(argv=None) -> int:
+    parser = argparse.ArgumentParser(description="OneDrive PC Sync UI")
+    parser.add_argument("--config", type=Path, help="Configuration file (defaults to project config.json)")
+    args, qt_args = parser.parse_known_args(argv)
+    app = QApplication.instance() or QApplication([sys.argv[0], *qt_args])
     app.setStyleSheet(get_dark_theme())
+    offscreen = os.environ.get("QT_QPA_PLATFORM") == "offscreen"
+    mutex_handle = 0
+    server = None
+    try:
+        if not offscreen:
+            if sys.platform == "win32":
+                mutex_handle, last_error = create_ui_mutex("Global\\OneDrivePCSyncUIMutex")
+                if not mutex_handle:
+                    raise OSError(last_error, "Cannot acquire UI mutex")
+                if last_error == ERROR_ALREADY_EXISTS:
+                    # The first process may still be initializing its server.
+                    send_show_message()
+                    return 0
+            elif send_show_message():
+                return 0
+            server = QLocalServer(app)
+            if not server.listen(SERVER_NAME):
+                # Remove a stale endpoint only after verifying no process answers.
+                if send_show_message():
+                    return 0
+                QLocalServer.removeServer(SERVER_NAME)
+                if not server.listen(SERVER_NAME):
+                    raise RuntimeError(server.errorString())
 
-    window = MainWindow()
-    window.show()
-    sys.exit(app.exec())
+        window = MainWindow(configuration_service=ConfigurationService(args.config))
+        if server is not None:
+            connect_activation_server(server, window)
+        window.show()
+        return app.exec()
+    finally:
+        if server is not None:
+            server.close()
+            server.deleteLater()
+        if mutex_handle and sys.platform == "win32":
+            release_ui_mutex(mutex_handle)
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

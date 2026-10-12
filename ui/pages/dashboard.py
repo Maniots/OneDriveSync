@@ -9,7 +9,7 @@ from PySide6.QtWidgets import (
     QGridLayout,
     QPushButton,
 )
-from PySide6.QtCore import Qt, QTimer, QThread
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QPainter, QColor, QPen, QBrush
 from backend.services.configuration_service import ConfigurationService
 from backend.services.sync_service import SyncService
@@ -18,7 +18,8 @@ from backend.services.scheduler_service import SchedulerService
 from backend.services.monitor_service import MonitorService
 from backend.services.log_service import LogService
 from ..widgets.sync_chart import SyncChartWidget
-from ..workers.sync_worker import SyncWorker
+import time
+from datetime import datetime
 from ..themes import spacing
 
 
@@ -32,12 +33,18 @@ class DashboardPage(QWidget):
         self.monitor_service = monitor_service
         self.log_service = log_service
         self.chart_data = []  # For the sync chart
-        self.sync_worker = None
-        self.sync_thread = None
         self.elapsed_timer = QTimer(self)
         self.elapsed_timer.timeout.connect(self.update_elapsed_time)
         self.sync_start_time = 0
         self.setup_ui()
+        if isinstance(self.sync_service, SyncService):
+            self.sync_service.started.connect(self.on_sync_started)
+            self.sync_service.progress.connect(self.on_sync_progress)
+            self.sync_service.completed.connect(self.on_sync_completed)
+            self.sync_service.failed.connect(self.on_sync_failed)
+            self.sync_service.finished.connect(self.on_sync_finished)
+            self.sync_service.state_changed.connect(self.update_sync_controls)
+            self.update_sync_controls()
         # Timer for updating data (backup status, etc.)
         self.update_timer = QTimer(self)
         self.update_timer.timeout.connect(self.update_data)
@@ -172,69 +179,21 @@ class DashboardPage(QWidget):
         layout.addWidget(stats_frame)
 
     def start_startup_sync(self):
-        """Start a startup synchronization in a worker thread."""
-        # Disable buttons to prevent multiple concurrent syncs
-        self.startup_button.setEnabled(False)
-        self.shutdown_button.setEnabled(False)
-        self.status_label.setText("Starting...")
-
-        # Create worker and thread
-        self.sync_worker = SyncWorker(self.sync_service)
-        self.sync_thread = QThread()
-        self.sync_worker.moveToThread(self.sync_thread)
-
-        # Connect signals
-        self.sync_thread.started.connect(self.sync_worker.start_startup_sync)
-        self.sync_worker.started.connect(self.on_sync_started)
-        self.sync_worker.progress.connect(self.on_sync_progress)
-        self.sync_worker.completed.connect(self.on_sync_completed)
-        self.sync_worker.failed.connect(self.on_sync_failed)
-        # Clean up threads when finished
-        self.sync_worker.finished.connect(self.sync_thread.quit)
-        self.sync_worker.finished.connect(self.sync_worker.deleteLater)
-        self.sync_thread.finished.connect(self.sync_thread.deleteLater)
-
-        # Start the thread
-        self.sync_thread.start()
-
-        # Start the elapsed time timer
-        self.sync_start_time = 0
-        self.elapsed_time_label.setText("00:00:00")
-        self.elapsed_timer.start(1000)  # update every second
+        self.sync_service.request_sync("startup")
 
     def start_shutdown_sync(self):
-        """Start a shutdown synchronization in a worker thread."""
-        # Disable buttons to prevent multiple concurrent syncs
-        self.startup_button.setEnabled(False)
-        self.shutdown_button.setEnabled(False)
-        self.status_label.setText("Starting...")
+        self.sync_service.request_sync("shutdown")
 
-        # Create worker and thread
-        self.sync_worker = SyncWorker(self.sync_service)
-        self.sync_thread = QThread()
-        self.sync_worker.moveToThread(self.sync_thread)
-
-        # Connect signals
-        self.sync_thread.started.connect(self.sync_worker.start_shutdown_sync)
-        self.sync_worker.started.connect(self.on_sync_started)
-        self.sync_worker.progress.connect(self.on_sync_progress)
-        self.sync_worker.completed.connect(self.on_sync_completed)
-        self.sync_worker.failed.connect(self.on_sync_failed)
-        # Clean up threads when finished
-        self.sync_worker.finished.connect(self.sync_thread.quit)
-        self.sync_worker.finished.connect(self.sync_worker.deleteLater)
-        self.sync_thread.finished.connect(self.sync_thread.deleteLater)
-
-        # Start the thread
-        self.sync_thread.start()
-
-        # Start the elapsed time timer
-        self.sync_start_time = 0
-        self.elapsed_time_label.setText("00:00:00")
-        self.elapsed_timer.start(1000)  # update every second
+    def update_sync_controls(self):
+        available = not self.sync_service.is_syncing and not self.sync_service.is_paused
+        self.startup_button.setEnabled(available and self.sync_service.is_startup_sync_enabled())
+        self.shutdown_button.setEnabled(available and self.sync_service.is_shutdown_sync_enabled())
 
     def on_sync_started(self, operation: str):
         """Handle the sync started signal."""
+        self.sync_start_time = time.monotonic()
+        self.elapsed_time_label.setText("00:00:00")
+        self.elapsed_timer.start(1000)
         self.status_label.setText(f"{operation.capitalize()} synchronization in progress...")
         self.current_operation_label.setText(operation.capitalize())
         # Reset current folder
@@ -257,8 +216,11 @@ class DashboardPage(QWidget):
 
     def on_sync_completed(self, outcomes):
         """Handle the sync completed signal."""
-        self.on_sync_finished()
-        self.status_label.setText("Sync completed successfully")
+        failed_count = sum(1 for o in outcomes if not o.succeeded)
+        self.status_label.setText("Sync completed with errors" if failed_count else "Sync completed successfully")
+        self.last_sync_label.setText(datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+        self.chart_data.append(sum(1 for o in outcomes if o.succeeded))
+        self.chart_widget.set_data(list(range(len(self.chart_data))), self.chart_data)
         self.result_label.setText(f"Succeeded: {sum(1 for o in outcomes if o.succeeded)}, Failed: {sum(1 for o in outcomes if not o.succeeded)}")
         # Determine last successful and failed folder (by order in outcomes)
         last_successful = "None"
@@ -273,11 +235,10 @@ class DashboardPage(QWidget):
                 break
         self.last_successful_label.setText(last_successful)
         self.last_failed_label.setText(last_failed)
-        # Note: we don't have a timestamp, so we can't show when it happened
+
 
     def on_sync_failed(self, error_message: str):
         """Handle the sync failed signal."""
-        self.on_sync_finished()
         self.status_label.setText(f"Sync failed: {error_message}")
         self.result_label.setText("Failed")
         self.last_failed_label.setText("Error")
@@ -286,11 +247,11 @@ class DashboardPage(QWidget):
     def on_sync_finished(self):
         """Common cleanup after sync finishes (success or failed)."""
         # Re-enable buttons
-        self.startup_button.setEnabled(True)
-        self.shutdown_button.setEnabled(True)
+        self.update_elapsed_time()
+        self.update_sync_controls()
         # Stop the elapsed time timer
         self.elapsed_timer.stop()
-        # Note: worker and thread are cleaned up via deleteLater connections
+        # SyncService owns and disposes the background worker and thread.
 
     def update_elapsed_time(self):
         """Update the elapsed time label."""
@@ -298,8 +259,7 @@ class DashboardPage(QWidget):
             # If not started, show 00:00:00
             self.elapsed_time_label.setText("00:00:00")
             return
-        import time
-        elapsed_seconds = int(time.time() - self.sync_start_time)
+        elapsed_seconds = int(time.monotonic() - self.sync_start_time)
         hours = elapsed_seconds // 3600
         minutes = (elapsed_seconds % 3600) // 60
         seconds = elapsed_seconds % 60
@@ -308,19 +268,8 @@ class DashboardPage(QWidget):
     def update_data(self):
         """Update all dashboard data from the services."""
         try:
-            # Update sync status from sync service
-            # We don't have a direct method to get sync status, but we can check if sync is enabled and maybe last sync time from config?
-            # For now, we'll set a placeholder.
-            self.status_label.setText("Idle")
-
-            # Update last sync time from config service? Not directly available.
-            # We'll leave it as "Never" for now.
-
-            # Update next sync time from scheduler service? Not directly available.
-            # We'll leave it as "N/A".
-
-            # Update storage from config service? Not directly available.
-            # We'll leave it as "N/A".
+            if isinstance(self.sync_service, SyncService):
+                self.update_sync_controls()
 
             # Update backup status from backup service
             # We'll get the backup information for the first folder? Or we can show a summary.
@@ -341,13 +290,6 @@ class DashboardPage(QWidget):
                     self.backup_status_label.setText("No backups configured")
             else:
                 self.backup_status_label.setText("Configuration not available")
-
-            # Update the chart with some dummy data for now
-            # In a real implementation, we would get sync history from a service.
-            self.chart_data = [10, 20, 15, 30, 25]  # Placeholder
-            x = list(range(len(self.chart_data)))
-            y = self.chart_data
-            self.chart_widget.set_data(x, y)
 
         except Exception as e:
             # In case of error, we don't want to crash the dashboard

@@ -11,13 +11,13 @@
 #
 # graphifyy is used for code analysis and documentation generation.
 graphifyy
+pywin32; sys_platform == "win32"
 #
 # PySide6 is the primary UI framework.
 PySide6
 #
 # UI enhancements: icons, theme, and charts.
 qtawesome
-qdarktheme
 pyqtgraph
 #
 # All other dependencies (pathlib, dataclasses, typing, logging,

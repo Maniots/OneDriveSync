@@ -13,6 +13,8 @@ typed dataclasses defined in config.py.
 from __future__ import annotations
 
 import json
+import os
+import tempfile
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -296,8 +298,8 @@ class ConfigManager:
                 "id": folder.id,
                 "name": folder.name,
                 "enabled": folder.enabled,
-                "local_path": folder.local_path,
-                "onedrive_path": folder.onedrive_path,
+                "local_path": str(folder.local_path),
+                "onedrive_path": str(folder.onedrive_path),
                 "minimum_sync_percentage": folder.minimum_sync_percentage,
                 "verify_after_sync": folder.verify_after_sync,
                 "create_destination": folder.create_destination,
@@ -305,7 +307,7 @@ class ConfigManager:
             if folder.backup is not None:
                 folder_raw["backup"] = {
                     "enabled": folder.backup.enabled,
-                    "backup_path": folder.backup.backup_path,
+                    "backup_path": str(folder.backup.backup_path),
                     "retention_days": folder.backup.retention_days,
                 }
             else:
@@ -315,7 +317,7 @@ class ConfigManager:
         return raw
 
     def save(self, app_config: AppConfig) -> None:
-        """Save the given AppConfig to the configuration file as JSON.
+        """Validate and atomically save the given AppConfig as JSON.
 
         This method converts the AppConfig to a raw dictionary (with original
         strings, including environment variable references) and writes it to
@@ -328,13 +330,24 @@ class ConfigManager:
             ConfigurationError: If the file cannot be written.
         """
         raw_dict = self._app_config_to_raw_dict(app_config)
+        temporary_path = None
         try:
-            with self._config_path.open("w", encoding="utf-8") as f:
+            with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=self._config_path.parent,
+                                             prefix=f".{self._config_path.name}.", suffix=".tmp", delete=False) as f:
+                temporary_path = Path(f.name)
                 json.dump(raw_dict, f, indent=2)
-        except OSError as exc:
+                f.flush()
+                os.fsync(f.fileno())
+            # Validate with the same rules as loading before touching the original.
+            ConfigManager(temporary_path).load()
+            os.replace(temporary_path, self._config_path)
+        except (OSError, TypeError, ValueError) as exc:
             raise ConfigurationError(
                 f"Failed to write configuration file '{self._config_path}': {exc}"
             ) from exc
+        finally:
+            if temporary_path is not None:
+                temporary_path.unlink(missing_ok=True)
 
     def get_shutdown_monitor_status(self) -> dict:
         """Return the shutdown monitor status as a dictionary.

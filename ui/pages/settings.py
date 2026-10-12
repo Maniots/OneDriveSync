@@ -389,7 +389,7 @@ class SettingsPage(QWidget):
                     fat_file_times=fat_file_times,
                     monitor_mode=monitor_mode,
                 ),
-                folders=self._original_app_config.folders,
+                folders=self.config_service.get_app_config().folders,
             )
 
             # Save the new configuration

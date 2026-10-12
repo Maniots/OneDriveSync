@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QMessageBox,
 )
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import Qt, QTimer, QSignalBlocker
 from ..themes import spacing
 from typing import Optional, Dict
 from backend.services.configuration_service import ConfigurationService
@@ -27,6 +27,10 @@ class SchedulerPage(QWidget):
         self.scheduler_data: Optional[Dict] = None
         self.monitor_status: Optional[Dict] = None
         self.setup_ui()
+        self.error_label = QLabel(self)
+        self.error_label.setWordWrap(True)
+        self.error_label.hide()
+        self.layout().insertWidget(0, self.error_label)
         # Timer for updating shutdown monitor status
         self.shutdown_timer = QTimer(self)
         self.shutdown_timer.timeout.connect(self.update_shutdown_monitor_status)
@@ -262,6 +266,7 @@ class SchedulerPage(QWidget):
                 self.show_error("Scheduler information not available")
                 return
 
+            self.error_label.hide()
             self.scheduler_data = scheduler_summary
             self.update_ui_from_scheduler_data()
 
@@ -280,9 +285,10 @@ class SchedulerPage(QWidget):
             self.startup_delay_label.setText(startup_info.get("delay", "N/A"))
             self.startup_direction_label.setText(startup_info.get("direction", "N/A"))
             enabled_str = startup_info.get("enabled", "Disabled")
-            self.startup_enabled_checkbox.setChecked(enabled_str == "Enabled")
-            self.startup_last_run_label.setText(startup_info.get("last_run_time", "N/A"))
-            self.startup_next_run_label.setText(startup_info.get("next_run_time", "N/A"))
+            self._set_checked(self.startup_enabled_checkbox, enabled_str == "Enabled")
+            self.startup_enabled_checkbox.setEnabled(startup_info.get("exists", False))
+            self.startup_last_run_label.setText(startup_info.get("last_run_time") or "N/A")
+            self.startup_next_run_label.setText(startup_info.get("next_run_time") or "N/A")
 
         # Periodic Sync
         periodic_info = self.scheduler_data.get("periodic")
@@ -290,9 +296,10 @@ class SchedulerPage(QWidget):
             self.periodic_interval_label.setText(periodic_info.get("interval", "N/A"))
             self.periodic_direction_label.setText(periodic_info.get("direction", "N/A"))
             enabled_str = periodic_info.get("enabled", "Disabled")
-            self.periodic_enabled_checkbox.setChecked(enabled_str == "Enabled")
-            self.periodic_last_run_label.setText(periodic_info.get("last_run_time", "N/A"))
-            self.periodic_next_run_label.setText(periodic_info.get("next_run_time", "N/A"))
+            self._set_checked(self.periodic_enabled_checkbox, enabled_str == "Enabled")
+            self.periodic_enabled_checkbox.setEnabled(periodic_info.get("exists", False))
+            self.periodic_last_run_label.setText(periodic_info.get("last_run_time") or "N/A")
+            self.periodic_next_run_label.setText(periodic_info.get("next_run_time") or "N/A")
 
         # Workstation Lock
         workstation_info = self.scheduler_data.get("workstation_lock")
@@ -300,9 +307,10 @@ class SchedulerPage(QWidget):
             self.workstation_trigger_label.setText(workstation_info.get("trigger", "N/A"))
             self.workstation_direction_label.setText(workstation_info.get("direction", "N/A"))
             enabled_str = workstation_info.get("enabled", "Disabled")
-            self.workstation_enabled_checkbox.setChecked(enabled_str == "Enabled")
-            self.workstation_last_run_label.setText(workstation_info.get("last_run_time", "N/A"))
-            self.workstation_next_run_label.setText(workstation_info.get("next_run_time", "N/A"))
+            self._set_checked(self.workstation_enabled_checkbox, enabled_str == "Enabled")
+            self.workstation_enabled_checkbox.setEnabled(workstation_info.get("exists", False))
+            self.workstation_last_run_label.setText(workstation_info.get("last_run_time") or "N/A")
+            self.workstation_next_run_label.setText(workstation_info.get("next_run_time") or "N/A")
 
     def update_shutdown_monitor_status(self):
         """Update the shutdown monitor status labels using the monitor service."""
@@ -384,10 +392,10 @@ class SchedulerPage(QWidget):
                     f"Failed to {'enable' if enabled else 'disable'} {task_name}.",
                     QMessageBox.StandardButton.Ok
                 )
-                self.startup_enabled_checkbox.setChecked(not enabled)
+                self._set_checked(self.startup_enabled_checkbox, not enabled)
         else:
             # User cancelled, revert checkbox
-            self.startup_enabled_checkbox.setChecked(not enabled)
+            self._set_checked(self.startup_enabled_checkbox, not enabled)
 
     def on_periodic_enabled_changed(self, state):
         """Handle periodic enabled checkbox state change."""
@@ -419,10 +427,10 @@ class SchedulerPage(QWidget):
                     f"Failed to {'enable' if enabled else 'disable'} {task_name}.",
                     QMessageBox.StandardButton.Ok
                 )
-                self.periodic_enabled_checkbox.setChecked(not enabled)
+                self._set_checked(self.periodic_enabled_checkbox, not enabled)
         else:
             # User cancelled, revert checkbox
-            self.periodic_enabled_checkbox.setChecked(not enabled)
+            self._set_checked(self.periodic_enabled_checkbox, not enabled)
 
     def on_workstation_enabled_changed(self, state):
         """Handle workstation lock enabled checkbox state change."""
@@ -454,32 +462,21 @@ class SchedulerPage(QWidget):
                     f"Failed to {'enable' if enabled else 'disable'} {task_name}.",
                     QMessageBox.StandardButton.Ok
                 )
-                self.workstation_enabled_checkbox.setChecked(not enabled)
+                self._set_checked(self.workstation_enabled_checkbox, not enabled)
         else:
             # User cancelled, revert checkbox
-            self.workstation_enabled_checkbox.setChecked(not enabled)
+            self._set_checked(self.workstation_enabled_checkbox, not enabled)
+
+    @staticmethod
+    def _set_checked(checkbox, checked):
+        # Loading or reverting state must never trigger a scheduler write/dialog.
+        with QSignalBlocker(checkbox):
+            checkbox.setChecked(checked)
 
     def show_no_config_message(self):
-        """Show a message when no configuration service is available."""
-        self.clear_layout()
-        label = QLabel("Configuration service not available.\n"
-                       "Scheduler information cannot be displayed.")
-        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        label.setWordWrap(True)
-        self.layout().addWidget(label)
+        self.show_error("Configuration service not available.")
 
     def show_error(self, message):
-        """Show an error state."""
-        self.clear_layout()
-        label = QLabel(f"Error:\n{message}")
-        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        label.setWordWrap(True)
-        self.layout().addWidget(label)
-
-    def clear_layout(self):
-        """Clear the layout."""
-        while self.layout().count():
-            item = self.layout().takeAt(0)
-            widget = item.widget()
-            if widget:
-                widget.deleteLater()
+        """Keep monitor widgets alive so timer updates and recovery remain safe."""
+        self.error_label.setText(f"Error: {message}")
+        self.error_label.show()

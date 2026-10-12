@@ -9,10 +9,13 @@ from typing import Optional
 from src.config_manager import ConfigManager
 from src.config import AppConfig
 from pathlib import Path
+from PySide6.QtCore import QObject, Signal
 
 
-class ConfigurationService:
+class ConfigurationService(QObject):
     """Service for managing application configuration."""
+
+    changed = Signal(object)
 
     def __init__(self, config_path: Optional[Path] = None):
         """
@@ -22,6 +25,7 @@ class ConfigurationService:
             config_path: Path to the configuration file.
                          If None, uses the default location.
         """
+        super().__init__()
         if config_path is None:
             # Default to config.json in the project root
             # We assume the project root is two levels up from this file:
@@ -64,7 +68,13 @@ class ConfigurationService:
         self._config_manager.save(app_config)
         # Update the cached configuration to the saved one.
         self._app_config = app_config
+        self.changed.emit(app_config)
 
     def reload(self) -> None:
         """Reload the configuration from disk."""
         self._load_config()
+        self.changed.emit(self._app_config)
+
+    def get_shutdown_monitor_status(self) -> dict:
+        """Read the monitor status through the core configuration manager."""
+        return self._config_manager.get_shutdown_monitor_status()

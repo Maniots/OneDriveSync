@@ -56,7 +56,7 @@ class SchedulerService:
                 stderr=subprocess.STDOUT,
                 text=True,
                 encoding="utf-8",
-                creationflags=subprocess.CREATE_NO_WINDOW  # Hide console window on Windows
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)  # Hide console window on Windows
             )
         except subprocess.CalledProcessError as e:
             # If the task is not found, schtasks returns error code 1
@@ -321,7 +321,7 @@ class SchedulerService:
                 ["schtasks", "/change", "/tn", full_task_path, flag],
                 capture_output=True,
                 text=True,
-                creationflags=subprocess.CREATE_NO_WINDOW
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)
             )
             if result.returncode == 0:
                 # Log success

@@ -19,36 +19,7 @@ from ui.widgets.folder_card import FolderCard
 from ui.widgets.sync_chart import SyncChartWidget
 from ui.widgets.add_folder_wizard import AddFolderWizard
 
-# Mock services for testing
-class MockConfigurationService:
-    def get_app_config(self):
-        return None
-
-class MockSyncService:
-    pass
-
-class MockBackupService:
-    pass
-
-class MockSchedulerService:
-    pass
-
-class MockMonitorService:
-    pass
-
-class MockLogService:
-    pass
-
-def create_services():
-    """Create mock services for testing."""
-    return (
-        MockConfigurationService(),
-        MockSyncService(),
-        MockBackupService(),
-        MockSchedulerService(),
-        MockMonitorService(),
-        MockLogService()
-    )
+pytestmark = pytest.mark.usefixtures("qapp")
 
 
 def create_services():

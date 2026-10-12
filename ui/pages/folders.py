@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
     QSizePolicy,
     QFrame,
     QSpacerItem,
+    QMessageBox,
 )
 from PySide6.QtCore import Qt, Signal, QTimer
 from PySide6.QtGui import QFont
@@ -19,7 +20,9 @@ from ..themes import spacing
 from ..resources.icons import get_icon
 from ..models.folder_model import FolderModel
 from backend.services.configuration_service import ConfigurationService
-from src.config import AppConfig
+from src.config import AppConfig, BackupSettings, FolderSyncConfig
+from dataclasses import asdict, replace
+from ..widgets.add_folder_wizard import AddFolderWizard
 
 
 class FoldersPage(QWidget):
@@ -29,11 +32,19 @@ class FoldersPage(QWidget):
     search_text_changed = Signal(str)
     filter_changed = Signal(str)
 
-    def __init__(self, config_service: ConfigurationService, parent=None):
+    def __init__(self, config_service: ConfigurationService, parent=None, sync_service=None):
         super().__init__(parent)
         self.config_service = config_service
+        self.sync_service = sync_service
+        self._wizard = None
         self.folders = []  # List of FolderModel
         self.setup_ui()
+        self.add_folder_requested.connect(self.open_add_folder_wizard)
+        self.refresh_requested.connect(self.refresh_configuration)
+        self.search_text_changed.connect(lambda text: self.display_folders())
+        self.filter_changed.connect(lambda text: self.display_folders())
+        if hasattr(self.config_service, "changed"):
+            self.config_service.changed.connect(self.load_configuration_data)
         # Load data from configuration if backend is available, otherwise use mock data
         app_config = self.config_service.get_app_config()
         if app_config:
@@ -109,6 +120,10 @@ class FoldersPage(QWidget):
         try:
             self.clear_folders()
 
+            if app_config is None:
+                self.folders = []
+                self.show_no_config_message()
+                return
             # Convert each folder config to a UI model
             folder_models = []
             for folder_config in app_config.folders:
@@ -172,7 +187,12 @@ class FoldersPage(QWidget):
         self.clear_folders()
 
         # Add folder cards
-        for i, folder_model in enumerate(self.folders):
+        search = self.search_input.text().casefold()
+        selected_filter = self.filter_combo.currentText()
+        visible_folders = [folder for folder in self.folders
+                           if search in f"{folder.name} {folder.local_path} {folder.onedrive_path}".casefold()
+                           and (selected_filter == "All" or folder.enabled == (selected_filter == "Enabled"))]
+        for i, folder_model in enumerate(visible_folders):
             # Convert FolderModel to dict for FolderCard
             folder_data = {
                 'icon': 'folder',
@@ -188,6 +208,7 @@ class FoldersPage(QWidget):
             }
             card = FolderCard(folder_data)
             # Connect card signals to page signals (if needed)
+            card.sync_now_clicked.connect(lambda f_id=folder_model.id: self.on_folder_sync_requested(f_id))
             card.edit_clicked.connect(lambda f_id=folder_model.id: self.on_folder_edit_requested(f_id))
             card.enabled_toggled.connect(lambda enabled, f_id=folder_model.id: self.on_folder_toggle_requested(f_id, enabled))
             row = i // 3  # 3 columns
@@ -233,8 +254,68 @@ class FoldersPage(QWidget):
         self.filter_changed.emit(text)
 
     # Folder card signal handlers (can be overridden by parent)
+    def refresh_configuration(self):
+        self.config_service.reload()
+        self.load_configuration_data(self.config_service.get_app_config())
+
+    def open_add_folder_wizard(self):
+        self._open_wizard()
+
     def on_folder_edit_requested(self, folder_id):
-        pass  # To be implemented by parent if needed
+        config = self.config_service.get_app_config()
+        folder = next((f for f in config.folders if f.id == folder_id), None)
+        if folder is None:
+            return
+        data = asdict(folder)
+        if folder.backup is not None:
+            data.update(backup_enabled=folder.backup.enabled,
+                        backup_path=str(folder.backup.backup_path),
+                        backup_retention_days=folder.backup.retention_days)
+        data["local_path"] = str(folder.local_path)
+        data["onedrive_path"] = str(folder.onedrive_path)
+        self._open_wizard(data, folder_id)
+
+    def _open_wizard(self, data=None, original_id=None):
+        self._wizard = AddFolderWizard(self, folder_data=data)
+        self._wizard.folderDataCollected.connect(lambda values: self.save_folder_data(values, original_id))
+        self._wizard.open()
+
+    def save_folder_data(self, data, original_id=None):
+        """Apply a wizard result through validated, atomic configuration saving."""
+        try:
+            config = self.config_service.get_app_config()
+            backup = None
+            if data.get("backup_enabled", False):
+                backup = BackupSettings(enabled=True, backup_path=data["backup_path"],
+                                        retention_days=data["backup_retention_days"])
+            folder = FolderSyncConfig(
+                id=data["id"], name=data["name"], enabled=data.get("enabled", True),
+                local_path=data["local_path"], onedrive_path=data["onedrive_path"],
+                minimum_sync_percentage=data.get("minimum_sync_percentage", 80),
+                verify_after_sync=data.get("verify_after_sync", True),
+                create_destination=data.get("create_destination", True), backup=backup,
+            )
+            if original_id is None:
+                folders = [*config.folders, folder]
+            else:
+                if not any(f.id == original_id for f in config.folders):
+                    raise ValueError("The folder being edited no longer exists")
+                folders = [folder if f.id == original_id else f for f in config.folders]
+            self.config_service.save(replace(config, folders=folders))
+            self.status_label.setText("Folder saved successfully")
+        except Exception as exc:
+            QMessageBox.warning(self, "Cannot Save Folder", str(exc))
 
     def on_folder_toggle_requested(self, folder_id, enabled):
-        pass  # To be implemented by parent if needed
+        try:
+            config = self.config_service.get_app_config()
+            folders = [replace(folder, enabled=enabled) if folder.id == folder_id else folder
+                       for folder in config.folders]
+            self.config_service.save(replace(config, folders=folders))
+        except Exception as exc:
+            QMessageBox.warning(self, "Cannot Update Folder", str(exc))
+            self.load_configuration_data(self.config_service.get_app_config())
+
+    def on_folder_sync_requested(self, folder_id):
+        if self.sync_service is not None:
+            self.sync_service.request_sync("shutdown", folder_id=folder_id)

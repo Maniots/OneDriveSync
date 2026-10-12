@@ -96,7 +96,8 @@ class BackupSettings:
     replaces good OneDrive data with something worse.
 
     backup_path is stored as an *original string* (with possible
-    environment variables) by the time this object is constructed.
+    environment variables) when loaded from JSON; Path inputs from Python
+    callers are also supported.
     Resolution to absolute Path happens when needed via the
     backup_path_resolved property.
     Backups are never taken before DOWNLOAD operations, since those
@@ -104,7 +105,7 @@ class BackupSettings:
     """
 
     enabled: bool
-    backup_path: str
+    backup_path: str | Path
     retention_days: int
 
     @property
@@ -117,8 +118,8 @@ class BackupSettings:
 class FolderSyncConfig:
     """Configuration for a single folder synchronization pair.
 
-    local_path and onedrive_path are stored as *original strings* (with
-    possible environment variables) by the time this object is constructed.
+    JSON paths are preserved as original strings with environment variables.
+    Python callers may also supply Path objects for backward compatibility.
     Resolution to absolute Paths happens when needed via the
     local_path_resolved and onedrive_path_resolved properties.
     """
@@ -126,8 +127,8 @@ class FolderSyncConfig:
     id: str
     name: str
     enabled: bool
-    local_path: str
-    onedrive_path: str
+    local_path: str | Path
+    onedrive_path: str | Path
     minimum_sync_percentage: float
     verify_after_sync: bool
     create_destination: bool

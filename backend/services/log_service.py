@@ -33,7 +33,7 @@ class LogService:
         # Pre-compile the regex for parsing log lines
         # Expected format: "%Y-%m-%d %H:%M:%S | %(levelname)-8s | %(name)s | %(message)s"
         self._log_regex = re.compile(
-            r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) \| (\w+) \| (.+?) \| (.+)$"
+            r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) \| (\w+)\s*\| (.+?) \| (.+)$"
         )
 
     def _parse_log_line(self, line: str) -> Optional[Tuple[QDateTime, str, str]]:

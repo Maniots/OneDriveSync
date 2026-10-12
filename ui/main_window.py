@@ -47,9 +47,12 @@ class MainWindow(QMainWindow):
         self.monitor_service = monitor_service if monitor_service is not None else MonitorService(self.configuration_service)
         self.log_service = log_service if log_service is not None else LogService()
         self.config_error = None
+        self._exit_requested = False
         self.setup_ui()
         self.load_services()
         self.create_tray_icon()
+        if isinstance(self.sync_service, SyncService):
+            QApplication.instance().aboutToQuit.connect(self.sync_service.wait_for_finished)
 
     def setup_ui(self):
         # Central widget
@@ -144,10 +147,13 @@ class MainWindow(QMainWindow):
         self.tray_menu.addAction(self.exit_action)
 
         self.tray_icon.setContextMenu(self.tray_menu)
-        self.tray_icon.show()
+        if QSystemTrayIcon.isSystemTrayAvailable():
+            self.tray_icon.show()
+        self.tray_icon.activated.connect(self.on_tray_activated)
 
-        # Pause state
-        self.is_paused = False
+        if isinstance(self.sync_service, SyncService):
+            self.sync_service.state_changed.connect(self.update_sync_actions)
+            self.update_sync_actions()
 
     def toggle_window(self):
         """Show or hide the main window."""
@@ -158,27 +164,29 @@ class MainWindow(QMainWindow):
             self.show()
             self.toggle_window_action.setText("Hide")
 
+    def on_tray_activated(self, reason):
+        if reason in (QSystemTrayIcon.ActivationReason.Trigger, QSystemTrayIcon.ActivationReason.DoubleClick):
+            self.show_and_activate()
+
+    def show_and_activate(self):
+        self.showNormal()
+        self.raise_()
+        self.activateWindow()
+
+    def update_sync_actions(self):
+        service = self.sync_service
+        self.sync_now_action.setEnabled(
+            not service.is_syncing and not service.is_paused and service.is_shutdown_sync_enabled()
+        )
+        self.pause_resume_action.setText("Resume UI Sync" if service.is_paused else "Pause UI Sync")
+        self.pause_resume_action.setToolTip("Pauses new UI syncs; scheduled Windows tasks continue independently.")
+
     def sync_now(self):
-        """Trigger a synchronization from the tray menu."""
-        if self.is_paused:
-            self.tray_icon.showMessage("OneDrive PC Sync", "Sync is paused. Resume to allow sync.", QSystemTrayIcon.MessageIcon.Information, 2000)
-            return
-        # Determine which sync to run based on current time? We'll just run shutdown sync for now.
-        # Alternatively, we could check if shutdown sync is enabled and run it.
-        if self.sync_service and self.sync_service.is_shutdown_sync_enabled():
-            self.sync_service.start_shutdown_sync()
-        else:
-            self.tray_icon.showMessage("OneDrive PC Sync", "Shutdown sync is not enabled or service not available.", QSystemTrayIcon.MessageIcon.Warning, 2000)
+        """Use the same background coordinator as the dashboard."""
+        self.sync_service.request_sync("shutdown")
 
     def toggle_pause_resume(self):
-        """Toggle pause/resume state."""
-        self.is_paused = not self.is_paused
-        if self.is_paused:
-            self.pause_resume_action.setText("Resume")
-            self.tray_icon.showMessage("OneDrive PC Sync", "Sync paused.", QSystemTrayIcon.MessageIcon.Information, 2000)
-        else:
-            self.pause_resume_action.setText("Pause")
-            self.tray_icon.showMessage("OneDrive PC Sync", "Sync resumed.", QSystemTrayIcon.MessageIcon.Information, 2000)
+        self.sync_service.set_paused(not self.sync_service.is_paused)
 
     def open_settings(self):
         """Open the settings page."""
@@ -195,11 +203,15 @@ class MainWindow(QMainWindow):
 
     def exit_application(self):
         """Exit the application."""
+        if getattr(self.sync_service, "is_syncing", False):
+            self._exit_requested = True
+            self.status_bar.showMessage("Finishing synchronization before exit...")
+            return
         QApplication.instance().quit()
 
     def closeEvent(self, event):
         """Override close event to hide to tray instead of closing."""
-        if self.tray_icon.isVisible():
+        if QSystemTrayIcon.isSystemTrayAvailable() and self.tray_icon.isVisible():
             self.hide()
             event.ignore()
             self.tray_icon.showMessage(
@@ -209,8 +221,11 @@ class MainWindow(QMainWindow):
                 2000,
             )
         else:
-            # If tray icon not visible (e.g., failed to create), close normally
-            event.accept()
+            if getattr(self.sync_service, "is_syncing", False):
+                event.ignore()
+                self.exit_application()
+            else:
+                event.accept()
 
     def on_sync_started(self, operation: str):
         """Handle sync started signal from service."""
@@ -234,8 +249,9 @@ class MainWindow(QMainWindow):
 
     def on_sync_finished(self):
         """Handle sync finished signal from service."""
-        # Keep the success/error icon until next sync starts.
-        pass
+        # The service emits finished only after its thread has stopped.
+        if self._exit_requested:
+            self.exit_application()
 
 
     def add_pages(self):
@@ -257,7 +273,8 @@ class MainWindow(QMainWindow):
                 log_service=self.log_service
             ),
             "Folders": lambda: FoldersPage(
-                config_service=self.configuration_service
+                config_service=self.configuration_service,
+                sync_service=self.sync_service
             ),
             "Backups": lambda: BackupsPage(
                 config_service=self.configuration_service,

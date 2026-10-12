@@ -15,6 +15,9 @@ from PySide6.QtWidgets import (
     QSizePolicy,
 )
 from PySide6.QtCore import Qt, Signal
+import ntpath
+import os
+from src.utils import expand_env_vars
 from PySide6.QtGui import QFont
 from ..themes import spacing
 from ..resources.icons import get_icon
@@ -45,6 +48,11 @@ class AddFolderWizard(QWizard):
         self.page_safety = SafetyPage(self)
         self.page_backup = BackupPage(self)
         self.page_review = ReviewPage(self)
+
+        # Each page owns its editing defaults.
+        for page in (self.page_basic_info, self.page_local_folder, self.page_onedrive_folder,
+                     self.page_safety, self.page_backup):
+            page.folder_data = self.folder_data
 
         # Add pages
         self.addPage(self.page_basic_info)
@@ -134,23 +142,18 @@ class BasicInfoPage(QWizardPage):
 
         if not id_text:
             self.id_edit.setToolTip("Please enter an ID")
-            self.setField("id*", False)
             return False
 
         if not name_text:
             self.name_edit.setToolTip("Please enter a name")
-            self.setField("name*", False)
             return False
 
         # Basic ID validation: alphanumeric and underscores only
         if not all(c.isalnum() or c == '_' for c in id_text):
             self.id_edit.setToolTip("ID can only contain letters, numbers, and underscores")
-            self.setField("id*", False)
             return False
 
         self.id_edit.setToolTip("Unique identifier for the folder (letters, numbers, underscores)")
-        self.setField("id*", True)
-        self.setField("name*", True)
         return True
 
     def get_data(self):
@@ -233,26 +236,22 @@ class LocalFolderPage(QWizardPage):
 
         if not path_text:
             self.path_edit.setToolTip("Please enter a local folder path")
-            self.setField("local_path*", False)
             self.hint_label.setText("Please select an existing local folder")
             return False
 
         # Check if path exists (basic validation)
         import os
-        if not os.path.exists(path_text):
+        if not os.path.exists(expand_env_vars(path_text)):
             self.path_edit.setToolTip("The specified path does not exist")
-            self.setField("local_path*", False)
             self.hint_label.setText("Please select an existing local folder")
             return False
 
-        if not os.path.isdir(path_text):
+        if not os.path.isdir(expand_env_vars(path_text)):
             self.path_edit.setToolTip("The specified path is not a folder")
-            self.setField("local_path*", False)
             self.hint_label.setText("Please select an existing local folder")
             return False
 
         self.path_edit.setToolTip("Full path to the local folder")
-        self.setField("local_path*", True)
         self.hint_label.setText("Local folder path is valid")
         return True
 
@@ -336,35 +335,32 @@ class OneDriveFolderPage(QWizardPage):
 
         if not path_text:
             self.path_edit.setToolTip("Please enter a OneDrive folder path")
-            self.setField("onedrive_path*", False)
             self.hint_label.setText("Please enter a valid OneDrive relative path")
             return False
 
         # Basic validation: non-empty and reasonable format
         if len(path_text) < 1:
             self.path_edit.setToolTip("OneDrive path cannot be empty")
-            self.setField("onedrive_path*", False)
             self.hint_label.setText("Please enter a valid OneDrive relative path")
             return False
 
         # Check for invalid characters (basic)
-        invalid_chars = ['<', '>', ':', '"', '|', '?', '*']
-        if any(c in path_text for c in invalid_chars):
+        invalid_chars = ['<', '>', '"', '|', '?', '*']
+        if any(c in path_text for c in invalid_chars) or ":" in ntpath.splitdrive(path_text)[1]:
             self.path_edit.setToolTip("OneDrive path contains invalid characters")
-            self.setField("onedrive_path*", False)
             self.hint_label.setText("Please enter a valid OneDrive relative path")
             return False
 
         self.path_edit.setToolTip("Path relative to OneDrive root")
-        self.setField("onedrive_path*", True)
         self.hint_label.setText("OneDrive path is valid")
         return True
 
     def get_data(self):
         """Get data from this page."""
-        return {
-            "onedrive_path": self.path_edit.text().strip(),
-        }
+        path = self.path_edit.text().strip()
+        if not (path.startswith(("%", "$", "~")) or os.path.isabs(expand_env_vars(path)) or ntpath.isabs(path)):
+            path = "%OneDrive%/" + path
+        return {"onedrive_path": path}
 
     def initializePage(self):
         """Initialize page with existing data if editing."""
@@ -553,8 +549,8 @@ class BackupPage(QWizardPage):
                 return False
 
             # Basic validation for backup path
-            invalid_chars = ['<', '>', ':', '"', '|', '?', '*']
-            if any(c in backup_path for c in invalid_chars):
+            invalid_chars = ['<', '>', '"', '|', '?', '*']
+            if any(c in backup_path for c in invalid_chars) or ":" in ntpath.splitdrive(backup_path)[1]:
                 self.backup_path_edit.setToolTip("Backup path contains invalid characters")
                 return False
 

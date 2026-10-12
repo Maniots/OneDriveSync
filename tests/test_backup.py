@@ -143,7 +143,7 @@ def test_backup_path_inside_onedrive_is_accepted(tmp_path: Path, monkeypatch: py
 
     assert folder.backup is not None
     assert folder.backup.enabled is True
-    assert is_under_onedrive_root(folder.backup.backup_path)
+    assert is_under_onedrive_root(folder.backup.backup_path_resolved)
 
 
 def test_backup_missing_backup_path_is_rejected(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

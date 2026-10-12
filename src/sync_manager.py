@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional
+from typing import Callable, List, Optional
 
 from .backup_manager import BackupManager
 from .config import AppConfig, FolderSyncConfig, SyncDirection
@@ -57,7 +57,7 @@ class SyncManager:
         # Track the current sync mode for logging context in copy_engine.
         self._mode: str = "unknown"
 
-    def run_startup_sync(self) -> List[FolderSyncOutcome]:
+    def run_startup_sync(self, progress_callback: Optional[Callable[[int, str], None]] = None) -> List[FolderSyncOutcome]:
         """Run the configured startup synchronization (typically download)."""
         self._mode = "startup"
         trigger = self._config.sync.startup
@@ -65,9 +65,9 @@ class SyncManager:
             logger.info("Startup sync is disabled in configuration. Skipping.")
             return []
         logger.info("=== Starting STARTUP sync (direction=%s) ===", trigger.direction.value)
-        return self._run_all_folders(trigger.direction)
+        return self._run_all_folders(trigger.direction, progress_callback)
 
-    def run_shutdown_sync(self) -> List[FolderSyncOutcome]:
+    def run_shutdown_sync(self, progress_callback: Optional[Callable[[int, str], None]] = None) -> List[FolderSyncOutcome]:
         """Run the configured shutdown synchronization (typically upload)."""
         self._mode = "shutdown"
         trigger = self._config.sync.shutdown
@@ -75,12 +75,15 @@ class SyncManager:
             logger.info("Shutdown sync is disabled in configuration. Skipping.")
             return []
         logger.info("=== Starting SHUTDOWN sync (direction=%s) ===", trigger.direction.value)
-        return self._run_all_folders(trigger.direction)
+        return self._run_all_folders(trigger.direction, progress_callback)
 
-    def _run_all_folders(self, direction: SyncDirection) -> List[FolderSyncOutcome]:
+    def _run_all_folders(self, direction: SyncDirection, progress_callback: Optional[Callable[[int, str], None]] = None) -> List[FolderSyncOutcome]:
         outcomes: List[FolderSyncOutcome] = []
 
-        for folder in self._config.enabled_folders():
+        folders = self._config.enabled_folders()
+        for index, folder in enumerate(folders):
+            if progress_callback is not None:
+                progress_callback(int(index / len(folders) * 100), f"Processing folder {folder.name} ({index + 1}/{len(folders)})")
             # Each folder is fully independent: an error in one must never
             # prevent the others from being processed.
             try:
@@ -117,6 +120,9 @@ class SyncManager:
                         message=f"Unexpected error: {exc}",
                     )
                 )
+
+            if progress_callback is not None:
+                progress_callback(int((index + 1) / len(folders) * 100), f"Processed folder {folder.name} ({index + 1}/{len(folders)})")
 
         self._log_summary(outcomes)
         return outcomes
@@ -180,8 +186,8 @@ class SyncManager:
         UPLOAD:   Local -> OneDrive
         """
         if direction == SyncDirection.DOWNLOAD:
-            return folder.onedrive_path, folder.local_path
-        return folder.local_path, folder.onedrive_path
+            return folder.onedrive_path_resolved, folder.local_path_resolved
+        return folder.local_path_resolved, folder.onedrive_path_resolved
 
     def _validate_paths(
         self, folder: FolderSyncConfig, source: Path, destination: Path
