@@ -1,4 +1,4 @@
-"""Development UI entry point and single-instance activation."""
+"""Desktop UI entry point and single-instance activation."""
 
 import argparse
 import os
@@ -84,7 +84,7 @@ def connect_activation_server(server: QLocalServer, window: MainWindow) -> None:
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description="OneDrive PC Sync UI")
-    parser.add_argument("--config", type=Path, help="Configuration file (defaults to project config.json)")
+    parser.add_argument("--config", type=Path, help="Configuration file (defaults to application config.json)")
     args, qt_args = parser.parse_known_args(argv)
     app = QApplication.instance() or QApplication([sys.argv[0], *qt_args])
     app.setStyleSheet(get_dark_theme())

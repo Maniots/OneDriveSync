@@ -36,14 +36,16 @@
 
 [CmdletBinding()]
 param(
-    [switch]$Uninstall
+    [switch]$Uninstall,
+    [string]$ApplicationExe,
+    [ValidatePattern('^\\[^\\].+')]
+    [string]$TaskFolderPath = "\OneDrivePCSync"
 )
 
 $ErrorActionPreference = "Stop"
 
 # --- Constants ----------------------------------------------------------------
 $ProjectRoot      = $PSScriptRoot
-$TaskFolderPath   = "\OneDrivePCSync"
 $MonitorTaskName  = "OneDrivePCSync - Shutdown Monitor"
 $MonitorTaskDescription = "Runs the OneDrivePCSync shutdown monitor at logon to catch Windows session-ending notifications (shutdown, restart, logoff) and trigger an upload sync."
 
@@ -67,6 +69,14 @@ function Remove-ExistingTask {
     param([string]$Name)
     try {
         $folder = $TaskService.GetFolder($TaskFolderPath)
+        if ($ApplicationExe) {
+            $task = $folder.GetTask($Name)
+            if ($task.Definition.Actions.Item(1).Path -ine $ApplicationExe) {
+                Write-Info "Preserving task owned by another installation: $Name"
+                return
+            }
+            $task.Stop(0)
+        }
         $folder.DeleteTask($Name, 0)
         Write-Info "Removed existing task: $Name"
     } catch {
@@ -93,6 +103,15 @@ if ($Uninstall) {
 
 # --- Install path -----------------------------------------------------------
 Write-Info "Project root detected as: $ProjectRoot"
+
+if ($ApplicationExe) {
+    $ApplicationExe = [System.IO.Path]::GetFullPath($ApplicationExe)
+    if (-not (Test-Path -LiteralPath $ApplicationExe -PathType Leaf)) {
+        throw "Application executable not found: $ApplicationExe"
+    }
+    $ProjectRoot = Split-Path -Parent $ApplicationExe
+    Write-Ok "Using installed executable: $ApplicationExe"
+} else {
 
 # Locate a Python interpreter. Preference order:
 #   1. Project-local virtual environment (pythonw.exe - no console flash)
@@ -161,6 +180,7 @@ $WscriptExe = (Get-Command wscript.exe -ErrorAction SilentlyContinue).Source
 if (-not $WscriptExe) {
     $WscriptExe = Join-Path $env:SystemRoot "System32\wscript.exe"
 }
+}
 
 $Folder = Get-OrCreateTaskFolder
 Remove-ExistingTask -Name $MonitorTaskName
@@ -188,10 +208,13 @@ function New-OneDrivePCSyncMonitorTask {
     # No delay; start as soon as logon occurs.
 
     $Action = $TaskDef.Actions.Create($TASK_ACTION_EXEC)
-    $Action.Path = $WscriptExe
-    # Arguments to wscript.exe: path to VBS wrapper, python executable, script path, working directory
-    $Argument = "`"$RunHiddenVbsPath`" `"$PythonExe`" `"$MonitorScript`" `"$ProjectRoot`""
-    $Action.Arguments = $Argument
+    if ($ApplicationExe) {
+        $Action.Path = $ApplicationExe
+        $Action.Arguments = "--monitor"
+    } else {
+        $Action.Path = $WscriptExe
+        $Action.Arguments = "`"$RunHiddenVbsPath`" `"$PythonExe`" `"$MonitorScript`" `"$ProjectRoot`""
+    }
     $Action.WorkingDirectory = $ProjectRoot
 
     $Principal = $TaskDef.Principal

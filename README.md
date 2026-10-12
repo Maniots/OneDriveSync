@@ -57,6 +57,62 @@ OneDrivePCSync/
 
 ## Installation
 
+### Windows EXE (no Python required on the target PC)
+
+Run `dist/installer/OneDrivePCSync-Setup-1.0.0.exe`. It installs the app for
+the current Windows user under `%LOCALAPPDATA%\Programs\OneDrivePCSync`,
+adds Start menu links and registers an uninstaller. A desktop shortcut and
+automatic synchronization are optional installer checkboxes.
+
+User data lives under `%LOCALAPPDATA%\OneDrivePCSync`: `config.json`, sync
+history, logs, monitor status and locks. Updates and uninstall preserve that
+data. A new installation contains no folders to sync; add them in the UI.
+The installer never includes this repository's personal `config.json`.
+To migrate an existing setup, close the app and copy its configuration to
+that user-data directory, keeping a backup of any configuration already there.
+
+The installed EXE also accepts `--mode startup|shutdown`, `--dry-run` and
+`--config PATH`. `--monitor` starts the native background shutdown monitor.
+Scheduled tasks invoke the EXE directly without Python or VBS wrappers.
+If enabled, their existing names and timing remain the same. They become
+active at the next logon (periodic uploads can begin during this session).
+
+### Building the Windows release
+
+Build on Windows x64, using Python 3.12+ and Inno Setup 6.7+:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements-build.txt
+powershell -NoProfile -ExecutionPolicy Bypass -File .\Build-Windows.ps1
+# Or create only the self-contained application directory:
+powershell -NoProfile -ExecutionPolicy Bypass -File .\Build-Windows.ps1 -BundleOnly
+```
+
+Supply `-InnoCompiler C:\path\ISCC.exe` if it is not in a detected location.
+The bundle is `dist/OneDrivePCSync`; keep its `_internal` directory with the
+EXE. The installer contains the entire bundle in a single setup EXE.
+Builds do not automatically download or install build tools.
+
+Runtime paths follow [PyInstaller's documented bundle behavior](https://pyinstaller.org/en/stable/runtime-information.html).
+The per-user installer uses [Inno Setup's least-privilege installation mode](https://jrsoftware.org/ishelp/topic_setup_privilegesrequired.htm).
+
+Acceptance checks use isolated data and do not shut down the machine:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\verify_windows_bundle.py dist\OneDrivePCSync\OneDrivePCSync.exe
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\Verify-WindowsAutomation.ps1
+# Separate validation installer identity and data location:
+ISCC.exe /DValidationBuild packaging\windows-installer.iss
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\Verify-WindowsInstaller.ps1
+```
+
+The automation and installer checks need access to the Windows Task Scheduler
+and the current user's software registration. They create temporary validation
+resources and remove their tasks/uninstall registration after checking them.
+
+### Running from source
+
 Requires Python 3.12+. Windows is required for scheduled tasks, native shutdown monitoring and toast notifications. The desktop UI uses PySide6, qtawesome and pyqtgraph; the synchronization engine uses the standard library. pywin32 is installed only on Windows. Graphify is analysis tooling.
 
 ```bash

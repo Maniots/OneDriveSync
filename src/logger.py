@@ -76,12 +76,13 @@ def setup_logger(log_dir: Path, log_level: str = "INFO") -> logging.Logger:
     file_handler.setFormatter(formatter)
     file_handler.setLevel(level)
 
-    console_handler = logging.StreamHandler(stream=sys.stdout)
-    console_handler.setFormatter(formatter)
-    console_handler.setLevel(level)
-
     root_logger.addHandler(file_handler)
-    root_logger.addHandler(console_handler)
+    # Windowless EXEs and pythonw have no stdout/stderr.
+    if sys.stdout is not None:
+        console_handler = logging.StreamHandler(stream=sys.stdout)
+        console_handler.setFormatter(formatter)
+        console_handler.setLevel(level)
+        root_logger.addHandler(console_handler)
     root_logger.propagate = False
 
     _LOGGER_INITIALIZED = True

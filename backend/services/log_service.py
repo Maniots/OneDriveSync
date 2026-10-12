@@ -10,6 +10,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import List, Tuple, Optional
 from PySide6.QtCore import QDateTime, QDate
+from src.runtime_paths import log_dir
 
 
 class LogService:
@@ -25,10 +26,7 @@ class LogService:
                       relative to the project root).
         """
         if log_path is None:
-            # Default to logs/onedrive_pcsync.log in the project root
-            # We assume the project root is two levels up from this file:
-            #   backend/services/log_service.py -> backend -> project root
-            log_path = Path(__file__).resolve().parent.parent.parent / "logs" / "onedrive_pcsync.log"
+            log_path = log_dir() / "onedrive_pcsync.log"
         self._log_path = log_path
         # Pre-compile the regex for parsing log lines
         # Expected format: "%Y-%m-%d %H:%M:%S | %(levelname)-8s | %(name)s | %(message)s"

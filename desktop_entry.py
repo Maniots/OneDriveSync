@@ -1,0 +1,132 @@
+"""Windowless Windows entry point: desktop, scheduled sync and monitor."""
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+import traceback
+from pathlib import Path
+
+from src.runtime_paths import data_root, default_config_path, ensure_default_config, log_dir
+
+VERSION = "1.0.0"
+
+
+def parse_arguments(argv):
+    parser = argparse.ArgumentParser(description="OneDrive PC Sync desktop application")
+    action = parser.add_mutually_exclusive_group()
+    action.add_argument("--mode", choices=["startup", "shutdown"])
+    action.add_argument("--monitor", action="store_true")
+    action.add_argument("--init-config", action="store_true")
+    action.add_argument("--diagnostics", type=Path, metavar="REPORT.json")
+    action.add_argument("--smoke-test", type=Path, metavar="REPORT.json")
+    parser.add_argument("--config", type=Path)
+    parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--version", action="version", version=VERSION)
+    args = parser.parse_args(argv)
+    if args.monitor and (args.config or args.dry_run):
+        parser.error("The monitor uses the shared application configuration")
+    if args.dry_run and not args.mode:
+        parser.error("--dry-run requires --mode")
+    return args
+
+
+def write_diagnostics(path: Path, smoke_test: bool, config_path: Path) -> int:
+    """Exercise bundled imports/resources and optionally a real Qt window."""
+    from src.config_manager import ConfigManager
+    from src.runtime_paths import sync_lock_path
+    import PySide6
+    import qtawesome
+    import pyqtgraph
+    import win32gui
+
+    config = ConfigManager(config_path).load()
+    resources = Path(__file__).resolve().parent / "ui" / "resources"
+    report = {
+        "version": VERSION, "frozen": bool(getattr(sys, "frozen", False)),
+        "executable": sys.executable, "data_root": str(data_root()),
+        "config": str(config_path), "logs": str(log_dir()),
+        "sync_lock": str(sync_lock_path()), "folder_count": len(config.folders),
+        "qt_version": PySide6.__version__, "win32gui": win32gui.__name__,
+        "resources_present": all((resources / name).is_file() for name in
+                                 ("check.svg", "chevron-down.svg", "chevron-up.svg")),
+    }
+    if not report["resources_present"]:
+        raise RuntimeError("Bundled UI resources are missing")
+    if smoke_test:
+        import os
+        os.environ["QT_QPA_PLATFORM"] = "offscreen"
+        from PySide6.QtWidgets import QApplication
+        from backend.services.configuration_service import ConfigurationService
+        from ui.main_window import MainWindow
+        from ui.themes.theme import get_dark_theme
+
+        app = QApplication.instance() or QApplication([sys.argv[0]])
+        app.setStyleSheet(get_dark_theme())
+        icon = qtawesome.icon("fa5s.cloud")
+        if icon.isNull():
+            raise RuntimeError("Bundled icon font is missing")
+        window = MainWindow(configuration_service=ConfigurationService(config_path))
+        window.show()
+        app.processEvents()
+        if window.configuration_service.get_app_config() is None:
+            raise RuntimeError("Desktop configuration failed to load")
+        screenshot = path.with_suffix(".png")
+        screenshot.parent.mkdir(parents=True, exist_ok=True)
+        if not window.grab().save(str(screenshot)):
+            raise RuntimeError("Could not render the desktop window")
+        report["ui_rendered"] = True
+        window.scheduler_service.wait_for_finished()
+        window.hide()
+        window.deleteLater()
+        app.processEvents()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(report, indent=2), encoding="utf-8")
+    return 0
+
+
+def main(argv=None) -> int:
+    args = parse_arguments(sys.argv[1:] if argv is None else argv)
+    if args.init_config:
+        ensure_default_config()
+        return 0
+    # An explicit config is never silently replaced by a default.
+    if getattr(sys, "frozen", False) and args.config is None:
+        ensure_default_config()
+    if args.diagnostics or args.smoke_test:
+        return write_diagnostics(args.diagnostics or args.smoke_test,
+                                 bool(args.smoke_test), args.config or default_config_path())
+    if args.mode:
+        from main import main as sync_main
+        sync_args = ["--mode", args.mode]
+        if args.config:
+            sync_args += ["--config", str(args.config)]
+        if args.dry_run:
+            sync_args += ["--dry-run"]
+        return sync_main(sync_args)
+    if args.monitor:
+        from src.shutdown_monitor import main as monitor_main
+        return monitor_main()
+    from ui.app import main as ui_main
+    return ui_main(["--config", str(args.config)] if args.config else [])
+
+
+def launch() -> int:
+    try:
+        return main()
+    except Exception:
+        log_dir().mkdir(parents=True, exist_ok=True)
+        crash_log = log_dir() / "desktop_crash.log"
+        with crash_log.open("a", encoding="utf-8") as handle:
+            traceback.print_exc(file=handle)
+        # Background task failures belong in logs. A desktop startup failure
+        # also needs an actionable message when no console exists.
+        if len(sys.argv) == 1 and sys.platform == "win32":
+            import ctypes
+            ctypes.windll.user32.MessageBoxW(None, f"Avvio non riuscito. Dettagli: {crash_log}",
+                                            "OneDrive PC Sync", 0x10)
+        return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(launch())

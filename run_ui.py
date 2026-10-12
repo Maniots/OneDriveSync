@@ -1,10 +1,8 @@
 #!/usr/bin/env python
 """
-Development-only UI launcher for OneDrive PC Sync.
+Source UI launcher for OneDrive PC Sync.
 
-This script launches the PySide6 user interface for development and testing.
-It is not used in production; the production entry point is via the
-PowerShell wrapper and src/main.py for synchronization.
+Installed Windows releases use desktop_entry.py as their unified entry point.
 """
 
 from ui.app import main

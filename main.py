@@ -31,9 +31,10 @@ import argparse
 
 from src.single_instance import acquire_single_instance_lock
 from src.sync_runner import run_sync
+from src.runtime_paths import data_root, default_config_path, sync_lock_path
 
-APP_ROOT = Path(__file__).resolve().parent
-LOCK_FILE_PATH = APP_ROOT / "onedrive_pcsync.lock"
+APP_ROOT = data_root()
+LOCK_FILE_PATH = sync_lock_path()
 
 
 def parse_arguments(argv: list[str]) -> argparse.Namespace:
@@ -59,7 +60,7 @@ def parse_arguments(argv: list[str]) -> argparse.Namespace:
     parser.add_argument(
         "--config",
         type=Path,
-        default=APP_ROOT / "config.json",
+        default=default_config_path(),
         help=f"Path to config.json (default: {APP_ROOT / 'config.json'}).",
     )
     parser.add_argument(

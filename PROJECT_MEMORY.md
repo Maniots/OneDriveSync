@@ -4,6 +4,55 @@ The main window features a modern header with page title and optional subtitle, 
 
 Last updated: 2026-10-12
 
+## Windows executable and per-user installation (2026-10-12)
+
+- `desktop_entry.py` is the unified frozen entry point: no arguments opens
+  the existing desktop UI; `--mode startup|shutdown` invokes the sync CLI;
+  `--monitor` invokes the native shutdown monitor. Explicit configurations
+  and dry-run remain supported for sync. `--init-config`, `--diagnostics`
+  and `--smoke-test` support installation and reproducible bundle validation.
+- `src/runtime_paths.py` owns writable runtime locations. Source execution
+  retains project-local data. Frozen execution uses
+  `%LOCALAPPDATA%\OneDrivePCSync` for config, logs, history, monitor status
+  and locks. Configuration/log services, CLI, UI worker and monitor use
+  these paths; bundled SVG resources stay relative to their package.
+- `packaging/default-config.json` contains an empty folder list. First-run
+  seeding and the installer preserve existing configuration. Personal
+  repository configuration is never packaged. Windowless logging omits a
+  console handler when stdout is unavailable; startup failures are recorded
+  in `logs/desktop_crash.log`.
+- `packaging/OneDrivePCSync.spec`, `requirements-build.txt` and
+  `Build-Windows.ps1` build the PyInstaller directory bundle, including
+  PySide6, pywin32, qtawesome fonts and SVG assets. The target machine does
+  not require Python. `packaging/windows-installer.iss` builds a per-user
+  Inno Setup installer with a stable identity, uninstall registration,
+  Start menu links and optional desktop shortcut/automation. User data is
+  preserved on upgrade and uninstall. Automation setup failures are surfaced.
+- Both setup scripts accept `-ApplicationExe` for direct EXE task actions
+  and retain their source/Python route. Trigger names/timing stay unchanged.
+  Installed-app uninstall checks action ownership before stopping/removing
+  a task, preserving tasks from other installations. `-TaskFolderPath`
+  permits isolated validation without touching production task names.
+- Native bundle acceptance exposed missing pywin32 imports in the existing
+  shutdown monitor; restored them. The monitor now persists completed sync
+  timestamps immediately, so its status readers see the actual result.
+- Automated packaging regressions live in `tests/test_windows_packaging.py`.
+  `scripts/verify_windows_bundle.py` checks actual frozen UI rendering,
+  resources, dry-run, file copy and native monitor signals on an isolated
+  HWND/data set. `Verify-WindowsAutomation.ps1` checks four tasks including
+  the hidden monitor and ownership-safe removal. `Verify-WindowsInstaller.ps1`
+  uses a separate validation installer identity for installation, upgrade,
+  installed UI and uninstall preservation checks. A real Windows reboot and
+  forced shutdown timing remain outside these automated checks.
+- Windows validation completed: 182 tests passed, 2 skipped; actual frozen
+  UI/resources, dry-run, file copy, native monitor and all four EXE task actions
+  passed. Installer install/upgrade/uninstall preserved configuration. The
+  production release was installed for the current user with desktop/Start
+  menu links; the existing project configuration (4 folders) was migrated and
+  the installed UI rendered successfully. Automatic tasks remain an optional
+  setup choice. Evidence and remaining shutdown timing limits are recorded in
+  `docs/windows-packaging.md`.
+
 
 ## UI and synchronization fixes (2026-10-12)
 

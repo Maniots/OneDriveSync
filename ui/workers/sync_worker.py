@@ -9,6 +9,7 @@ from src.config import AppConfig
 from src.logger import setup_logger
 from src.single_instance import acquire_single_instance_lock
 from src.sync_manager import SyncManager
+from src.runtime_paths import sync_lock_path
 
 if TYPE_CHECKING:
     from backend.services.sync_service import SyncService
@@ -40,7 +41,7 @@ class SyncWorker(QObject):
             if not trigger.enabled:
                 raise RuntimeError(f"{operation.capitalize()} sync is disabled in configuration")
 
-            lock_path = Path(__file__).resolve().parents[2] / "onedrive_pcsync.lock"
+            lock_path = sync_lock_path()
             lock_handle = acquire_single_instance_lock(lock_path)
             if lock_handle is None:
                 raise RuntimeError("Another synchronization is already running on this machine")

@@ -76,11 +76,19 @@ sys.path.append(str(Path(__file__).resolve().parent.parent))
 from src.logger import get_logger, setup_logger
 from src.sync_runner import run_sync
 from src.single_instance import acquire_single_instance_lock
+from src.runtime_paths import data_root, default_config_path, log_dir
+
+try:
+    import win32gui
+    import win32api
+    import win32con
+except ImportError:
+    win32gui = win32api = win32con = None
 
 # Project root is two levels up from this file (src/shutdown_monitor.py -> src -> project root)
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_LOG_DIR = PROJECT_ROOT / "logs"
-DEFAULT_CONFIG_PATH = PROJECT_ROOT / "config.json"
+PROJECT_ROOT = data_root()
+DEFAULT_LOG_DIR = log_dir()
+DEFAULT_CONFIG_PATH = default_config_path()
 MONITOR_LOCK_PATH = PROJECT_ROOT / "onedrive_pcsync_shutdown_monitor.lock"
 CRASH_LOG_PATH = DEFAULT_LOG_DIR / "shutdown_monitor_crash.log"
 STATUS_FILE = PROJECT_ROOT / "shutdown_monitor_status.json"
@@ -237,6 +245,7 @@ class ShutdownMonitorWindow:
                 self.last_error = str(e)
 
             self._sync_done = True
+            _write_status(self._get_status_dict())
             _emergency_log("Sync attempt finished — allowing session to end.")
             # Return TRUE now: sync (successful or not) is done, don't
             # hold up shutdown any further.

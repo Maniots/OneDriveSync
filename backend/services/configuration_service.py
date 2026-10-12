@@ -8,6 +8,7 @@ Isolates the UI from the core configuration loading logic.
 from typing import Optional
 from src.config_manager import ConfigManager
 from src.config import AppConfig
+from src.runtime_paths import default_config_path
 from pathlib import Path
 from PySide6.QtCore import QObject, Signal
 
@@ -27,10 +28,7 @@ class ConfigurationService(QObject):
         """
         super().__init__()
         if config_path is None:
-            # Default to config.json in the project root
-            # We assume the project root is two levels up from this file:
-            #   backend/services/configuration_service.py -> backend -> project root
-            config_path = Path(__file__).resolve().parent.parent.parent / "config.json"
+            config_path = default_config_path()
         self._config_manager = ConfigManager(config_path)
         self._app_config: Optional[AppConfig] = None
         self._load_config()

@@ -17,11 +17,12 @@ from src.config_manager import ConfigManager
 from src.logger import get_logger, setup_logger
 from src.notifications import show_windows_toast
 from src.sync_manager import SyncManager, FolderSyncOutcome
+from src.runtime_paths import data_root, default_config_path, log_dir
 
 # Project root is two levels up from this file (since this file lives in src/)
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_CONFIG_PATH = PROJECT_ROOT / "config.json"
-DEFAULT_LOG_DIR = PROJECT_ROOT / "logs"
+PROJECT_ROOT = data_root()
+DEFAULT_CONFIG_PATH = default_config_path()
+DEFAULT_LOG_DIR = log_dir()
 
 
 def _build_notification_summary(outcomes: list[FolderSyncOutcome]) -> str:
