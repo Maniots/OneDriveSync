@@ -9,8 +9,17 @@
 #
 # Install it with: pip install pywin32
 #
+# graphifyy is used for code analysis and documentation generation.
+graphifyy
+pywin32; sys_platform == "win32"
+#
+# PySide6 is the primary UI framework.
+PySide6
+#
+# UI enhancements: icons, theme, and charts.
+qtawesome
+pyqtgraph
+#
 # All other dependencies (pathlib, dataclasses, typing, logging,
 # subprocess, json, shutil, os, argparse, enum, msvcrt) are part of
 # the Python 3.12+ standard library.
-pywin32
-graphifyy

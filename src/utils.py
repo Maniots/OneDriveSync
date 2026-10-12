@@ -24,7 +24,7 @@ from typing import List
 _WINDOWS_VAR_PATTERN = re.compile(r"%([^%]+)%")
 
 
-def expand_env_vars(raw_path: str) -> str:
+def expand_env_vars(raw_path: str | Path) -> str:
     """Expand both %VAR% (Windows) and $VAR/${VAR} (POSIX) style
     environment variable references in a path string.
 
@@ -41,7 +41,7 @@ def expand_env_vars(raw_path: str) -> str:
     shallow directory.
 
     Args:
-        raw_path: The raw path string, possibly containing env var refs.
+        raw_path: A path string or Path, possibly containing env var refs.
 
     Returns:
         The path string with all recognized environment variables expanded.
@@ -51,7 +51,7 @@ def expand_env_vars(raw_path: str) -> str:
         var_name = match.group(1)
         return os.environ.get(var_name, match.group(0))
 
-    expanded = _WINDOWS_VAR_PATTERN.sub(_replace, raw_path)
+    expanded = _WINDOWS_VAR_PATTERN.sub(_replace, os.fspath(raw_path))
     expanded = os.path.expandvars(expanded)
     expanded = os.path.expanduser(expanded)
     return expanded

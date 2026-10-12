@@ -57,7 +57,7 @@ OneDrivePCSync/
 
 ## Installation
 
-Requires Python 3.12+ on Windows. No third-party dependencies.
+Requires Python 3.12+. Windows is required for scheduled tasks, native shutdown monitoring and toast notifications. The desktop UI uses PySide6, qtawesome and pyqtgraph; the synchronization engine uses the standard library. pywin32 is installed only on Windows. Graphify is analysis tooling.
 
 ```bash
 pip install -r requirements.txt
@@ -75,6 +75,28 @@ python main.py --mode shutdown
 # Preview without copying or creating anything
 python main.py --mode startup --dry-run
 ```
+
+## Desktop UI
+
+```bash
+python run_ui.py
+# Use a separate development configuration without changing the project config:
+python run_ui.py --config /path/to/config.json
+```
+
+Dashboard, tray and folder cards share one background synchronization service.
+Folder management supports add, edit, enable/disable, search and filtering.
+Settings and folder changes are validated before atomically replacing the
+configuration file; environment-variable references remain intact.
+
+**Pause UI Sync** blocks new requests from the UI and lets the current copy
+finish. Independently scheduled Windows tasks continue to run. Exiting during
+synchronization waits for the copy to finish. Without a system tray, closing
+the window exits normally.
+
+For Linux development, use temporary local directories in a separate config
+and `QT_QPA_PLATFORM=offscreen` for headless Qt validation. Native Windows
+integration must be tested on Windows.
 
 ## Automated setup (recommended)
 
@@ -220,8 +242,7 @@ recent data with stale data (or vice versa).
 
 ```bash
 pip install pytest
-pytest tests/ -v
+python -m pytest tests/ --ignore=tests/test_shutdown_broadcast.py -v
 ```
 
-All tests run against real temporary directories with `dry_run=True`, so
-no files are ever copied or deleted during testing.
+Tests use temporary directories. Functional tests copy fixture files and create backup archives there; dry-run tests verify that data remains unchanged. The excluded shutdown-broadcast script is a manual Windows diagnostic, not an automated pytest test.

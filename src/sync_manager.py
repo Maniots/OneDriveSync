@@ -14,8 +14,9 @@ or not to invoke.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import List, Optional
+from typing import Callable, List, Optional
 
 from .backup_manager import BackupManager
 from .config import AppConfig, FolderSyncConfig, SyncDirection
@@ -25,6 +26,7 @@ from .exceptions import (
     PathValidationError,
     SyncThresholdExceededError,
     VerificationError,
+    CopyEngineError,
 )
 from .logger import get_logger
 from .robocopy_manager import CopyEngine
@@ -47,7 +49,7 @@ class FolderSyncOutcome:
 class SyncManager:
     """Coordinates safe synchronization of all configured folders."""
 
-    def __init__(self, config: AppConfig) -> None:
+    def __init__(self, config: AppConfig, history_path: Optional[Path] = None) -> None:
         self._config = config
         self._copy_engine = CopyEngine(
             settings=config.copy_engine,
@@ -56,8 +58,9 @@ class SyncManager:
         self._backup = BackupManager(dry_run=config.general.dry_run)
         # Track the current sync mode for logging context in copy_engine.
         self._mode: str = "unknown"
+        self._history_path = history_path
 
-    def run_startup_sync(self) -> List[FolderSyncOutcome]:
+    def run_startup_sync(self, progress_callback: Optional[Callable[[int, str], None]] = None) -> List[FolderSyncOutcome]:
         """Run the configured startup synchronization (typically download)."""
         self._mode = "startup"
         trigger = self._config.sync.startup
@@ -65,9 +68,9 @@ class SyncManager:
             logger.info("Startup sync is disabled in configuration. Skipping.")
             return []
         logger.info("=== Starting STARTUP sync (direction=%s) ===", trigger.direction.value)
-        return self._run_all_folders(trigger.direction)
+        return self._run_all_folders(trigger.direction, progress_callback)
 
-    def run_shutdown_sync(self) -> List[FolderSyncOutcome]:
+    def run_shutdown_sync(self, progress_callback: Optional[Callable[[int, str], None]] = None) -> List[FolderSyncOutcome]:
         """Run the configured shutdown synchronization (typically upload)."""
         self._mode = "shutdown"
         trigger = self._config.sync.shutdown
@@ -75,17 +78,18 @@ class SyncManager:
             logger.info("Shutdown sync is disabled in configuration. Skipping.")
             return []
         logger.info("=== Starting SHUTDOWN sync (direction=%s) ===", trigger.direction.value)
-        return self._run_all_folders(trigger.direction)
+        return self._run_all_folders(trigger.direction, progress_callback)
 
-    def _run_all_folders(self, direction: SyncDirection) -> List[FolderSyncOutcome]:
+    def _run_all_folders(self, direction: SyncDirection, progress_callback: Optional[Callable[[int, str], None]] = None) -> List[FolderSyncOutcome]:
         outcomes: List[FolderSyncOutcome] = []
 
-        for folder in self._config.enabled_folders():
+        folders = self._config.enabled_folders()
+        def sync_folder(folder):
             # Each folder is fully independent: an error in one must never
             # prevent the others from being processed.
             try:
                 outcome = self._sync_single_folder(folder, direction)
-                outcomes.append(outcome)
+                return outcome
             except OneDrivePCSyncError as exc:
                 logger.error(
                     "Sync aborted for folder '%s' (%s): %s",
@@ -93,14 +97,12 @@ class SyncManager:
                     folder.name,
                     exc,
                 )
-                outcomes.append(
-                    FolderSyncOutcome(
+                return FolderSyncOutcome(
                         folder_id=folder.id,
                         folder_name=folder.name,
                         direction=direction,
                         succeeded=False,
                         message=str(exc),
-                    )
                 )
             except Exception as exc:  # noqa: BLE001 - last line of defense
                 logger.exception(
@@ -108,17 +110,40 @@ class SyncManager:
                     folder.id,
                     folder.name,
                 )
-                outcomes.append(
-                    FolderSyncOutcome(
+                return FolderSyncOutcome(
                         folder_id=folder.id,
                         folder_name=folder.name,
                         direction=direction,
                         succeeded=False,
                         message=f"Unexpected error: {exc}",
-                    )
                 )
 
+        workers = self._config.general.max_parallel_jobs
+        # Overlapping pairs must remain sequential to protect backup/copy reads.
+        roots = [[f.local_path_resolved, f.onedrive_path_resolved] for f in folders]
+        if direction == SyncDirection.UPLOAD:
+            for folder, pair in zip(folders, roots):
+                if folder.backup and folder.backup.enabled:
+                    pair.append((folder.backup.backup_path_resolved / folder.id).resolve())
+        if any(a.is_relative_to(b) or b.is_relative_to(a)
+               for i, pair in enumerate(roots) for other in roots[i + 1:]
+               for a in pair for b in other):
+            workers = 1
+        if progress_callback and folders:
+            progress_callback(0, f"Processing {len(folders)} folder(s)")
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            for index, outcome in enumerate(executor.map(sync_folder, folders)):
+                outcomes.append(outcome)
+                if progress_callback is not None:
+                    progress_callback(int((index + 1) / len(folders) * 100), f"Processed folder {outcome.folder_name} ({index + 1}/{len(folders)})")
+
         self._log_summary(outcomes)
+        if self._history_path is not None:
+            from .sync_history import SyncHistory
+            try:
+                SyncHistory(self._history_path).record(self._mode, outcomes, self._config.general.dry_run)
+            except Exception:
+                logger.exception("Could not save synchronization history")
         return outcomes
 
     def _sync_single_folder(
@@ -142,13 +167,15 @@ class SyncManager:
             self._backup.prune_old_backups(folder.id, folder.backup)
 
         result = self._copy_engine.run(source, destination, mode=self._mode)
+        if not result.success:
+            raise CopyEngineError(result.stderr or f"Copy failed with exit code {result.exit_code}")
 
         if (
             folder.verify_after_sync
             and self._config.general.verify_after_sync
             and not self._config.general.dry_run
         ):
-            self._verify_after_sync(folder, source, destination)
+            self._verify_after_sync(folder, source, destination, self._config.copy_engine.copy_subdirectories)
         elif folder.verify_after_sync and self._config.general.verify_after_sync:
             logger.info(
                 "Folder '%s': skipping verification because this is a dry run "
@@ -160,6 +187,8 @@ class SyncManager:
             f"Sync completed successfully (dry_run={result.dry_run}, "
             f"exit_code={result.exit_code})."
         )
+        if result.stderr:
+            message += f" Warning: {result.stderr}"
         logger.info("Folder '%s': %s", folder.id, message)
 
         return FolderSyncOutcome(
@@ -180,8 +209,8 @@ class SyncManager:
         UPLOAD:   Local -> OneDrive
         """
         if direction == SyncDirection.DOWNLOAD:
-            return folder.onedrive_path, folder.local_path
-        return folder.local_path, folder.onedrive_path
+            return folder.onedrive_path_resolved, folder.local_path_resolved
+        return folder.local_path_resolved, folder.onedrive_path_resolved
 
     def _validate_paths(
         self, folder: FolderSyncConfig, source: Path, destination: Path
@@ -289,7 +318,7 @@ class SyncManager:
 
     @staticmethod
     def _verify_after_sync(
-        folder: FolderSyncConfig, source: Path, destination: Path
+        folder: FolderSyncConfig, source: Path, destination: Path, recursive: bool = True
     ) -> None:
         """Post-sync sanity check: destination must contain at least as many
         files as the source did (since sync is purely additive, destination
@@ -300,8 +329,8 @@ class SyncManager:
         byte-for-byte verification (the copy engine's own logging provides
         per-file detail for deeper audits).
         """
-        source_count = count_files_recursive(source)
-        destination_count = count_files_recursive(destination)
+        source_count = count_files_recursive(source) if recursive else sum(p.is_file() for p in source.iterdir())
+        destination_count = count_files_recursive(destination) if recursive else sum(p.is_file() for p in destination.iterdir())
 
         if destination_count < source_count:
             raise VerificationError(
@@ -321,7 +350,7 @@ class SyncManager:
     def _log_summary(outcomes: List[FolderSyncOutcome]) -> None:
         succeeded = sum(1 for o in outcomes if o.succeeded)
         failed = len(outcomes) - succeeded
-        logger.info(
+        logger.log(25 if failed == 0 else 20,
             "=== Sync run complete: %d succeeded, %d failed, %d total ===",
             succeeded,
             failed,

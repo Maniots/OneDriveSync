@@ -1,351 +1,66 @@
-# OneDrive PC Sync — Project Memory
+This architecture ensures the UI remains independent from the core synchronization logic under src/.
 
-**Last updated:** 2026-08-06  
-**Branch:** `shutdown-management` (off `master`)  
-**Language:** Python 3.14+ (type-annotated, dataclasses, pathlib)  
-**Target OS:** Windows 10/11 (uses PowerShell toast notifications, Windows file locking, `pywin32` for shutdown monitor)
+The main window features a modern header with page title and optional subtitle, a navigation sidebar with application logo, grouped navigation items, and a bottom section for Settings and About. The design follows Windows 11-inspired Fluent Design principles with proper spacing, rounded corners, and subtle hover effects.
 
----
+Last updated: 2026-10-12
 
-## 📋 Project Overview
 
-**OneDrive PC Sync** is a safety-first, Windows-only utility that synchronizes game save folders (and other per-app data) between a local PC and a user's OneDrive folder. It is designed to run **automatically via Windows Scheduled Tasks** at three trigger points:
+## UI and synchronization fixes (2026-10-12)
 
-| Trigger | Mode | Direction | Purpose |
-|---------|------|-----------|---------|
-| **Logon** (2-min delay) | `startup` | **Download** (OneDrive → Local) | Restore latest saves after PC boots |
-| **Workstation Lock** (Win+L) | `shutdown` | **Upload** (Local → OneDrive) | Backup saves when stepping away |
-| **Periodic** (every 15 min) | `shutdown` | **Upload** (Local → OneDrive) | Safety net for shutdown/restart without locking |
 
-**Core philosophy:** *Never silently lose data.* Every sync is guarded by multiple safety rails.
+### Follow-up: local Qt compatibility
 
----
+Validation: 105 automated tests passed on Linux with both Python 3.12.14 / PySide6 6.12.0 and the reported local versions Python 3.14.6 / PySide6 6.11.1. Real Windows named-pipe and native desktop behavior still require local validation.
 
-## 🏗️ Architecture (src/)
+- BackupsPage now colors status items with QBrush(QColor(...)) instead of an unsupported string passed to QTableWidgetItem.setForeground. Empty/error states keep the same QTableWidget alive and use a separate label, allowing refresh and recovery without dangling wrappers. The initial refresh timer belongs to the page and configuration changes refresh its data.
+- Local socket activation accepts writes that have already completed synchronously (including Windows named-pipe behavior). Buffered writes still require the queue to drain within the timeout. Tests wait for actual connection and activation events, rather than a fixed number of event-loop polls, and retain the fragmented-message assertion.
+- Qt test teardown disposes newly created windows after each UI test, stops their owned timers, and checks shiboken6.isValid before accessing wrappers whose native child may already be destroyed. A regression explicitly covers a snapshot containing an already deleted QTableWidget.
+- Log date filtering uses QDate.startOfDay through LogService. LogsPage filters its bounded cached data, refreshes only when data changes, and clears stale rows when the file is truncated. Today/Yesterday filtering and real backup rendering/error recovery have functional coverage.
 
-```
-src/
-├── __init__.py
-├── config.py              # Typed, frozen dataclasses = config *shape* only
-├── config_manager.py      # Loads config.json, expands env vars, validates → AppConfig
-├── exceptions.py          # Typed exception hierarchy (ConfigurationError, PathValidationError, ...)
-├── logger.py              # Centralized logging (rotating file + console)
-├── utils.py               # Path safety (dangerous roots, OneDrive check), file counting, %VAR% expansion
-├── robocopy_manager.py    # Pure-Python copy engine: safe, non-destructive, in-process file copy
-├── backup_manager.py      # Pre-upload zip backups inside OneDrive (timestamped, retention-pruned)
-├── sync_manager.py        # Orchestrates: validate → safety threshold → (backup?) → copy engine → verify
-├── single_instance.py     # OS-level file lock: prevents concurrent runs from different scheduled tasks
-├── notifications.py       # Best-effort Windows toast notifications (PowerShell + WinRT)
-├── shutdown_monitor.py    # Resident monitor that waits for Windows session-ending
-│                           # notifications (WM_QUERYENDSESSION / WM_ENDSESSION)
-│                           # via a hidden top-level window (NULL parent) and triggers
-│                           # an upload sync on shutdown, restart, or logoff.
-│                           # FIXED: Previously used HWND_MESSAGE (message-only window)
-│                           # which does NOT receive WM_QUERYENDSESSION broadcast messages.
-│                           # Now uses NULL parent (hidden top-level window) instead.
-│                           # See shutdown_diagnosis.md for full analysis and resolution.
-└── main.py                # (not yet present — entry point called via PowerShell wrapper)
-```
-
-**Key design boundaries:**
-- **config.py** — *pure data shapes*, no I/O, no validation logic
-- **config_manager.py** — *only* place that touches raw JSON/env vars
-- **sync_manager.py** — *owns all safety decisions* (the copy engine is a "dumb execution layer")
-- **robocopy_manager.py** — *never* makes safety decisions; the Python copy engine is additive and non-destructive by design (no destructive flags possible)
-- **backup_manager.py** — creates timestamped ZIP backups *inside OneDrive only*, prunes by retention days
-- **single_instance.py** — cross-task mutex using Windows file locking (msvcrt)
+- JSON paths retain their original environment-variable strings. Folder and backup dataclasses also accept `Path` inputs from existing Python callers. Core sync uses resolved path properties; configuration saving validates a temporary JSON file and atomically replaces the original only after validation succeeds.
+- `SyncService.request_sync(operation, folder_id=None)` coordinates Dashboard, tray and folder-card requests in one background thread. It reserves the active run before starting the thread, shares pause/busy state, and snapshots the current configuration. Existing synchronous `start_startup_sync` and `start_shutdown_sync` methods remain available to non-interactive callers.
+- `SyncWorker` uses the same `onedrive_pcsync.lock` as the CLI and invokes the public core workflow, including per-folder isolation, safety thresholds, pre-upload backups, dry-run and verification. Optional progress callbacks keep the core independent of Qt. Pause blocks new UI requests, allows the current run to finish, and does not change independent Windows Scheduled Tasks. Exiting waits for any active copy and thread cleanup.
+- Dashboard and tray receive the same started/progress/completed/failed/finished signals. Partial failures are reported as errors; refresh preserves the result and the chart uses actual session outcomes instead of dummy data. Folder add/edit/toggle/filter/refresh/single-folder-sync actions are connected to validated configuration and synchronization services. Settings apply retains the latest folder list so it cannot overwrite newly added folders.
+- Scheduler errors use a persistent label instead of deleting monitor widgets. Status refresh and checkbox rollback block signals to prevent unwanted confirmations or scheduler writes. Missing timestamps display as N/A, and controls for unavailable tasks are disabled. `ConfigurationService` delegates monitor status reads and emits `changed` after successful saves/reloads. Log parsing accepts the padded level format used by the logger.
+- `run_ui.py --config PATH` supports development with a separate configuration. Qt local-server activation works for fragmented show messages; Windows mutex signatures use pointer-sized handles and ERROR_ALREADY_EXISTS=183. A tray is shown only when available; clicking it restores the window. Wizard editing preloads existing values, supports environment variables and Windows drive paths, and qualifies relative OneDrive paths under `%OneDrive%`.
+- Runtime dependencies are PySide6, qtawesome and pyqtgraph; pywin32 is declared only for Windows. Removed the unused, invalid qdarktheme requirement; the application uses its existing local QSS theme. Graphify remains analysis tooling. The existing graph lacks UI/service nodes and wiki/index.md, so those components were inspected from source.
+- Regression coverage lives in `tests/test_ui_regressions.py`, with a shared Qt application fixture in `tests/conftest.py`. Existing path tests now separately assert preservation of raw strings and resolution for filesystem operations. Tests cover real temporary-directory copy and pre-upload backup, dry-run, partial failures, external lock refusal, UI responsiveness, duplicate requests, shared pause, deferred exit, atomic configuration rejection, monitor delegation, scheduler recovery without implicit writes, log parsing, folder actions, settings consistency, wizard editing and launcher configuration. Manual shutdown-broadcast diagnostics remain outside automated pytest collection.
+- Linux validation cannot establish native Windows shutdown-event, Task Scheduler or system-tray integration behavior; these still need Windows validation.
 
 ---
+## ���������������� �������������� �������������� ������������ �������������� ������������ ������������ ���������� �������������� ������������ ������������ ���������� ������������ ���������� ���������� �������� �������������� ������������ ������������ ���������� ������������ ���������� ���������� �������� ������������ ���������� �������� �������� ������ �������������� ������������ ������������ ���������� ������������ ���������� �������� ������������ ������������ ���������� �������� ������������ ���������� �������� �������� ������ ������������ ������������ �������� �������� �������� �������� ������ ���������� �������� �������� ������ �������� ������ ������ ���� �������������� ������������ ������������ ������������ ������������ ���������� ������������ �������� ������������ ���������� �������� ������������ ���������� �������� �������� ������ ������������ ���������� ���������� �������� �������� ������ ���������� �������� �������� ������ �������� ������ ���� ������������ ���������� ���������� �������� �������� ������ ���������� �������� �������� ������ �������� ������ ���� �������� ������ ������ ���� ������ ���� ���� �� �������������� ������������ ������������ ���������� ������������ ���������� ���������� �������� ������������ ���������� ���������� �������� ���������� �������� �������� ������ ������������ ���������� ���������� �������� ���������� �������� �������� ������ ���������� �������� ������ ������ ���� ������������ ���������� ���������� �������� ���������� �������� ������ ���������� ���������� �������� ������ ���������� �������� ������ ������ ���� ���������� ���������� ������ ������ ������ ������ ���� �������� ������ ������ ���� ������ ���� ���� �� ������������ ���������� ���������� ���������� ���������� �������� ���������� ������ ���������� �������� ������ ���������� �������� ������ ������ ���� ���������� �������� �������� ������ ������ ���� �������� ������ ������ ���� ������ ���� �� ���������� �������� �������� ������ ������ ���� �������� ������ ������ ���� ������ ���� �� ������ ���� ���� �� ���� �� �� 📝 Recent Changes (from git log)
+| `local` | 2026-08-09 | Fixed PySide6 runtime errors in UI by correcting QLabel constructor calls with invalid property keyword arguments, added dependency injection to MainWindow for testability, and created headless UI smoke test that passes without GUI.
 
-## ⚙️ Configuration (config.json)
-
-```json
-{
-  "general": {
-    "log_level": "INFO",
-    "dry_run": false,
-    "verify_after_sync": true,
-    "create_destination": true,
-    "max_parallel_jobs": 1
-  },
-  "sync": {
-    "startup": { "enabled": true, "direction": "download" },
-    "shutdown": { "enabled": true, "direction": "upload" }
-  },
-  "copy_engine": {
-    "retry_count": 2,
-    "retry_wait_seconds": 2,
-    "multithreading": 16,
-    "copy_subdirectories": true,
-    "copy_empty_directories": true,
-    "exclude_junctions": true,
-    "fat_file_times": true,
-    "monitor_mode": false
-  },
-  "folders": [
-    {
-      "id": "elden_ring",
-      "name": "Elden Ring Save",
-      "enabled": true,
-      "local_path": "%APPDATA%\\EldenRing",
-      "onedrive_path": "%OneDrive%\\PCSync\\AppData\\Roaming\\EldenRing",
-      "minimum_sync_percentage": 80,
-      "verify_after_sync": true,
-      "create_destination": true,
-      "backup": {
-        "enabled": true,
-        "backup_path": "%OneDrive%\\PCSync\\Backups",
-        "retention_days": 7
-      }
-    }
-  ]
-}
-```
-
-**Environment variables expanded:** `%APPDATA%`, `%USERPROFILE%`, `%OneDrive%`, `%LOCALAPPDATA%`, etc. (Windows `%VAR%` + POSIX `$VAR` both supported)
-
----
-
-## 🛡️ Safety Architecture (The "Why")
-
-### 1. **Dangerous Root Path Rejection** (`utils.is_dangerous_root_path`)
-Rejects bare roots that would sync entire AppData, User profile, or drive roots:
-- `AppData`, `AppData\Local`, `AppData\Roaming`, `AppData\LocalLow`
-- Drive roots: `C:\`, `C:`
-- User profile root: `C:\Users\<name>`
-
-Only *explicit subfolders* (e.g., `AppData\Roaming\EldenRing`) are allowed.
-
-### 2. **File-Count Safety Threshold** (`sync_manager._enforce_safety_threshold`)
-Before any copy, compares file counts:
-```
-ratio = min(source_count, dest_count) / max(source_count, dest_count) * 100
-```
-If `ratio < minimum_sync_percentage` (default 80%), **sync is aborted**.  
-*Exception:* first-time sync (destination empty) always allowed.
-
-### 3. **Non-Destructive Copy Semantics** (`robocopy_manager.CopyEngine`)
-The Python copy engine is additive and conservative by design — no destructive flags are possible because there are no flags at all. Safety is enforced by design:
-- **XO semantics** — never overwrite a newer destination file with an older source file
-- **Junction/symlink skipping** — avoids infinite loops and dangerous following
-- **Additive-only** — never deletes source or destination files
-- **No mirroring or purging** — destination files not in source are left untouched
-
-### 4. **Pre-Upload Backups** (`backup_manager.py`)
-- **Only before UPLOAD** (local → OneDrive), never before DOWNLOAD
-- Backup = ZIP of current OneDrive destination, stored *inside* OneDrive at `backup_path/<folder_id>/<folder_id>_<timestamp>.zip`
-- `backup_path` **must resolve under `%OneDrive%`** (enforced at config load)
-- Retention: `retention_days` (default 7), pruned after each successful backup
-- Backup failure = **fatal for that folder's upload** (never proceed unprotected)
-
-### 5. **Post-Sync Verification** (`sync_manager._verify_after_sync`)
-After robocopy succeeds: `destination_file_count >= source_file_count` (since sync is additive via `/XO`). Failure raises `VerificationError`.
-
-### 6. **Single-Instance Lock** (`single_instance.py`)
-OS-level exclusive file lock (`msvcrt.locking`) at a known path. Prevents:
-- Startup download + periodic upload running simultaneously
-- Lock-triggered upload + periodic upload overlapping
-If lock unavailable → **skip this run silently** (not an error).
-
----
-
-## 🔄 Sync Flow (SyncManager)
-
-```
-run_startup_sync() / run_shutdown_sync()
-    │
-    ├─► Check trigger.enabled → skip if false
-    │
-    └─► For each enabled folder (independent, errors don't cascade):
-            │
-            ├─► _resolve_source_and_destination(folder, direction)
-            │       DOWNLOAD: onedrive_path → local_path
-            │       UPLOAD:   local_path → onedrive_path
-            │
-            ├─► _validate_paths()
-            │       - source exists & is dir
-            │       - dest exists or can be created
-            │       - source != dest
-            │       - neither is dangerous root
-            │
-            ├─► _enforce_safety_threshold()
-            │       - count files both sides
-            │       - if dest empty → first-time sync, allow
-            │       - else ratio >= threshold? → proceed else ABORT
-            │
-            ├─► [UPLOAD only] backup_manager.create_backup() + prune_old_backups()
-            │
-            ├─► robocopy_manager.run(source, dest, mode)
-            │       - runs the pure-Python copy engine (no child process)
-            │       - walks source tree, copies files with XO semantics
-            │       - skips junctions/symlinks, creates empty dirs
-            │       - preserves metadata via shutil.copy2
-            │       - tolerates up to 5 individual file errors
-            │
-            ├─► [if verify_after_sync] _verify_after_sync()
-            │
-            └─► Record FolderSyncOutcome (success/fail + message)
-```
-
----
-
-## 📦 Backup System Details
-
-**Config (per-folder, optional):**
-```json
-"backup": {
-  "enabled": true,
-  "backup_path": "%OneDrive%\\PCSync\\Backups",
-  "retention_days": 7
-}
-```
-
-**Archive naming:** `<folder_id>_<YYYYMMDD_HHMMSS>.zip`  
-**Location:** `<backup_path>/<folder_id>/<archive>.zip`  
-**Contents:** Full recursive copy of OneDrive destination *before* upload overwrites it.
-
-**Pruning:** Runs after each successful backup creation. Deletes archives older than `retention_days` (mtime-based). Prune failures are **non-fatal** (logged warning only).
-
----
-
-## 🔔 Notifications (Best-Effort)
-
-`notifications.show_windows_toast(title, message)` — uses PowerShell + WinRT Toast API.  
-- No-op on non-Windows
-- Never raises; failures logged at WARNING and swallowed
-- Uses PowerShell's well-known AUMID so no custom registration needed
-
----
-
-## 🧪 Testing
-
-```
-tests/
-├── test_config.py      # Config loading, env expansion, dangerous path rejection
-├── test_sync.py        # Safety threshold, first-time sync, verification, disabled folders
-├── test_backup.py      # Config validation (OneDrive-only), archive creation, pruning, E2E wiring
-└── test_copy_engine.py  # Python copy engine: safe copy, XO semantics, error handling, verification
-```
-
-Run: `pytest tests/ -v` (from project root, with `.venv` activated)
-
-Key test patterns:
-- `tmp_path` fixture for isolated temp dirs
-- `monkeypatch` for env vars (`%OneDrive%`, `%APPDATA%`)
-- `monkeypatch.setattr(CopyEngine, "run", fake_run)` for E2E tests without real copy engine
-
----
-
-## 📋 Scheduled Task Setup (Setup-ScheduledTasks.ps1)
-
-**Run once (Run with PowerShell):**
-```powershell
-powershell -ExecutionPolicy Bypass -File .\Setup-ScheduledTasks.ps1
-```
-
-**Creates 3 tasks in `Task Scheduler Library\OneDrivePCSync`:**
-1. **Startup (Download)** — Logon trigger, 2-min delay
-2. **Shutdown (Upload on Lock)** — Session State Change → Lock
-3. **Periodic Upload** — Time trigger, repeat every 15 min indefinitely
-
-**Idempotent:** Re-running replaces existing tasks (safe for updates/moves).
-
-**Uninstall:**
-```powershell
-powershell -ExecutionPolicy Bypass -File .\Setup-ScheduledTasks.ps1 -Uninstall
-```
-
-**Hidden-window wrapper:** `RunHidden.vbs` (auto-generated) → launches `wscript.exe` → Python executable → Python script — avoids console flash even with `pythonw.exe`. Used by both `main.py` (scheduled tasks) and `shutdown_monitor.py`.
-
-## 📋 Desktop Heap Setup (Setup-DesktopHeap.ps1)
-
-**Run once (as Administrator):**
-```powershell
-powershell -ExecutionPolicy Bypass -File .\Setup-DesktopHeap.ps1
-```
-
-**What it does:** Increases the non-interactive desktop heap size in the Windows registry from the default 768 KB to 12288 KB. This resolves `STATUS_DLL_INIT_FAILED` (0xC0000142) errors when spawning `robocopy.exe` from a background process (e.g., a Scheduled Task with no visible desktop) during system shutdown.
-
-**Why it's needed:** Background processes create child processes on a non-interactive desktop with a much smaller heap budget. During shutdown, when many processes are closing simultaneously, that heap can be exhausted, causing robocopy to fail even though the same command works fine interactively.
-
-**Requires a reboot** to take effect. The script backs up the original value to `desktop_heap_original_value.txt` and supports `-Revert` to restore it.
-
-**Idempotent:** Re-running the script reports success if the heap is already set to 12288 KB.
-
----
-
-## 🚀 Entry Points
-
-### Shutdown monitor (`src/shutdown_monitor.py`) — implemented
-Runs as a resident background process at user logon (via Scheduled Task,
-`Setup-ShutdownMonitor.ps1`). Uses a hidden message-only window and a
-Windows message loop to receive `WM_QUERYENDSESSION` / `WM_ENDSESSION`
-notifications. When the session is ending, it runs `run_sync(mode="shutdown")`.
-
-### Main sync script (`src/main.py`) — not yet created
-**
-```python
-from pathlib import Path
-from src.config_manager import ConfigManager
-from src.logger import setup_logger
-from src.sync_manager import SyncManager
-from src.single_instance import acquire_single_instance_lock
-from src.notifications import show_windows_toast
-import sys
-import argparse
-
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--mode", choices=["startup", "shutdown"], required=True)
-    args = parser.parse_args()
-
-    project_root = Path(__file__).parent
-    config_path = project_root / "config.json"
-    log_dir = project_root / "logs"
-
-    # 1. Single-instance lock
-    lock_file = project_root / ".sync.lock"
-    lock_handle = acquire_single_instance_lock(lock_file)
-    if lock_handle is None:
-        print("Another sync is already running. Exiting.")
-        return 0
-
-    # 2. Logger
-    setup_logger(log_dir, "INFO")  # level from config later
-    logger = get_logger(__name__)
-
-    # 3. Load config
-    config = ConfigManager(config_path).load()
-
-    # 4. Reconfigure log level from config
-    setup_logger(log_dir, config.general.log_level.value)
-
-    # 5. Run sync
-    manager = SyncManager(config)
-    if args.mode == "startup":
-        outcomes = manager.run_startup_sync()
-    else:
-        outcomes = manager.run_shutdown_sync()
-
-    # 6. Summary notification
-    failed = [o for o in outcomes if not o.succeeded]
-    if failed:
-        show_windows_toast("OneDrive PC Sync — Issues", f"{len(failed)} folder(s) failed to sync. Check logs.")
-        return 1
-    else:
-        show_windows_toast("OneDrive PC Sync", "Sync completed successfully.")
-        return 0
-
-if __name__ == "__main__":
-    sys.exit(main())
-```
-
----
-
-## 📝 Recent Changes (from git log)
-
-| Commit | Date | Summary |
-|--------|------|---------|
+| `local` | 2026-08-09 | Applied visual polish pass across all UI pages and widgets: consistent spacing using theme constants, proper title/value semantics for labels, card property applied to containers, improved button hierarchies, consistent dark theme, and enhanced accessibility. |
+| `local` | 2026-08-09 | Fixed QLabel constructor calls in AddFolderWizard where property was passed as a keyword argument, causing "setProperty expected 2 arguments got 1" error. |
+| `local` | 2026-08-08 | Redesigned LogsPage into a professional log viewer with live stream, search, level filters, date filtering, refresh, copy selected, and auto-scroll toggle. Fixed refresh button connection error. |
+| `local` | 2026-08-08 | Fixed QHeaderView setResizeMode error in LogsPage (used setSectionResizeMode instead). |
+| `local` | 2026-08-08 | Redesigned SchedulerPage to show automation system with sections and visual timeline. |
+| `local` | 2026-08-08 | Updated SchedulerModel to include detailed scheduler fields. |
+| `local` | 2026-08-08 | Updated ui/config.py to convert backend config to the new SchedulerModel. |
+| `local` | 2026-08-08 | Corrected PROJECT_MEMORY.md Last updated date to current date |
+| `local` | 2026-08-10 | Connected UI to configuration backend - load AppConfig through ConfigManager, convert to UI models, populate Dashboard, FoldersPage, and SettingsPage with error handling |
+| `local` | 2026-08-10 | Created ui/config.py utility for converting backend AppConfig to UI models and handling configuration errors |
+| `local` | 2026-08-10 | Modified MainWindow to load configuration and handle missing/invalid config gracefully |
+| `local` | 2026-08-10 | Updated DashboardPage to accept configuration backend and display real configuration data |
+| `local` | 2026-08-10 | Updated FoldersPage to accept configuration backend and display real folder data from config |
+| `local` | 2026-08-10 | Updated SettingsPage to accept configuration backend and display real settings from config |
+| `local` | 2026-08-08 | Redesigned BackupsPage as a modern backup management interface. |
+| `local` | 2026-08-09 | Add AddFolderWizard multi-step wizard for adding/editing folder configurations with validation and review |
+| `local` | 2026-08-09 | Implemented safe settings persistence with edit, validation, apply, cancel, reset functionality in SettingsPage, using the existing configuration architecture without writing raw JSON directly. |
+| `local` | 2026-08-09 | Added scheduler controls to enable/disable supported scheduled tasks and refresh task status in SchedulerPage UI. |
+| `local` | 2026-08-09 | Fixed backup path handling in backup_manager.py and backup_service.py to use resolved paths for Path operations while preserving original strings in config. |
+| `local` | 2026-08-09 | Fixed missing LogLevel import in ui/pages/settings.py. |
+| `local` | 2026-08-08 | Redesigned MainWindow with header, updated sidebar layout, and modern UI enhancements |
+| `local` | 2026-08-08 | Created SyncChartWidget reusable chart widget with dark theme, minimal grid, tooltip support, and responsive resizing |
+| `local` | 2026-08-08 | Redesigned DashboardPage to use SyncChartWidget for sync activity visualization, with premium layout including status cards, folder overview, backup status, and recent activity |
+| `local` | 2026-08-08 | Redesigned FoldersPage to use FolderCard widget with toolbar, responsive grid, and loading/error/empty states |
+| `local` | 2026-08-08 | Updated theme to add status label styles for FolderCard widget |
+| `local` = 2026-08-08 | Created FolderCard widget with folder information display and action signals |
+| `local` | 2026-08-08 | Verified all UI components work correctly together with no errors |
+| `local` | 2026-08-08 | Fixed missing QScrollArea import in settings.py |
+| `local` | 2026-08-07 | Implemented centralized icon system with semantic names using qtawesome |
+| `local` | 2026-08-07 | Implemented complete PySide6 UI with design system, backend wrappers, and UI models |
 | `local` | 2026-08-06 | Fixed test_copy_engine.py: added missing engine fixture to test_copy_engine_skips_symlinks and test_copy_engine_skips_junctions |
 | `e3a1b42` (HEAD) | 2026-07-29 | Replaced broken `SetConsoleCtrlHandler`/`CTRL_SHUTDOWN_EVENT` approach in `shutdown_monitor.py` with a hidden message-only window + Windows message loop handling `WM_QUERYENDSESSION` / `WM_ENDSESSION` (the Windows-recommended architecture for interactive apps); added `pywin32` dependency |
 | `2aa2931` | 2026-07-31 | **Fix applied:** Replaced `HWND_MESSAGE` with `NULL` (0) as window parent in `shutdown_monitor.py` so the hidden top-level window receives `WM_QUERYENDSESSION`/`WM_ENDSESSION` broadcast messages. Improved logging (PID, startup method, handler initialized, sync start/complete/fail, monitor exit). Added `try/except` around monitor run. Updated `shutdown_diagnosis.md` — marked as resolved. |
@@ -355,59 +70,37 @@ if __name__ == "__main__":
 | `595fd32` | 2026-07-24 | Added backups management + notification when startup download finishes |
 | `deea75a` | 2026-07-24 | Added single-instance tasks (prevent overlap) |
 | `0624a76` | 2026-07-24 | Added 2-minute delay on PC startup |
-| `a5c7eda` | 2026-07-24 | Fixed focus-stealing issue with fullscreen apps |
+| `a5c7eda` | 2026-07-24 | Changed focus-stealing issue with fullscreen apps |
 | `4580fec` | 2026-07-24 | Changed PowerShell script to wrap Python run |
-
----
-
-## 🔑 Key Files to Remember
-
-| File | Purpose |
-|------|---------|
-| `src/config.py` | **Source of truth for config shape** — add fields here first |
-| `src/config_manager.py` | Validation & env expansion — add checks here |
-| `src/sync_manager.py` | **All safety logic lives here** — audit this for correctness |
-| `src/robocopy_manager.py` | Command building + exit code interpretation + in-process Python copy fallback — never add destructive flags |
-| `src/backup_manager.py` | Backup creation/pruning — OneDrive-only enforcement |
-| `src/utils.py` | `is_dangerous_root_path`, `is_under_onedrive_root` — security-critical |
-| `src/exceptions.py` | Typed exceptions — catch specific types in sync_manager |
-| `src/shutdown_monitor.py` | Resident monitor that receives WM_QUERYENDSESSION / WM_ENDSESSION via a hidden window and triggers shutdown sync |
-| `Setup-ScheduledTasks.ps1` | Task registration — run after moving project or changing Python |
-| `Setup-DesktopHeap.ps1` | Increases non-interactive desktop heap (768 → 12288 KB) in registry to fix STATUS_DLL_INIT_FAILED when robocopy runs from a background process during shutdown |
-| `Setup-ShutdownMonitor.ps1` | Registers the shutdown monitor as a Scheduled Task (logon trigger) |
-| `config.json` | User-editable config — env vars expanded at load time |
-
----
-
-## ⚠️ Gotchas & Invariants
-
-1. **Never add `/MIR`, `/PURGE`, `/MOV`, `/MOVE` to robocopy command** — `_assert_command_is_safe` will raise.
-2. **Backup path MUST be under `%OneDrive%`** — `is_under_onedrive_root()` returns `False` if `%OneDrive%` unset or path outside → config load fails.
-3. **Single-instance lock is per-machine, not per-task** — prevents *any* two sync runs overlapping.
-4. **Exit code interpretation:** robocopy bits 8 (copy errors) and 16 (fatal) = failure. Bits 0-7 = success variants.
-5. **`/XO` is mandatory** — ensures newer destination files are never overwritten by older source files (critical for bidirectional safety).
-6. **Dry-run uses robocopy `/L`** — no files touched, but command still logged.
-7. **First-time sync (empty dest) bypasses threshold** — by design, since there's nothing to lose.
-8. **Notifications are best-effort** — never fail the sync if toast fails.
-9. **Message-only windows (`HWND_MESSAGE`) do NOT receive `WM_QUERYENDSESSION` / `WM_ENDSESSION`** — broadcast shutdown messages are sent only to top-level windows. Use `NULL` (0) as the window parent for hidden windows that need to receive session-ending notifications. This was fixed in `shutdown_monitor.py` — the monitor now uses a hidden top-level window (`NULL` parent) instead of a message-only window.
-
----
-
-## 🧭 Future Work / TODOs
-
-- [ ] Create `src/main.py` entry point (see skeleton above)
-- [ ] Add `--dry-run` CLI flag to override config
-- [ ] Add `--folder <id>` CLI flag to sync single folder
-- [ ] Consider adding a "manual" mode for on-demand sync
-- [ ] Add unit tests for `notifications.py` and `single_instance.py`
-- [ ] Document log rotation location (`logs/onedrive_pcsync.log*`)
-- [ ] Consider adding a "verify only" mode (no copy, just compare counts)
-
----
-
-## 📚 Related Memories
-
-- [[project-structure]] — High-level module map
-- [[config-schema]] — Detailed config.json schema reference
-- [[safety-invariants]] — The non-negotiable safety rules
-- [[scheduled-tasks]] — Task Scheduler setup details
+| `local` | 2026-08-08 | Fixed QDateTime error in LogsPage when parsing timestamps for date filtering. |
+| `local` | 2026-08-08 | Implemented real read-only Shutdown Monitor status panel with PID, startup time, last detected event, last shutdown sync, last error, using status file from shutdown monitor and backend method in ConfigManager. Updated SchedulerPage to display status with timer updates. |
+| `local` | 2026-08-08 | Designed and implemented application service layer in backend/services with ConfigurationService, SyncService, BackupService, SchedulerService, MonitorService, and LogService. Updated SchedulerPage and LogsPage to use services. |
+| `local` | 2026-08-08 | Fixed missing import of get_icon in ui/pages/backups.py causing name not defined error. |
+| `local` | 2026-08-08 | Fixed QHeaderView FIXED error in ui/pages/logs.py (used Fixed instead of FIXED). |
+| `local` | 2026-08-08 | Fixed QHeaderView STRETCH error in ui/pages/logs.py (used Stretch instead of STRETCH). |
+| `local` | 2026-08-08 | Fixed folderModel object has no attribute get error in ui/pages/folders.py by converting FolderModel to dict for FolderCard. |
+| `local` | 2026-08-08 | Fixed FolderCard signal connections in ui/pages/folders.py (used edit_clicked and enabled_toggled signals with lambda to pass folder_id). |
+| `local` | 2026-08-08 | Modified backend/services/sync_service.py to add get_app_config method. |
+| `local` | 2026-08-08 | Added reusable Qt background worker for synchronization in ui/workers/sync_worker.py. |
+| `local` | 2026-08-08 | Modified ui/pages/dashboard.py to display real synchronization state (current operation, folder, direction, elapsed time, result, last successful/failed sync) and to start sync via worker threads. |
+| `local` | 2026-08-08 | Fixed missing self parameter in is_shutdown_sync_enabled method in backend/services/sync_service.py. |
+| `local` | 2026-08-08 | Added finished signal to SyncWorker and emitted upon completion/failure to fix AttributeError in dashboard. |
+| `local` | 2026-08-08 | Removed duplicate deleteLater connections in dashboard.py to avoid RuntimeError on already deleted SyncWorker. |
+| `local` | 2026-08-08 | Fixed QThread destroyed while thread still running by proper thread cleanup: connect finished to quit, worker deleteLater, thread deleteLater; removed manual deleteLater in on_sync_finished. |
+| `local` | 2026-08-08 | Fixed SyncWorker completed signal definition: changed from Signal(List[FolderSyncOutcome]) to Signal(list) to prevent 'completed only accepts 0 argument, 1 given!' error. |
+| `local` | 2026-08-08 | Modified ui/workers/sync_worker.py to provide per-folder progress signals during synchronization, enabling dashboard to show current folder. |
+| `local` | 2026-08-08 | Modified ui/pages/dashboard.py to update current folder label from worker progress messages. |
+| `local` | 2026-08-08 | Added system tray integration with idle/syncing/success/warning/error states and context menu (Open, Sync Now, Pause/Resume, Settings, Exit). |
+| `local` | 2026-08-08 | Modified MainWindow close event to hide to tray instead of terminating application, keeping background services running. |
+| `local` | 2026-08-08 | Modified SyncService to inherit from QObject and added signals (started, progress, completed, failed, finished) for sync state reporting. |
+| `local` | 2026-08-08 | Modified MainWindow to connect to sync service signals in load_services and update tray icon based on sync state. |
+| `local` | 2026-08-09 | Added single-instance protection for the UI using QLocalServer and QLocalSocket. |
+| `local` | 2026-08-09 | Modified MainWindow to check for another instance on startup and send a show message if found. |
+| `local` | 2026-08-09 | Added main function and __main__ block to run the application with single instance check. |
+| `local` | 2026-08-09 | Added show_and_activate method to show and activate the window from another instance. |
+| `local` | 2026-08-09 | Moved single instance check to beginning of __init__ to prevent UI setup for secondary instances.
+| `local` | 2026-08-09 | Connected SchedulerPage to Windows Scheduled Task infrastructure to display task status, existence, enabled state, last run, and next run times for startup, periodic, and workstation lock tasks without modifying existing PowerShell scripts.
+| `local` | 2026-08-09 | Added scheduler controls to enable/disable supported scheduled tasks and refresh task status in SchedulerPage UI.
+| `local` | 2026-08-09 | Fixed missing SyncTriggerSettings import in ui/pages/settings.py. |
+| `local` | 2026-08-09 | Fixed missing expand_env_vars import in src.config (used in BackupSettings and FolderSyncConfig resolved path properties). |
+|--------|------|---------|

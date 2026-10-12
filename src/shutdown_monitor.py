@@ -65,6 +65,7 @@ See: https://learn.microsoft.com/en-us/windows/win32/shutdown/application-respon
 from __future__ import annotations
 
 import datetime
+import json
 import os
 import sys
 from pathlib import Path
@@ -82,6 +83,7 @@ DEFAULT_LOG_DIR = PROJECT_ROOT / "logs"
 DEFAULT_CONFIG_PATH = PROJECT_ROOT / "config.json"
 MONITOR_LOCK_PATH = PROJECT_ROOT / "onedrive_pcsync_shutdown_monitor.lock"
 CRASH_LOG_PATH = DEFAULT_LOG_DIR / "shutdown_monitor_crash.log"
+STATUS_FILE = PROJECT_ROOT / "shutdown_monitor_status.json"
 
 # Windows messages for session-ending notifications
 WM_QUERYENDSESSION = 0x0011
@@ -89,19 +91,15 @@ WM_ENDSESSION = 0x0016
 
 logger = get_logger(__name__)
 
-# ---------------------------------------------------------------------------
-# pywin32 — imported once at module load.  This module is used exclusively
-# on Windows and requires pywin32; if it is missing the monitor exits
-# with a clear error from main().
-# ---------------------------------------------------------------------------
-try:
-    import win32gui
-    import win32con
-    import win32api
-except ImportError:
-    win32gui = None  # type: ignore[assignment,misc]
-    win32con = None  # type: ignore[assignment,misc]
-    win32api = None  # type: ignore[assignment,misc]
+
+def _write_status(status_dict: dict) -> None:
+    """Write status dictionary to STATUS_FILE as JSON."""
+    try:
+        with open(STATUS_FILE, "w", encoding="utf-8") as f:
+            json.dump(status_dict, f, indent=2)
+    except Exception:
+        # Best effort; if we can't write status, we don't want to break the monitor
+        pass
 
 
 def _setup_logging() -> None:
@@ -157,6 +155,11 @@ class ShutdownMonitorWindow:
         self._wc_atom: int | None = None
         self._shutdown_requested = False
         self._sync_done = False
+        # Status tracking
+        self.last_detected_event: str | None = None
+        self.last_shutdown_sync: str | None = None
+        self.last_error: str | None = None
+        self.startup_time: str = datetime.datetime.now().isoformat()
 
     # ------------------------------------------------------------------
     # Window procedure
@@ -198,6 +201,10 @@ class ShutdownMonitorWindow:
             except Exception:
                 pass
 
+            # Record that we detected a shutdown event
+            self.last_detected_event = datetime.datetime.now().isoformat()
+            _write_status(self._get_status_dict())
+
             try:
                 exit_code = run_sync(
                     mode="shutdown",
@@ -215,12 +222,19 @@ class ShutdownMonitorWindow:
                         )
                 except Exception:
                     pass
+
+                # Record successful sync
+                self.last_shutdown_sync = datetime.datetime.now().isoformat()
+                self.last_error = None
             except Exception as e:  # noqa: BLE001
                 _emergency_log(f"EXCEPTION during run_sync: {e!r}")
                 try:
                     logger.exception("Error during shutdown sync: %s", e)
                 except Exception:
                     pass
+                # Record error
+                self.last_shutdown_sync = datetime.datetime.now().isoformat()
+                self.last_error = str(e)
 
             self._sync_done = True
             _emergency_log("Sync attempt finished — allowing session to end.")
@@ -242,6 +256,38 @@ class ShutdownMonitorWindow:
             return 0
 
         return win32gui.DefWindowProc(hwnd, msg, wparam, lparam)  # type: ignore[union-attr]
+
+    def _get_status_dict(self) -> dict:
+        """Return a dictionary representing current status."""
+        # Determine if we are currently running
+        # If we have a window and are processing messages, we are running.
+        # We'll consider running if _hwnd is not None and we haven't been told to shutdown.
+        # However, a simpler approach: if the monitor process is alive, we are running.
+        # We'll set status based on whether we are in the message loop.
+        # For simplicity, we'll set status to "running" when entering run() and
+        # update to "stopped" or "error" on exit.
+        # This method is called from various places, so we need a heuristic.
+        # We'll use: if _hwnd is not None and not _shutdown_requested, we are running.
+        # But after WM_QUERYENDSESSION we set _sync_done=True, but still running until WM_ENDSESSION.
+        # We'll just compute:
+        if self._hwnd is None:
+            status = "unknown"
+        elif self._shutdown_requested:
+            status = "stopped"
+        elif self._sync_done:
+            # After sync done, still waiting for WM_ENDSESSION to exit
+            status = "running"
+        else:
+            status = "running"
+
+        return {
+            "status": status,
+            "pid": os.getpid(),
+            "startup_time": self.startup_time,
+            "last_detected_event": self.last_detected_event,
+            "last_shutdown_sync": self.last_shutdown_sync,
+            "last_error": self.last_error,
+        }
 
     # ------------------------------------------------------------------
     # Window lifecycle (no-show window + message loop)
@@ -301,6 +347,8 @@ class ShutdownMonitorWindow:
         except Exception as e:  # noqa: BLE001
             _emergency_log(f"ShutdownBlockReasonCreate failed: {e!r}")
 
+        # Write initial status after window created
+        _write_status(self._get_status_dict())
 
     def run(self) -> None:
         """Run the Windows message loop.
@@ -315,6 +363,8 @@ class ShutdownMonitorWindow:
         """
         logger.info("Message loop started — waiting for Windows session events.")
         _emergency_log("message loop started")
+        # Update status to running
+        _write_status(self._get_status_dict())
         rc, msg = win32gui.GetMessage(None, 0, 0)  # type: ignore[union-attr]
         while rc != 0:  # 0 means WM_QUIT
             win32gui.TranslateMessage(msg)  # type: ignore[union-attr]
@@ -327,6 +377,11 @@ class ShutdownMonitorWindow:
                 break
             rc, msg = win32gui.GetMessage(None, 0, 0)  # type: ignore[union-attr]
         _emergency_log(f"message loop exited rc={rc}")
+        # After loop exits, update status to stopped (unless error)
+        status_dict = self._get_status_dict()
+        if status_dict.get("status") != "error":
+            status_dict["status"] = "stopped"
+        _write_status(status_dict)
 
     def destroy(self) -> None:
         """Clean up the hidden window and unregister its class."""
@@ -419,6 +474,16 @@ def main() -> int:
     except Exception as e:  # noqa: BLE001
         logger.exception("Fatal error in shutdown monitor: %s", e)
         _emergency_log(f"FATAL: unhandled exception in main(): {e!r}")
+        # Write error status
+        error_status = {
+            "status": "error",
+            "pid": os.getpid(),
+            "startup_time": datetime.datetime.now().isoformat(),
+            "last_detected_event": None,
+            "last_shutdown_sync": None,
+            "last_error": str(e),
+        }
+        _write_status(error_status)
         return 1
     finally:
         monitor.destroy()
