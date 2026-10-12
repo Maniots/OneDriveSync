@@ -3,6 +3,7 @@ from uuid import uuid4
 
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtCore import QIODevice
+from PySide6.QtTest import QSignalSpy
 from ui.app import _write_socket_message, connect_activation_server
 
 
@@ -30,9 +31,13 @@ def test_local_server_activates_existing_window(qapp):
     try:
         socket.connectToServer(name, QIODevice.OpenModeFlag.ReadWrite)
         wait_until(qapp, lambda: socket.state() == QLocalSocket.LocalSocketState.ConnectedState, socket)
+        # Windows can connect before the server accepts the pipe. A blocking
+        # write on this same thread would prevent the server from accepting it.
+        wait_until(qapp, lambda: bool(server.findChildren(QLocalSocket)), socket)
+        peer, = server.findChildren(QLocalSocket)
+        reads = QSignalSpy(peer.readyRead)
         assert _write_socket_message(socket, b"sh"), socket.errorString()
-        wait_until(qapp, lambda: bool(server.findChildren(QLocalSocket)) and
-                   all(s.bytesAvailable() == 0 for s in server.findChildren(QLocalSocket)), socket)
+        wait_until(qapp, lambda: reads.count() >= 1 and peer.bytesAvailable() == 0, socket)
         assert window.activations == 0
         assert _write_socket_message(socket, b"ow"), socket.errorString()
         wait_until(qapp, lambda: window.activations == 1, socket)
