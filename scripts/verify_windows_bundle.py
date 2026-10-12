@@ -25,7 +25,7 @@ def verify(executable: Path, root: Path) -> dict:
 
     def run(*args):
         result = subprocess.run([str(executable), *map(str, args)], env=env,
-                                cwd=unrelated_cwd, timeout=45,
+                                cwd=unrelated_cwd, timeout=75,
                                 creationflags=subprocess.CREATE_NO_WINDOW)
         if result.returncode:
             crash = root / "user/OneDrivePCSync/logs/desktop_crash.log"
@@ -50,6 +50,24 @@ def verify(executable: Path, root: Path) -> dict:
     assert not (cloud / "save.txt").exists(), "Dry run copied data"
     run("--mode", "shutdown")
     assert (cloud / "save.txt").read_text() == "local save"
+
+    # Offscreen rendering cannot detect Windows worker-disposal races.
+    # Exercise the shipping Qt platform while startup checks complete.
+    for index in range(1, 4):
+        (root / f"local-{index}").mkdir()
+        (root / f"cloud-{index}").mkdir()
+        config["folders"].append({
+            "id": f"test-{index}", "name": f"Acceptance folder {index}",
+            "enabled": True, "local_path": str(root / f"local-{index}"),
+            "onedrive_path": str(root / f"cloud-{index}"), "minimum_sync_percentage": 0,
+        })
+    config_path.write_text(json.dumps(config), encoding="utf-8")
+    native_report = root / "native-interactions.json"
+    run("--interaction-test", native_report)
+    interactions = json.loads(native_report.read_text())
+    assert interactions["folder_count"] == 4
+    assert interactions["native_navigation_clicks"] >= 28
+    assert interactions["manual_update_check_verified"]
 
     # Exercise the existing native monitor on its own HWND with isolated data.
     # This message asks only this process to sync; it does not end a session.
@@ -81,6 +99,8 @@ def verify(executable: Path, root: Path) -> dict:
             monitor.terminate()
             monitor.wait(timeout=10)
     report.update(dry_run_preserved=True, sync_copy_verified=True,
+                  native_navigation_clicks=interactions["native_navigation_clicks"],
+                  manual_update_check_verified=True,
                   native_monitor_sync_verified=True, native_monitor_exit_verified=True)
     (root / "acceptance.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
     return report

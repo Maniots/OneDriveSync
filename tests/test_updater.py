@@ -187,6 +187,40 @@ def test_error_state_allows_retry_without_installing(qapp, tmp_path):
         page.close()
 
 
+def test_update_result_is_published_after_native_worker_disposal(qapp, tmp_path, monkeypatch):
+    from PySide6.QtCore import Qt
+    from threading import Event
+    from backend.services import update_service
+
+    disposed = Event()
+
+    def finish_disposal():
+        # Emulate native cleanup still running after finished was emitted.
+        time.sleep(.05)
+        disposed.set()
+
+    original = update_service._UpdateWorker
+
+    class SlowDisposalWorker(original):
+        def __init__(self, *args):
+            super().__init__(*args)
+            self.destroyed.connect(finish_disposal, Qt.ConnectionType.DirectConnection)
+
+    monkeypatch.setattr(update_service, "_UpdateWorker", SlowDisposalWorker)
+    client = UpdateClient(root=tmp_path)
+    client.check = Mock(return_value=CheckResult("current"))
+    service = UpdateService(client=client)
+    terminal_states = []
+    service.changed.connect(lambda: terminal_states.append(disposed.is_set())
+                            if service.state == "current" else None)
+    try:
+        assert service.check()
+        spin(qapp, lambda: not service.busy)
+        assert terminal_states == [True]
+    finally:
+        service.wait_for_finished()
+
+
 def test_shutdown_monitor_respects_the_update_and_sync_lock(monkeypatch):
     from src import shutdown_monitor as monitor
     monkeypatch.setattr(monitor, "acquire_single_instance_lock", lambda path: None)

@@ -4,11 +4,37 @@ The main window features a modern header with page title and optional subtitle, 
 
 Last updated: 2026-10-12
 
+## Native desktop crash repair (2026-10-12)
+
+- Version 1.1.1.0 fixes a Windows worker-disposal race. Native EXE tests
+  reproduced access violations in Shiboken while `UpdateService._finish`
+  dropped worker references and the QThread was still processing native
+  deferred deletion. `QThread.finished` does not mean native cleanup is done.
+  Update, scheduler and sync completion slots now join the thread before
+  releasing wrappers or announcing completion; background work stays async.
+- `desktop_entry.py` captures native exceptions using faulthandler in
+  `%LOCALAPPDATA%\OneDrivePCSync\logs\desktop_native_crash.log`. Python
+  exception reporting remains in `desktop_crash.log`.
+- `--interaction-test REPORT.json` runs the Windows Qt platform, asserts
+  real clicks change every sidebar page/header, waits for the automatic
+  startup update check, tests the manual check button, then exits normally.
+  `scripts/verify_windows_bundle.py` includes this check with four isolated
+  folders before testing sync and the shutdown monitor. `--smoke-test`
+  remains an offscreen rendering check.
+- Correction to the earlier validation scope: the 208 passing tests and
+  offscreen frozen rendering did not exercise native Windows clicks across
+  update-worker completion. They were insufficient evidence for interactive
+  EXE stability. The original installed EXE crashed in the native repeat
+  test; joining the updater thread passed the identical 56-click test.
+- Verification: 209 tests passed, 2 skipped. The repaired frozen bundle
+  passed 29 asserted native navigation clicks, automatic/manual update
+  checks, dry-run, real isolated copies, and native monitor sync/exit.
+
 ## Updates from master (2026-10-12)
 
 - `src/app_info.py` owns version/repository identity. Build metadata generates
   the EXE version, Inno include and matching SHA-256/size update manifest.
-  Local builds use 1.1.0.0; GitHub builds use the run number as component four.
+  Local builds use 1.1.1.0; GitHub builds use the run number as component four.
 - `.github/workflows/windows-release.yml` tests and builds Windows on pushes
   to master, validates the frozen EXE, and publishes a `master-N` GitHub release
   only for the still-current master commit. It becomes active when merged and

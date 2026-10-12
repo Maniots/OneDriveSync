@@ -2,7 +2,7 @@
 import json
 from pathlib import Path
 
-BASE_VERSION = "1.1.0"
+BASE_VERSION = "1.1.1"
 REPOSITORY = "Maniots/OneDriveSync"
 
 

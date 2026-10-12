@@ -94,6 +94,9 @@ class SchedulerService(QObject):
 
     @Slot()
     def _query_finished(self):
+        # Qt still processes deferred deletion after emitting finished.
+        if self._thread is not None:
+            self._thread.wait()
         self._thread = None
         self._worker = None
         if self._refresh_pending:

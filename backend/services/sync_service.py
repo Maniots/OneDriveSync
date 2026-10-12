@@ -215,7 +215,7 @@ class SyncService(QObject):
         self._thread.started.connect(start)
         self._worker.finished.connect(self._thread.quit, Qt.ConnectionType.DirectConnection)
         self._worker.finished.connect(self._worker.deleteLater)
-        # Release references only once the thread has actually stopped.
+        # Join in the completion slot before releasing worker wrappers.
         self._thread.finished.connect(self._on_thread_finished)
         self._thread.finished.connect(self._thread.deleteLater)
         self._thread.start()
@@ -225,6 +225,8 @@ class SyncService(QObject):
     def _on_thread_finished(self) -> None:
         if not self._is_syncing:
             return
+        if self._thread is not None:
+            self._thread.wait()
         self._worker = None
         self._thread = None
         self._is_syncing = False

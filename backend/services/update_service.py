@@ -116,6 +116,10 @@ class UpdateService(QObject):
     @Slot()
     def _finish(self):
         action = self.state
+        # finished is emitted before Qt completes deferred worker deletion.
+        # Join before releasing wrappers, which Shiboken also uses on exit.
+        if self._thread is not None:
+            self._thread.wait()
         self._thread = self._worker = None
         if self._closing:
             return
