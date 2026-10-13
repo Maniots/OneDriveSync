@@ -2,7 +2,36 @@ This architecture ensures the UI remains independent from the core synchronizati
 
 The main window features a modern header with page title and optional subtitle, a navigation sidebar with application logo, grouped navigation items, and a bottom section for Settings and About. The design follows Windows 11-inspired Fluent Design principles with proper spacing, rounded corners, and subtle hover effects.
 
-Last updated: 2026-10-12
+Last updated: 2026-10-13
+
+## Run at startup in Settings (2026-10-13)
+
+- Settings includes an independent "App startup" card with "Run at startup".
+  Its checkbox saves immediately, reads the Windows registration when the
+  page opens, and rolls back with a retryable error if a write fails. It
+  remains usable when sync configuration is missing; source/non-Windows
+  execution explains that the installed Windows app is required.
+- `backend/services/app_startup_service.py` owns the current user's
+  `HKCU\Software\Microsoft\Windows\CurrentVersion\Run\OneDrivePCSync`
+  value. It registers the quoted installed EXE without arguments and removes
+  only its own entry. The default is disabled. Windows registration is the
+  sole persisted state; there is no duplicate flag in sync configuration.
+  This opens the desktop app at sign-in; existing scheduled sync and shutdown
+  monitor tasks keep their independent behavior.
+- Version 1.2.0.0 preserves the startup choice on upgrades. Uninstall removes
+  the value only if its command belongs to that installation; the validation
+  installer uses a separate value name. `--interaction-test` exercises native
+  Settings toggles against a temporary registry value and cleans it up.
+- `tests/test_app_startup.py` covers persistence, ownership, unsupported
+  source runs, immediate save, Cancel/Reset, error rollback/read retry and
+  refresh. The installer validator checks upgrade preservation and uninstall
+  cleanup alongside existing configuration preservation. Real Windows
+  sign-out/sign-in remains outside automated validation.
+- Verification: 217 tests passed, 2 skipped; the frozen EXE passed native
+  startup checkbox/registry persistence, 29 page clicks, update checks,
+  isolated sync and monitor checks. A separate real installer passed startup
+  preservation on upgrade and removal on uninstall. The scheduler recovery
+  test now isolates monitor status from the developer's runtime status file.
 
 ## Native desktop crash repair (2026-10-12)
 
@@ -34,7 +63,7 @@ Last updated: 2026-10-12
 
 - `src/app_info.py` owns version/repository identity. Build metadata generates
   the EXE version, Inno include and matching SHA-256/size update manifest.
-  Local builds use 1.1.1.0; GitHub builds use the run number as component four.
+  Local builds use 1.2.0.0; GitHub builds use the run number as component four.
 - `.github/workflows/windows-release.yml` tests and builds Windows on pushes
   to master, validates the frozen EXE, and publishes a `master-N` GitHub release
   only for the still-current master commit. It becomes active when merged and

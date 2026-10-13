@@ -68,6 +68,7 @@ def verify(executable: Path, root: Path) -> dict:
     assert interactions["folder_count"] == 4
     assert interactions["native_navigation_clicks"] >= 28
     assert interactions["manual_update_check_verified"]
+    assert interactions["startup_setting_verified"]
 
     # Exercise the existing native monitor on its own HWND with isolated data.
     # This message asks only this process to sync; it does not end a session.
@@ -101,6 +102,7 @@ def verify(executable: Path, root: Path) -> dict:
     report.update(dry_run_preserved=True, sync_copy_verified=True,
                   native_navigation_clicks=interactions["native_navigation_clicks"],
                   manual_update_check_verified=True,
+                  startup_setting_verified=True,
                   native_monitor_sync_verified=True, native_monitor_exit_verified=True)
     (root / "acceptance.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
     return report

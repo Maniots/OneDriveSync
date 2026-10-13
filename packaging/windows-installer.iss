@@ -4,9 +4,11 @@
 #ifdef ValidationBuild
   #define InstallerAppId "{{4B0E3CEC-590C-44E8-A819-FDA7F10DDAF8}"
   #define DataDirectory "{app}\validation-data"
+  #define StartupValueName "OneDrivePCSync-Validation"
 #else
   #define InstallerAppId "{{B7E79167-2292-4B36-9AF7-678418DA1C5D}"
   #define DataDirectory "{localappdata}\OneDrivePCSync"
+  #define StartupValueName "OneDrivePCSync"
 #endif
 
 [Setup]
@@ -76,6 +78,18 @@ begin
   if ResultCode <> 0 then
     RaiseException('Configurazione delle attivita automatiche non riuscita. Eseguire ' +
       ScriptName + ' dalla cartella di installazione per vedere i dettagli.');
+end;
+
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+var
+  StartupCommand: String;
+begin
+  if (CurUninstallStep = usUninstall) and
+     RegQueryStringValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Run',
+                         '{#StartupValueName}', StartupCommand) then begin
+    if CompareText(StartupCommand, '"' + ExpandConstant('{app}\{#AppExe}') + '"') = 0 then
+      RegDeleteValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Run', '{#StartupValueName}');
+  end;
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);

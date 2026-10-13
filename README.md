@@ -183,6 +183,12 @@ Folder management supports add, edit, enable/disable, search and filtering.
 Settings and folder changes are validated before atomically replacing the
 configuration file; environment-variable references remain intact.
 
+In the installed Windows app, **Settings → App startup → Run at startup**
+opens the desktop app when you sign in. The checkbox saves immediately,
+independently of Apply/Cancel, and is disabled by default. The choice survives
+app updates and is removed on uninstall. Scheduled synchronization remains
+managed separately.
+
 **Pause UI Sync** blocks new requests from the UI and lets the current copy
 finish. Independently scheduled Windows tasks continue to run. Exiting during
 synchronization waits for the copy to finish. Without a system tray, closing

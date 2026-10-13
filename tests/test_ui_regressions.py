@@ -242,7 +242,9 @@ def test_paused_or_disabled_sync_does_not_write(qapp, configuration):
 
 
 def test_scheduler_recovers_without_deleted_widgets_or_implicit_writes(qapp, configuration, monkeypatch):
-    config_service, *_ = configuration
+    config_service, _, _, config_path = configuration
+    # Keep the real monitor-status reader isolated from the developer's file.
+    monkeypatch.setattr("src.runtime_paths.data_root", lambda: config_path.parent)
 
     class Scheduler:
         _TASK_NAMES = SchedulerService._TASK_NAMES

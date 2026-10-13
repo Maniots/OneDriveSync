@@ -78,7 +78,10 @@ def write_diagnostics(path: Path, smoke_test: bool, config_path: Path,
         if window.config_error:
             raise RuntimeError(window.config_error)
         if native_interaction:
+            exercise_startup_setting(window, report)
             exercise_navigation(app, window, report)
+            window.nav_list.setCurrentRow(5)
+            app.processEvents()
         screenshot = path.with_suffix(".png")
         screenshot.parent.mkdir(parents=True, exist_ok=True)
         if not window.grab().save(str(screenshot)):
@@ -91,6 +94,35 @@ def write_diagnostics(path: Path, smoke_test: bool, config_path: Path,
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(report, indent=2), encoding="utf-8")
     return 0
+
+
+def exercise_startup_setting(window, report):
+    """Use an isolated Run value to verify the shipping Settings control."""
+    import os
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
+    from backend.services.app_startup_service import AppStartupService
+
+    page = window.content_stack.widget(5)
+    original = page.startup_service
+    service = AppStartupService(value_name=f"OneDrivePCSync-Validation-{os.getpid()}")
+    page.startup_service = service
+    window.nav_list.setCurrentRow(5)
+    page.refresh_startup()
+    try:
+        assert page.run_at_startup_check.isEnabled()
+        QTest.keyClick(page.run_at_startup_check, Qt.Key.Key_Space)
+        assert page.run_at_startup_check.isChecked() and service.is_enabled()
+        assert AppStartupService(value_name=service.value_name).is_enabled()
+        page.refresh_startup()
+        assert page.run_at_startup_check.isChecked()
+        QTest.keyClick(page.run_at_startup_check, Qt.Key.Key_Space)
+        assert not page.run_at_startup_check.isChecked() and not service.is_enabled()
+        report["startup_setting_verified"] = True
+    finally:
+        service.set_enabled(False)
+        page.startup_service = original
+        page.refresh_startup()
 
 
 def exercise_navigation(app, window, report):

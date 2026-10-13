@@ -21,8 +21,15 @@ if ($config.folders.Count -ne 0) { throw 'Installer embedded personal folders' }
 $config.general.dry_run = $true
 $config | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $ConfigPath -Encoding UTF8
 $OriginalConfig = [System.IO.File]::ReadAllBytes($ConfigPath)
+$RunKey = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey('Software\Microsoft\Windows\CurrentVersion\Run')
+$StartupValue = 'OneDrivePCSync-Validation'
+$StartupCommand = '"' + $InstalledExe + '"'
+if ($null -ne $RunKey.GetValue($StartupValue)) { $RunKey.Dispose(); throw 'A validation startup entry already exists' }
+try {
+$RunKey.SetValue($StartupValue, $StartupCommand, [Microsoft.Win32.RegistryValueKind]::String)
 Invoke-CheckedInstaller $Installer $SetupArguments
 if ([Convert]::ToBase64String([System.IO.File]::ReadAllBytes($ConfigPath)) -ne [Convert]::ToBase64String($OriginalConfig)) { throw 'Upgrade replaced configuration' }
+if ($RunKey.GetValue($StartupValue) -cne $StartupCommand) { throw 'Upgrade changed startup registration' }
 $env:LOCALAPPDATA = Join-Path $TestDirectory 'test-user'
 $ReportPath = Join-Path $TestDirectory 'installed-ui.json'
 Invoke-CheckedInstaller $InstalledExe @('--smoke-test', ('"' + $ReportPath + '"'))
@@ -30,5 +37,10 @@ $Report = Get-Content -LiteralPath $ReportPath -Raw | ConvertFrom-Json
 if (-not $Report.ui_rendered) { throw 'Installed UI did not render' }
 Invoke-CheckedInstaller (Join-Path $TestDirectory 'unins000.exe') @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART')
 if (Test-Path -LiteralPath $InstalledExe) { throw 'Uninstall left the EXE' }
+if ($null -ne $RunKey.GetValue($StartupValue)) { throw 'Uninstall left startup registration' }
 if ([Convert]::ToBase64String([System.IO.File]::ReadAllBytes($ConfigPath)) -ne [Convert]::ToBase64String($OriginalConfig)) { throw 'Uninstall removed configuration' }
-Write-Output "PASS: install, installed UI, upgrade preservation and uninstall preservation ($TestDirectory)"
+Write-Output "PASS: install, installed UI, config/startup upgrade preservation and uninstall cleanup ($TestDirectory)"
+} finally {
+    if ($RunKey.GetValue($StartupValue) -ceq $StartupCommand) { $RunKey.DeleteValue($StartupValue, $false) }
+    $RunKey.Dispose()
+}
