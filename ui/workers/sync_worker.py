@@ -23,10 +23,11 @@ class SyncWorker(QObject):
     finished = Signal()
 
     def __init__(self, sync_service: "SyncService", parent: Optional[QObject] = None,
-                 config: Optional[AppConfig] = None):
+                 config: Optional[AppConfig] = None, ignore_threshold_for: Optional[str] = None):
         super().__init__(parent)
         self._sync_service = sync_service
         self._config = config
+        self._ignore_threshold_for = ignore_threshold_for
 
     def _run_sync(self, operation: str):
         lock_handle = None
@@ -50,7 +51,7 @@ class SyncWorker(QObject):
             self.started.emit(operation)
             manager = SyncManager(config, history_path=self._sync_service.history_path)
             run = manager.run_startup_sync if operation == "startup" else manager.run_shutdown_sync
-            outcomes = run(progress_callback=self.progress.emit)
+            outcomes = run(progress_callback=self.progress.emit, ignore_threshold_for=self._ignore_threshold_for)
             self.progress.emit(100, f"{operation.capitalize()} synchronization finished.")
             self.completed.emit(outcomes)
         except Exception as exc:

@@ -43,6 +43,7 @@ class AvailableUpdate:
     url: str
     sha256: str
     size: int
+    changes: str = ""
 
 
 @dataclass(frozen=True)
@@ -129,7 +130,10 @@ class UpdateClient:
             raise UpdateError("The update package is incomplete. Try again later.")
         url = asset.get("browser_download_url", "")
         _validate_asset_url(url, tag)
-        update = AvailableUpdate(version, manifest["commit"], filename, url, manifest["sha256"], size)
+        changes = manifest.get("changes", "")
+        if not isinstance(changes, str) or len(changes.encode("utf-8")) > 4096:
+            raise UpdateError("Update release notes are invalid.")
+        update = AvailableUpdate(version, manifest["commit"], filename, url, manifest["sha256"], size, changes)
         if latest <= version_key(self.current_version):
             return CheckResult("current")
         return CheckResult("available", update)
@@ -171,6 +175,10 @@ class UpdateClient:
             return value if isinstance(value, dict) else {}
         except (OSError, ValueError):
             return {}
+
+    def installation_history(self):
+        from src.installation_history import InstallationHistory
+        return InstallationHistory(self.root).recent()
 
     def save_automatic(self, enabled: bool):
         self.root.mkdir(parents=True, exist_ok=True)

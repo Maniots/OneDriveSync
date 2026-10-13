@@ -16,6 +16,8 @@ Invoke-CheckedInstaller $Installer $SetupArguments
 $InstalledExe = Join-Path $TestDirectory 'OneDrivePCSync.exe'
 $ConfigPath = Join-Path $TestDirectory 'validation-data\config.json'
 if (-not (Test-Path -LiteralPath $InstalledExe)) { throw 'Installed EXE missing' }
+$HistoryPath = Join-Path $TestDirectory 'validation-data\updates\history.sqlite3'
+if (-not (Test-Path -LiteralPath $HistoryPath)) { throw 'Installer did not record installation history' }
 $config = Get-Content -LiteralPath $ConfigPath -Raw | ConvertFrom-Json
 if ($config.folders.Count -ne 0) { throw 'Installer embedded personal folders' }
 $config.general.dry_run = $true
@@ -30,6 +32,9 @@ $RunKey.SetValue($StartupValue, $StartupCommand, [Microsoft.Win32.RegistryValueK
 Invoke-CheckedInstaller $Installer $SetupArguments
 if ([Convert]::ToBase64String([System.IO.File]::ReadAllBytes($ConfigPath)) -ne [Convert]::ToBase64String($OriginalConfig)) { throw 'Upgrade replaced configuration' }
 if ($RunKey.GetValue($StartupValue) -cne $StartupCommand) { throw 'Upgrade changed startup registration' }
+$Python = Join-Path $ProjectRoot '.venv\Scripts\python.exe'
+& $Python -c "import sqlite3,sys; db=sqlite3.connect(sys.argv[1]); rows=db.execute('SELECT previous_version,version,changes FROM installations ORDER BY id').fetchall(); assert len(rows)==2 and rows[1][0]==rows[0][1] and rows[1][2], rows" $HistoryPath
+if ($LASTEXITCODE -ne 0) { throw 'Upgrade did not append installation history' }
 $env:LOCALAPPDATA = Join-Path $TestDirectory 'test-user'
 $ReportPath = Join-Path $TestDirectory 'installed-ui.json'
 Invoke-CheckedInstaller $InstalledExe @('--smoke-test', ('"' + $ReportPath + '"'))
@@ -38,6 +43,7 @@ if (-not $Report.ui_rendered) { throw 'Installed UI did not render' }
 Invoke-CheckedInstaller (Join-Path $TestDirectory 'unins000.exe') @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART')
 if (Test-Path -LiteralPath $InstalledExe) { throw 'Uninstall left the EXE' }
 if ($null -ne $RunKey.GetValue($StartupValue)) { throw 'Uninstall left startup registration' }
+if (-not (Test-Path -LiteralPath $HistoryPath)) { throw 'Uninstall removed installation history' }
 if ([Convert]::ToBase64String([System.IO.File]::ReadAllBytes($ConfigPath)) -ne [Convert]::ToBase64String($OriginalConfig)) { throw 'Uninstall removed configuration' }
 Write-Output "PASS: install, installed UI, config/startup upgrade preservation and uninstall cleanup ($TestDirectory)"
 } finally {

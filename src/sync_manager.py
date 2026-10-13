@@ -44,6 +44,7 @@ class FolderSyncOutcome:
     direction: SyncDirection
     succeeded: bool
     message: str
+    threshold_bypassed: bool = False
 
 
 class SyncManager:
@@ -60,7 +61,7 @@ class SyncManager:
         self._mode: str = "unknown"
         self._history_path = history_path
 
-    def run_startup_sync(self, progress_callback: Optional[Callable[[int, str], None]] = None) -> List[FolderSyncOutcome]:
+    def run_startup_sync(self, progress_callback: Optional[Callable[[int, str], None]] = None, *, ignore_threshold_for: Optional[str] = None) -> List[FolderSyncOutcome]:
         """Run the configured startup synchronization (typically download)."""
         self._mode = "startup"
         trigger = self._config.sync.startup
@@ -68,9 +69,9 @@ class SyncManager:
             logger.info("Startup sync is disabled in configuration. Skipping.")
             return []
         logger.info("=== Starting STARTUP sync (direction=%s) ===", trigger.direction.value)
-        return self._run_all_folders(trigger.direction, progress_callback)
+        return self._run_all_folders(trigger.direction, progress_callback, ignore_threshold_for)
 
-    def run_shutdown_sync(self, progress_callback: Optional[Callable[[int, str], None]] = None) -> List[FolderSyncOutcome]:
+    def run_shutdown_sync(self, progress_callback: Optional[Callable[[int, str], None]] = None, *, ignore_threshold_for: Optional[str] = None) -> List[FolderSyncOutcome]:
         """Run the configured shutdown synchronization (typically upload)."""
         self._mode = "shutdown"
         trigger = self._config.sync.shutdown
@@ -78,9 +79,9 @@ class SyncManager:
             logger.info("Shutdown sync is disabled in configuration. Skipping.")
             return []
         logger.info("=== Starting SHUTDOWN sync (direction=%s) ===", trigger.direction.value)
-        return self._run_all_folders(trigger.direction, progress_callback)
+        return self._run_all_folders(trigger.direction, progress_callback, ignore_threshold_for)
 
-    def _run_all_folders(self, direction: SyncDirection, progress_callback: Optional[Callable[[int, str], None]] = None) -> List[FolderSyncOutcome]:
+    def _run_all_folders(self, direction: SyncDirection, progress_callback: Optional[Callable[[int, str], None]] = None, ignore_threshold_for: Optional[str] = None) -> List[FolderSyncOutcome]:
         outcomes: List[FolderSyncOutcome] = []
 
         folders = self._config.enabled_folders()
@@ -88,7 +89,7 @@ class SyncManager:
             # Each folder is fully independent: an error in one must never
             # prevent the others from being processed.
             try:
-                outcome = self._sync_single_folder(folder, direction)
+                outcome = self._sync_single_folder(folder, direction, ignore_threshold=folder.id == ignore_threshold_for)
                 return outcome
             except OneDrivePCSyncError as exc:
                 logger.error(
@@ -103,6 +104,7 @@ class SyncManager:
                         direction=direction,
                         succeeded=False,
                         message=str(exc),
+                        threshold_bypassed=folder.id == ignore_threshold_for,
                 )
             except Exception as exc:  # noqa: BLE001 - last line of defense
                 logger.exception(
@@ -116,6 +118,7 @@ class SyncManager:
                         direction=direction,
                         succeeded=False,
                         message=f"Unexpected error: {exc}",
+                        threshold_bypassed=folder.id == ignore_threshold_for,
                 )
 
         workers = self._config.general.max_parallel_jobs
@@ -147,7 +150,7 @@ class SyncManager:
         return outcomes
 
     def _sync_single_folder(
-        self, folder: FolderSyncConfig, direction: SyncDirection
+        self, folder: FolderSyncConfig, direction: SyncDirection, *, ignore_threshold: bool = False
     ) -> FolderSyncOutcome:
         source, destination = self._resolve_source_and_destination(folder, direction)
 
@@ -160,7 +163,10 @@ class SyncManager:
         )
 
         self._validate_paths(folder, source, destination)
-        self._enforce_safety_threshold(folder, source, destination)
+        if ignore_threshold:
+            logger.warning("Folder '%s': percentage threshold explicitly bypassed for this run.", folder.id)
+        else:
+            self._enforce_safety_threshold(folder, source, destination)
 
         if direction == SyncDirection.UPLOAD and folder.backup is not None and folder.backup.enabled:
             self._backup.create_backup(folder.id, folder.backup, destination)
@@ -189,6 +195,8 @@ class SyncManager:
         )
         if result.stderr:
             message += f" Warning: {result.stderr}"
+        if ignore_threshold:
+            message += " Percentage threshold bypassed by explicit request."
         logger.info("Folder '%s': %s", folder.id, message)
 
         return FolderSyncOutcome(
@@ -197,6 +205,7 @@ class SyncManager:
             direction=direction,
             succeeded=True,
             message=message,
+            threshold_bypassed=ignore_threshold,
         )
 
     @staticmethod

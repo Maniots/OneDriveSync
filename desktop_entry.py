@@ -18,15 +18,19 @@ def parse_arguments(argv):
     action.add_argument("--mode", choices=["startup", "shutdown"])
     action.add_argument("--monitor", action="store_true")
     action.add_argument("--init-config", action="store_true")
+    action.add_argument("--record-install", type=Path, metavar="DATA_DIRECTORY")
     action.add_argument("--diagnostics", type=Path, metavar="REPORT.json")
     action.add_argument("--smoke-test", type=Path, metavar="REPORT.json")
     action.add_argument("--interaction-test", type=Path, metavar="REPORT.json")
+    action.add_argument("--force-sync-test", type=Path, metavar="REPORT.json")
     action.add_argument("--check-updates", action="store_true")
     action.add_argument("--update", action="store_true")
     parser.add_argument("--config", type=Path)
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--version", action="version", version=VERSION)
     args = parser.parse_args(argv)
+    if args.force_sync_test and args.config is None:
+        parser.error("--force-sync-test requires an explicit isolated --config")
     if args.monitor and (args.config or args.dry_run):
         parser.error("The monitor uses the shared application configuration")
     if args.dry_run and not args.mode:
@@ -35,7 +39,7 @@ def parse_arguments(argv):
 
 
 def write_diagnostics(path: Path, smoke_test: bool, config_path: Path,
-                      native_interaction: bool = False) -> int:
+                      native_interaction: bool = False, force_sync_test: bool = False) -> int:
     """Exercise bundled imports/resources and optionally a real Qt window."""
     from src.config_manager import ConfigManager
     from src.runtime_paths import sync_lock_path
@@ -78,8 +82,19 @@ def write_diagnostics(path: Path, smoke_test: bool, config_path: Path,
         if window.config_error:
             raise RuntimeError(window.config_error)
         if native_interaction:
+            if force_sync_test:
+                exercise_force_sync(app, window, path, report)
             exercise_startup_setting(window, report)
             exercise_navigation(app, window, report)
+            from PySide6.QtWidgets import QScrollArea
+            window.nav_list.setCurrentRow(6)
+            app.processEvents()
+            about_scroll = window.content_stack.widget(6).findChild(QScrollArea)
+            about_scroll.verticalScrollBar().setValue(about_scroll.verticalScrollBar().maximum())
+            app.processEvents()
+            path.parent.mkdir(parents=True, exist_ok=True)
+            if not window.grab().save(str(path.with_suffix(".about.png"))):
+                raise RuntimeError("Could not render the update history")
             window.nav_list.setCurrentRow(5)
             app.processEvents()
         screenshot = path.with_suffix(".png")
@@ -94,6 +109,60 @@ def write_diagnostics(path: Path, smoke_test: bool, config_path: Path,
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(report, indent=2), encoding="utf-8")
     return 0
+
+
+def exercise_force_sync(app, window, path, report):
+    """Exercise the real button/modal/worker on explicitly isolated fixtures."""
+    import time
+    import zipfile
+    from PySide6.QtCore import QTimer, Qt
+    from PySide6.QtTest import QTest
+    from PySide6.QtWidgets import QMessageBox
+    from ui.widgets.folder_card import FolderCard
+
+    folder, = window.configuration_service.get_app_config().folders
+    assert folder.id == "__acceptance_force__"
+    assert folder.local_path_resolved.is_relative_to(path.parent.resolve())
+    assert folder.onedrive_path_resolved.is_relative_to(path.parent.resolve())
+    window.nav_list.setCurrentRow(1)
+    page = window.content_stack.widget(1)
+    sync = window.sync_service
+    def card():
+        return page.findChildren(FolderCard)[-1]
+    def finish():
+        deadline = time.monotonic() + 10
+        while sync.is_syncing and time.monotonic() < deadline:
+            app.processEvents()
+            time.sleep(.001)
+        assert not sync.is_syncing
+        app.processEvents()
+    QTest.mouseClick(card().sync_now_button, Qt.MouseButton.LeftButton)
+    finish()
+    assert not sync.get_history()[0]["outcomes"][0]["succeeded"]
+    target = folder.onedrive_path_resolved / "save.txt"
+    assert target.read_text() == "old"
+    dialogs = []
+    def answer(choice):
+        dialog = app.activeModalWidget()
+        assert isinstance(dialog, QMessageBox)
+        assert dialog.defaultButton() == dialog.button(QMessageBox.StandardButton.No)
+        dialogs.append(dialog.text())
+        QTest.mouseClick(dialog.button(choice), Qt.MouseButton.LeftButton)
+    QTimer.singleShot(0, lambda: answer(QMessageBox.StandardButton.No))
+    QTest.mouseClick(card().force_sync_button, Qt.MouseButton.LeftButton)
+    assert not sync.is_syncing and target.read_text() == "old"
+    QTimer.singleShot(0, lambda: answer(QMessageBox.StandardButton.Yes))
+    QTest.mouseClick(card().force_sync_button, Qt.MouseButton.LeftButton)
+    finish()
+    assert target.read_text() == "new"
+    assert len(dialogs) == 2 and "80%" in dialogs[0]
+    assert sync.get_history()[0]["outcomes"][0]["threshold_bypassed"]
+    archives = list((folder.backup.backup_path_resolved / folder.id).glob("*.zip"))
+    assert len(archives) == 1
+    with zipfile.ZipFile(archives[0]) as archive:
+        assert archive.read("save.txt") == b"old"
+    assert folder.minimum_sync_percentage == 80
+    report["native_force_sync_verified"] = True
 
 
 def exercise_startup_setting(window, report):
@@ -181,16 +250,23 @@ def exercise_navigation(app, window, report):
 
 def main(argv=None) -> int:
     args = parse_arguments(sys.argv[1:] if argv is None else argv)
+    if args.record_install:
+        from src.app_info import build_info, release_notes
+        from src.installation_history import InstallationHistory
+        info = build_info()
+        InstallationHistory(args.record_install / "updates").record(info["version"], info["commit"], release_notes())
+        return 0
     if args.init_config:
         ensure_default_config()
         return 0
     # An explicit config is never silently replaced by a default.
     if getattr(sys, "frozen", False) and args.config is None:
         ensure_default_config()
-    if args.diagnostics or args.smoke_test or args.interaction_test:
-        return write_diagnostics(args.diagnostics or args.smoke_test or args.interaction_test,
-                                 bool(args.smoke_test or args.interaction_test),
-                                 args.config or default_config_path(), bool(args.interaction_test))
+    if args.diagnostics or args.smoke_test or args.interaction_test or args.force_sync_test:
+        return write_diagnostics(args.diagnostics or args.smoke_test or args.interaction_test or args.force_sync_test,
+                                 bool(args.smoke_test or args.interaction_test or args.force_sync_test),
+                                 args.config or default_config_path(), bool(args.interaction_test or args.force_sync_test),
+                                 bool(args.force_sync_test))
     if args.mode:
         from main import main as sync_main
         sync_args = ["--mode", args.mode]

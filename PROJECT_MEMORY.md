@@ -4,6 +4,43 @@ The main window features a modern header with page title and optional subtitle, 
 
 Last updated: 2026-10-13
 
+## Update changelog and forced folder sync (2026-10-13)
+
+- Version 1.3.0.0 adds About/Update history: installation time in local time,
+  previous/installed versions, selectable release-note snapshots and retryable
+  read errors. About uses a scroll area so updates/history fit smaller windows.
+  `CHANGELOG.md` owns release notes; metadata/manifests and GitHub release
+  publication carry the current section. Remote notes are bounded plain text.
+- `src/installation_history.py` stores installer events in
+  `%LOCALAPPDATA%\OneDrivePCSync\updates\history.sqlite3`. The installer calls
+  `--record-install DATA_DIRECTORY` after files and optional automation setup
+  succeed. Desktop launches/checks do not create events. Upgrade appends history
+  and uninstall preserves it. Only the last verified legacy `result.json` is
+  imported with its original timestamp; older dates/notes are not invented.
+- Each enabled folder has Force sync with a default-No confirmation showing
+  folder, direction, source, destination and threshold. It requests one
+  background run for that selected folder; pause/busy/disabled state and the
+  shared lock still apply. The override is a per-call argument owned by
+  `SyncManager`, never a persisted threshold change or a global engine flag.
+  Only the percentage comparison is skipped. Path guards, additive copying,
+  pre-upload backups, dry run and post-copy verification remain active.
+- Forced requests/results are tagged in logs and existing sync-history JSON;
+  folder status labels show Forced success/failure/dry run. Ordinary UI,
+  CLI and scheduled runs continue to enforce their configured thresholds.
+- Tests cover copy/backup behavior, confirmation cancellation, configuration
+  preservation, one-run/single-folder scope, guarded failures, history dates,
+  legacy import and UI recovery. Frozen acceptance adds `--force-sync-test`
+  using an explicit reserved folder ID and fixture paths under its report
+  directory; it cannot target ordinary personal folders. Installer validation
+  checks history creation, upgrade append and uninstall preservation.
+- Verification: 231 tests passed, 2 skipped; actionlint passed. The frozen EXE
+  passed real Force sync button/modal/worker copying and backup, startup
+  registration, update checks, navigation and isolated monitor checks. A
+  separate installer created history, appended on upgrade and preserved it
+  on uninstall. Legacy `result.json` remains the last-attempt/error owner;
+  the SQLite journal owns installation history once created, with no deletion
+  or rewrite of legacy records.
+
 ## Run at startup in Settings (2026-10-13)
 
 - Settings includes an independent "App startup" card with "Run at startup".
@@ -63,7 +100,7 @@ Last updated: 2026-10-13
 
 - `src/app_info.py` owns version/repository identity. Build metadata generates
   the EXE version, Inno include and matching SHA-256/size update manifest.
-  Local builds use 1.2.0.0; GitHub builds use the run number as component four.
+  Local builds use 1.3.0.0; GitHub builds use the run number as component four.
 - `.github/workflows/windows-release.yml` tests and builds Windows on pushes
   to master, validates the frozen EXE, and publishes a `master-N` GitHub release
   only for the still-current master commit. It becomes active when merged and

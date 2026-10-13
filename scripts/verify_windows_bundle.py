@@ -70,6 +70,26 @@ def verify(executable: Path, root: Path) -> dict:
     assert interactions["manual_update_check_verified"]
     assert interactions["startup_setting_verified"]
 
+    # The force-sync diagnostic rejects folders outside this fixture directory.
+    forced_local, forced_cloud = root / "force-local", root / "force-cloud"
+    forced_local.mkdir()
+    forced_cloud.mkdir()
+    (forced_local / "save.txt").write_text("new")
+    (forced_cloud / "save.txt").write_text("old")
+    os.utime(forced_cloud / "save.txt", (time.time() - 10, time.time() - 10))
+    for index in range(20):
+        (forced_cloud / f"kept-{index}.txt").write_text("keep")
+    env["OneDrive"] = str(root)
+    forced_config = dict(config, folders=[{"id": "__acceptance_force__", "name": "Force sync acceptance",
+                                          "enabled": True, "local_path": str(forced_local),
+                                          "onedrive_path": str(forced_cloud), "minimum_sync_percentage": 80,
+                                          "backup": {"enabled": True, "backup_path": str(root / "Backups"), "retention_days": 7}}])
+    forced_path = root / "force-config.json"
+    forced_path.write_text(json.dumps(forced_config))
+    forced_report = root / "force-interactions.json"
+    run("--force-sync-test", forced_report, "--config", forced_path)
+    assert json.loads(forced_report.read_text())["native_force_sync_verified"]
+
     # Exercise the existing native monitor on its own HWND with isolated data.
     # This message asks only this process to sync; it does not end a session.
     (local / "monitor-save.txt").write_text("monitor save")
@@ -103,6 +123,7 @@ def verify(executable: Path, root: Path) -> dict:
                   native_navigation_clicks=interactions["native_navigation_clicks"],
                   manual_update_check_verified=True,
                   startup_setting_verified=True,
+                  native_force_sync_verified=True,
                   native_monitor_sync_verified=True, native_monitor_exit_verified=True)
     (root / "acceptance.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
     return report

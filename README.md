@@ -189,6 +189,16 @@ independently of Apply/Cancel, and is disabled by default. The choice survives
 app updates and is removed on uninstall. Scheduled synchronization remains
 managed separately.
 
+**Folders → Force sync** bypasses only the selected folder's percentage
+threshold for one confirmed synchronization, using its configured direction.
+It retains backups, path checks, dry run, verification and the shared sync
+lock; the saved threshold and subsequent ordinary runs remain unchanged.
+
+**About → Update history** lists installation dates and version changes.
+Select an entry for its changelog. History survives upgrades and uninstall;
+opening the app does not count as an update. Release notes are maintained in
+[CHANGELOG.md](CHANGELOG.md).
+
 **Pause UI Sync** blocks new requests from the UI and lets the current copy
 finish. Independently scheduled Windows tasks continue to run. Exiting during
 synchronization waits for the copy to finish. Without a system tray, closing

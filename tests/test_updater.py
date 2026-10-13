@@ -120,6 +120,15 @@ def test_numeric_versions_and_preferences(tmp_path):
     assert not client.load_automatic()
 
 
+def test_manifest_release_notes_are_bounded_and_kept_as_plain_text(tmp_path, release_data):
+    release_data[1]["changes"] = "New version: <b>Force sync</b>"
+    client, _ = client_for(tmp_path, release_data)
+    assert client.check().update.changes == "New version: <b>Force sync</b>"
+    release_data[1]["changes"] = "a" * 4097
+    with pytest.raises(UpdateError, match="release notes"):
+        client.check()
+
+
 def test_async_check_remains_responsive_and_duplicate_requests_are_ignored(qapp, tmp_path, release_data):
     client, _ = client_for(tmp_path, release_data)
     real_check = client.check

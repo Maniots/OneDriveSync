@@ -4,6 +4,7 @@ from PyInstaller.utils.hooks import collect_data_files
 
 root = Path(SPECPATH).parent
 datas = collect_data_files("qtawesome") + [
+    (str(root / "CHANGELOG.md"), "."),
     (str(root / "ui" / "resources"), "ui/resources"),
     (str(root / "packaging" / "default-config.json"), "packaging"),
     (str(root / "src" / "build-info.json"), "src"),

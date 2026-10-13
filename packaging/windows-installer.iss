@@ -93,9 +93,19 @@ begin
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
+var
+  ResultCode: Integer;
 begin
   if (CurStep = ssPostInstall) and WizardIsTaskSelected('automation') then begin
     RegisterAutomationScript('Setup-ScheduledTasks.ps1');
     RegisterAutomationScript('Setup-ShutdownMonitor.ps1');
+  end;
+  if CurStep = ssPostInstall then begin
+    if not Exec(ExpandConstant('{app}\{#AppExe}'),
+                '--record-install "' + ExpandConstant('{#DataDirectory}') + '"',
+                ExpandConstant('{app}'), SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+      RaiseException('Impossibile registrare lo storico aggiornamenti.');
+    if ResultCode <> 0 then
+      RaiseException('Registrazione dello storico aggiornamenti non riuscita.');
   end;
 end;

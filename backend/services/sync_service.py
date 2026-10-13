@@ -202,13 +202,18 @@ class SyncService(QObject):
         worker.completed.connect(self._on_worker_completed)
         worker.failed.connect(self._on_worker_failed)
 
-    def request_sync(self, operation: str, folder_id: Optional[str] = None) -> bool:
+    def request_sync(self, operation: str, folder_id: Optional[str] = None,
+                     ignore_threshold: bool = False) -> bool:
         """Start one background operation from the GUI thread, if allowed."""
+        if ignore_threshold and folder_id is None:
+            self.failed.emit("A threshold override requires a single selected folder")
+            return False
         config = self._prepare_sync(operation, folder_id)
         if config is None:
             return False
         self._thread = QThread(self)
-        self._worker = SyncWorker(self, config=config)
+        self._worker = SyncWorker(self, config=config,
+                                  ignore_threshold_for=folder_id if ignore_threshold else None)
         self._worker.moveToThread(self._thread)
         self._connect_worker(self._worker)
         start = self._worker.start_startup_sync if operation == "startup" else self._worker.start_shutdown_sync
