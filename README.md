@@ -193,6 +193,9 @@ python run_ui.py --config /path/to/config.json
 
 Dashboard, tray and folder cards share one background synchronization service.
 Folder management supports add, edit, enable/disable, search and filtering.
+Each folder card also has **Delete**: confirm to remove that sync pair from
+the configuration while keeping local files, OneDrive files and backups.
+Delete is unavailable during an active UI synchronization.
 Settings and folder changes are validated before atomically replacing the
 configuration file; environment-variable references remain intact.
 

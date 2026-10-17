@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.3.1 — 2026-10-17
+
+- Added Delete on folder cards, with confirmation before removing a sync pair.
+- Removing a folder keeps local files, OneDrive files and existing backups.
+- Folder removal is unavailable while UI synchronization is running.
+
 ## 1.3.0 — 2026-10-13
 
 - About now shows installation dates, version transitions and release notes.

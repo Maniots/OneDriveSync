@@ -233,6 +233,7 @@ class FoldersPage(QWidget):
             card.sync_now_clicked.connect(lambda f_id=folder_model.id: self.on_folder_sync_requested(f_id))
             card.force_sync_clicked.connect(lambda f_id=folder_model.id: self.on_folder_force_sync_requested(f_id))
             card.edit_clicked.connect(lambda f_id=folder_model.id: self.on_folder_edit_requested(f_id))
+            card.delete_clicked.connect(lambda f_id=folder_model.id: self.on_folder_delete_requested(f_id))
             card.enabled_toggled.connect(lambda enabled, f_id=folder_model.id: self.on_folder_toggle_requested(f_id, enabled))
             # A full-width row keeps paths readable at the minimum window size.
             self.folders_layout.addWidget(card, i, 0)
@@ -245,6 +246,7 @@ class FoldersPage(QWidget):
             return
         available = not self.sync_service.is_syncing and not self.sync_service.is_paused and self.sync_service.is_shutdown_sync_enabled()
         for card in self.findChildren(FolderCard):
+            card.delete_button.setEnabled(not self.sync_service.is_syncing)
             card.sync_now_button.setEnabled(available and card.folder_data.get("enabled", False))
             card.force_sync_button.setEnabled(available and card.folder_data.get("enabled", False))
 
@@ -356,6 +358,38 @@ class FoldersPage(QWidget):
     def on_folder_sync_requested(self, folder_id):
         if self.sync_service is not None:
             self.sync_service.request_sync("shutdown", folder_id=folder_id)
+
+    def on_folder_delete_requested(self, folder_id):
+        if self.sync_service is not None and self.sync_service.is_syncing:
+            return
+        config = self.config_service.get_app_config()
+        if config is None:
+            return
+        folder = next((folder for folder in config.folders if folder.id == folder_id), None)
+        if folder is None:
+            return
+        answer = QMessageBox.question(
+            self, "Remove folder from synchronization?",
+            f'Remove "{folder.name}" from the configured folders?\n\n'
+            "Local files, OneDrive files and existing backups will be kept.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        if self.sync_service is not None and self.sync_service.is_syncing:
+            return
+        # Modal dialogs process events; use the latest configuration when saving.
+        config = self.config_service.get_app_config()
+        if config is None or not any(folder.id == folder_id for folder in config.folders):
+            return
+        try:
+            self.config_service.save(replace(
+                config, folders=[folder for folder in config.folders if folder.id != folder_id],
+            ))
+            self.status_label.setText("Folder removed from configuration. Files were kept.")
+        except Exception as exc:
+            QMessageBox.warning(self, "Cannot Remove Folder", str(exc))
 
     def on_folder_force_sync_requested(self, folder_id):
         if self.sync_service is None or self.sync_service.is_syncing or self.sync_service.is_paused:

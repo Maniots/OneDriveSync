@@ -4,6 +4,27 @@ The main window features a modern header with page title and optional subtitle, 
 
 Last updated: 2026-10-17
 
+## Remove configured folders (2026-10-17)
+
+- Version 1.3.1 adds a Delete action to each folder card. The page asks for
+  confirmation (default No), naming the selected folder and explaining that
+  local files, OneDrive files and existing backups are retained. Removal only
+  updates the folder list through the existing validated, atomic config save.
+- Delete works for disabled folders and while UI sync is paused, but is
+  disabled during active UI synchronization. The handler rechecks busy state
+  and reads current config after confirmation to preserve intervening edits.
+  Save failures show a retryable warning and leave the card/config unchanged.
+- `tests/test_folder_removal.py` covers confirmation/cancel, persisted removal,
+  file/backup preservation, failed-save retry, busy-state recheck and removing
+  the last disabled folder. The existing minimum-window layout check verifies
+  the new button fits without horizontal overflow.
+- Verification: 236 tests passed, 2 skipped; independent review found no
+  blocking issues. The 1.3.1.0 frozen EXE passed rendering, 29 native
+  navigation clicks, update/startup controls, isolated copies, forced sync
+  and native monitor checks. The versioned Windows setup was rebuilt.
+  The installed app was upgraded to 1.3.1.0, rendered successfully and
+  restarted; its existing four-folder configuration remained byte-identical.
+
 ## Repository workflow preference (2026-10-17)
 
 - `AGENTS.md` records the user's standing instruction: after each requested
