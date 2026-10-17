@@ -1,398 +1,272 @@
+<div align="center">
+
+<img src="ui/resources/app.png" alt="EverySync logo" width="104" height="104">
+
 # EverySync
 
-A safety-first Windows application that synchronizes explicitly chosen
-application data folders between the local PC and OneDrive - on **startup**
-(download from OneDrive) and **shutdown** (upload to OneDrive).
+**Your app data, ready on your next PC.**
 
-It exists to solve one problem: keeping small, important per-application
-data folders (game saves, editor settings, app configs) in sync across
-machines via OneDrive, **without** the risk of a full `AppData` mirror
-wiping out live application state.
+Sync selected game saves, settings and application folders through OneDrive.
 
-## Why not just sync all of AppData?
+[![Windows build](https://github.com/Maniots/OneDriveSync/actions/workflows/windows-release.yml/badge.svg)](https://github.com/Maniots/OneDriveSync/actions/workflows/windows-release.yml)
 
-`AppData` contains active databases, caches, locked files, and installed
-application binaries. Mirroring it (e.g. `robocopy /MIR`) is destructive
-and unsafe. This project **only** syncs folders you explicitly list in
-`config.json`, and **never** deletes anything - it is strictly additive
-(create missing folders, copy missing files, update changed files).
+**[Download for Windows](https://github.com/Maniots/OneDriveSync/releases/latest)** · [What's new](CHANGELOG.md) · [Report an issue](https://github.com/Maniots/OneDriveSync/issues)
 
-## Project structure
+Windows 10+ · x64 · No Python required to install
 
-```
-EverySync/
-│
-├── README.md
-├── requirements.txt
-├── .gitignore
-│
-├── config.json          # User-editable list of folders to sync
-│
-├── main.py               # Entry point (--mode startup|shutdown)
-│
-├── src/
-│   ├── __init__.py
-│   ├── config.py          # Typed configuration dataclasses/enums
-│   ├── config_manager.py  # Loads/validates config.json
-│   ├── sync_manager.py    # All safety decisions + orchestration
-│   ├── robocopy_manager.py# Safe, non-destructive robocopy wrapper
-│   ├── logger.py          # Centralized logging setup
-│   ├── exceptions.py      # Application exception hierarchy
-│   ├── utils.py           # Env var expansion, dangerous-path checks, ratios
-│   ├── sync_runner.py     # Centralized sync logic used by main.py and shutdown monitor
-│   └── shutdown_monitor.py   # Resident program that catches Windows shutdown events
-│
-├── logs/                  # Rotating log files (created at runtime)
-├── backups/               # Reserved (unused) - see "Automatic pre-upload
-│                          #   backups" below; real backups live in OneDrive,
-│                          #   never here, by design
-├── data/                  # Reserved for local application state/cache
-│
-└── tests/
-    ├── __init__.py
-    ├── test_config.py
-    ├── test_sync.py
-    └── test_robocopy.py
-```
+</div>
 
-## Installation
+---
 
-### Windows EXE (no Python required on the target PC)
+[Get started](#get-started) · [Daily use](#daily-use) · [Automation](#automation) · [Updates](#updates) · [Configuration](#configuration) · [Troubleshooting](#troubleshooting) · [Development](#development)
 
-Download `EverySync-Setup-*.exe` from the **Assets** section of the
-[latest Windows release](https://github.com/Maniots/OneDriveSync/releases/latest)
-and double-click it (or use `dist/installer` after building locally).
-The Italian/English installation wizard shows a welcome page, lets you choose
-the installation folder and optional desktop shortcut/automatic synchronization,
-then offers to launch the app. Python is not required. It installs the app for
-the current Windows user under `%LOCALAPPDATA%\Programs\OneDrivePCSync`,
-adds Start menu links and registers an uninstaller. A desktop shortcut and
-automatic synchronization are optional installer checkboxes.
+EverySync copies between the local application folders you choose and a local OneDrive folder. The OneDrive client handles the cloud transfer between PCs.
 
-`OneDrivePCSync.exe` is the application; `EverySync-Setup-*.exe` is the
-installer to distribute. GitHub's **Source code** ZIP/TAR downloads contain
-source files; download the setup asset to install the app.
+| Mode | Default direction | Purpose |
+| --- | --- | --- |
+| **Startup** | OneDrive → this PC | Bring your saved data onto this machine. |
+| **Shutdown** | This PC → OneDrive | Send your latest local changes back to OneDrive. |
 
-User data lives under `%LOCALAPPDATA%\OneDrivePCSync`: `config.json`, sync
-history, logs, monitor status and locks. Updates and uninstall preserve that
-data. A new installation contains no folders to sync; add them in the UI.
-The installer never includes this repository's personal `config.json`.
-To migrate an existing setup, close the app and copy its configuration to
-that user-data directory, keeping a backup of any configuration already there.
+Directions are configurable. Copies create missing files and update changed files, keeping destination-only files in place. Path validation, file-count thresholds, optional backups and a shared synchronization lock protect each run.
 
-The installed EXE also accepts `--mode startup|shutdown`, `--dry-run` and
-`--config PATH`. `--monitor` starts the native background shutdown monitor.
-Scheduled tasks invoke the EXE directly without Python or VBS wrappers.
-If enabled, their existing names and timing remain the same. They become
-active at the next logon (periodic uploads can begin during this session).
+## Get started
 
-### Installed application commands and updates
+1. Open the [latest release](https://github.com/Maniots/OneDriveSync/releases/latest) and download **`EverySync-Setup-<version>.exe`** from **Assets**.
+2. Run the installer. Choose the installation folder and, optionally, a desktop shortcut and automatic synchronization.
+3. Open **EverySync → Folders** and add a pair: your application's local data folder and its corresponding OneDrive folder. Fresh installations start with an empty folder list.
+4. Let OneDrive finish making the selected files available on this PC. Close the application that owns the files, then enable **Dry Run** in **Settings**, apply the change and preview the correct sync direction from **Dashboard**. Turn dry run off when you are ready for a real copy.
+
+Choose specific folders, such as `%APPDATA%\ExampleApp\Saves`. Whole `AppData`, `AppData\Local` and `AppData\Roaming` roots are rejected.
+
+The setup installs for the current Windows user and includes an uninstaller. Download the setup asset; GitHub's **Source code** ZIP/TAR archives are for development.
+
+## Daily use
+
+| Where | What you can do |
+| --- | --- |
+| **Dashboard** | Start a download or upload and follow background progress. |
+| **Folders** | Add, edit, enable, disable, search and filter folder pairs. |
+| **Folders → Delete** | Remove a pair from the configuration after confirmation. Local files, OneDrive files and backups stay in place. |
+| **Folders → Force sync** | Bypass the selected folder's percentage threshold for one confirmed run. Other safety checks and backups still apply. |
+| **Backups** | Browse, open, restore or delete backup archives. |
+| **Scheduler** | Review tasks and shutdown monitor status; enable or disable existing sync tasks. |
+| **Logs** | Inspect synchronization results and errors. |
+| **Settings → App startup** | Enable **Run at startup** to open the desktop app at sign-in. This checkbox saves immediately and survives updates. |
+| **Tray menu** | Reopen the window, start a sync, open settings, check updates or exit. |
+| **About → Update history** | See installation dates, version changes and release notes. |
+
+Closing the window keeps EverySync in the tray when a system tray is available. **Exit** waits for an active synchronization to finish. Without a tray, closing the window exits the app safely.
+
+**Pause UI Sync** prevents new UI requests and lets a running copy finish. Independently scheduled Windows tasks continue to run. Folder deletion is unavailable during an active UI sync.
+
+## Automation
+
+**Run at startup** opens the desktop window. Automatic synchronization is configured separately through the installer's optional automation checkbox or the setup scripts below.
+
+| Trigger | Default action |
+| --- | --- |
+| Sign-in, after a two-minute delay | Download from OneDrive. |
+| Workstation lock, including **Win+L** | Upload to OneDrive. |
+| Every 15 minutes while signed in | Upload to OneDrive. |
+| Shutdown, restart or sign-out | The background shutdown monitor attempts an upload. |
+
+The monitor receives Windows session-ending notifications and runs the copy before allowing the session to end. Completion depends on Windows allowing enough time and on the files being available. Periodic uploads reduce the work left at shutdown; let OneDrive finish its cloud transfer before switching PCs.
+
+<details>
+<summary><strong>Set up or remove automation manually</strong></summary>
+
+For an installed app, run these commands in PowerShell. Adjust `$install` if you chose a different installation folder.
 
 ```powershell
-$app = "$env:LOCALAPPDATA\Programs\OneDrivePCSync\OneDrivePCSync.exe"
-& $app                          # Open the desktop app
-& $app --check-updates          # Open Updates and check for a release
-& $app --update                 # Check, download, verify and install if newer
-& $app --mode startup --dry-run # Preview a download from OneDrive
-& $app --mode startup           # Download configured folders
-& $app --mode shutdown          # Upload configured folders
+$install = "$env:LOCALAPPDATA\Programs\OneDrivePCSync"
+$app = Join-Path $install 'OneDrivePCSync.exe'
+
+# Download at sign-in; upload on lock and every 15 minutes.
+powershell -NoProfile -ExecutionPolicy Bypass -File "$install\Setup-ScheduledTasks.ps1" -ApplicationExe $app
+
+# Start the background shutdown monitor at the next sign-in.
+powershell -NoProfile -ExecutionPolicy Bypass -File "$install\Setup-ShutdownMonitor.ps1" -ApplicationExe $app
 ```
 
-The installed app checks GitHub at startup and every four hours while running.
-By default it notifies you when a new version is available. Open **About >
-Updates** (or use the tray's **Check for updates**) and choose **Download and
-install**. The app downloads the installer itself, checks its size and SHA-256,
-waits for synchronization to finish, updates the existing installation, and
-restarts. Configuration and existing task enabled states are preserved. Optional
-automatic installation can be enabled explicitly in the Updates card.
+Re-running a script replaces its existing tasks. Add `-Uninstall` to either command to remove the tasks it manages. Tasks appear under **Task Scheduler Library → OneDrivePCSync**; the monitor starts at the next sign-in, and periodic uploads can begin during the current session.
 
-The workflow in `.github/workflows/windows-release.yml` creates a Windows
-release after a successful push to `master`, including tests, the actual frozen
-EXE acceptance check, install/upgrade/uninstall checks, and a matching
-`update.json` manifest. Pull requests targeting `master` and manual workflow
-runs also build and verify the installer, uploading a
-`EverySync-Windows-Setup-N` artifact on the Actions run page. Extract that
-artifact and run the setup EXE to try a branch build. Only `master` builds
-publish a public release and update the application's release channel.
-Commits only on a local PC do not trigger GitHub. The workflow must first be present on GitHub's
-`master` branch, with Actions enabled and permission to create releases.
-The EverySync rebranding branch does not publish production updates. Its
-installer becomes available to the production update channel only after merge
-into `master` and a successful release workflow.
-The application reads the public `Maniots/OneDriveSync` repository without a
-GitHub token. Network errors leave synchronization available and allow retry;
-before the first release the Updates card reports that none has been published.
+When running from source, use `powershell -NoProfile -ExecutionPolicy Bypass -File .\Setup-ScheduledTasks.ps1` and the equivalent command for `Setup-ShutdownMonitor.ps1` from the repository root. The scripts detect the project-local `.venv`.
 
-Existing installations from version 1.0 need the new installer once to gain
-the updater; subsequent updates are downloaded from inside the app.
+</details>
 
-### Compatibility identifiers
+## Updates
 
-EverySync keeps the existing technical namespace so upgrades from OneDrive PC
-Sync retain configuration, history, startup choice and scheduled tasks. The
-EXE filename (`OneDrivePCSync.exe`), bundle directory (`dist/OneDrivePCSync`),
-installation and data directories, installer AppId, startup registry value,
-task names and lock files keep their existing identifiers. These names are
-compatibility details; Windows product metadata, the app and shortcuts display
-EverySync. The GitHub repository remains `Maniots/OneDriveSync`.
+The installed app checks for releases at startup and every four hours while running. Open **About → Updates** or the tray's **Check for updates**, then choose **Download and install**. Automatic installation is available as an explicit opt-in in the Updates card.
 
-Each release includes `EverySync-Setup-VERSION.exe` and a byte-identical
-`OneDrivePCSync-Setup-VERSION.exe` alias. `update.json` deliberately references
-the legacy alias required by installed 1.3 clients, allowing those clients to
-discover and install EverySync. Existing installer-created shortcuts are renamed
-on upgrade, preserving an existing desktop shortcut even during silent updates.
-No data migration or second installation is required.
+The updater verifies the download's size and SHA-256, waits for synchronization to finish, installs the update and restarts EverySync with its window visible. Configuration, update history, startup preference and existing task enabled states are preserved. Network errors allow retry and leave synchronization available.
 
-### Building the Windows release
+Releases come from successful builds of `master`. Pull requests produce downloadable test artifacts on the [Actions page](https://github.com/Maniots/OneDriveSync/actions/workflows/windows-release.yml); they reach the production update channel after merging and a successful release build.
 
-Build on Windows x64, using Python 3.12+ and Inno Setup 6.7+:
+<details>
+<summary><strong>Upgrading from OneDrive PC Sync</strong></summary>
 
-```powershell
-python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r requirements-build.txt
-powershell -NoProfile -ExecutionPolicy Bypass -File .\Build-Windows.ps1
-# Or create only the self-contained application directory:
-powershell -NoProfile -ExecutionPolicy Bypass -File .\Build-Windows.ps1 -BundleOnly
+Run the EverySync installer over the existing installation. No separate data migration is needed. Version 1.0 installations need this installer once to gain the in-app updater.
+
+The executable remains `OneDrivePCSync.exe`, and the installation/data directories, task names and other technical identifiers retain their original names to preserve compatibility. Windows product metadata, the app and shortcuts display **EverySync**.
+
+Each release contains `EverySync-Setup-<version>.exe` and a byte-identical `OneDrivePCSync-Setup-<version>.exe` alias. The update manifest uses the legacy alias so older clients can discover and install EverySync. The repository remains `Maniots/OneDriveSync`.
+
+</details>
+
+## Configuration
+
+Use **Folders** and **Settings** for day-to-day changes. The installed app stores `config.json`, logs, history and runtime state in:
+
+```text
+%LOCALAPPDATA%\OneDrivePCSync
 ```
 
-Supply `-InnoCompiler C:\path\ISCC.exe` if it is not in a detected location.
-`src/app_info.py` owns the base version. `-BuildNumber N` stamps the fourth
-numeric component; CI uses the workflow run number. Installer, EXE and update
-manifest share that build identity.
-The build generates `packaging/build-version-info.txt` for the EXE's Windows
-product name, description and numeric version before PyInstaller runs.
-The bundle is `dist/OneDrivePCSync`; keep its `_internal` directory with the
-EXE. The installer contains the entire bundle in a single setup EXE.
-Builds do not automatically download or install build tools.
+Updates and uninstall preserve this user data. To migrate a source-based setup, close EverySync, back up the existing installed configuration and copy your `config.json` into this directory.
 
-Runtime paths follow [PyInstaller's documented bundle behavior](https://pyinstaller.org/en/stable/runtime-information.html).
-The per-user installer uses [Inno Setup's least-privilege installation mode](https://jrsoftware.org/ishelp/topic_setup_privilegesrequired.htm).
+<details>
+<summary><strong>Folder configuration, thresholds and backups</strong></summary>
 
-Acceptance checks use isolated data and do not shut down the machine:
-
-```powershell
-.\.venv\Scripts\python.exe scripts\verify_windows_bundle.py dist\OneDrivePCSync\OneDrivePCSync.exe
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts\Verify-WindowsAutomation.ps1
-# Separate validation installer identity and data location:
-ISCC.exe /DValidationBuild packaging\windows-installer.iss
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts\Verify-WindowsInstaller.ps1
-# Optional: exercise an actual previous validation installer as the baseline:
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts\Verify-WindowsInstaller.ps1 -BaselineInstaller build\update-baseline-validation.exe -PythonExe .venv\Scripts\python.exe
-# Keep a previous validation installer before compiling the next one:
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts\Verify-WindowsUpdate.ps1 -BaselineInstaller build\update-baseline-validation.exe -UpdateInstaller dist\installer\EverySync-Validation-Setup.exe -ExpectedVersion 1.4.0.0
-```
-
-The automation and installer checks need access to the Windows Task Scheduler
-and the current user's software registration. They create temporary validation
-resources and remove their tasks/uninstall registration after checking them.
-
-### Running from source
-
-Requires Python 3.12+. Windows is required for scheduled tasks, native shutdown monitoring and toast notifications. The desktop UI uses PySide6, qtawesome and pyqtgraph; the synchronization engine uses the standard library. pywin32 is installed only on Windows. Graphify is analysis tooling.
-
-```bash
-pip install -r requirements.txt
-```
-
-## Usage
-
-```bash
-# Run at logon (typically downloads OneDrive -> local)
-python main.py --mode startup
-
-# Run at logoff/shutdown (typically uploads local -> OneDrive)
-python main.py --mode shutdown
-
-# Preview without copying or creating anything
-python main.py --mode startup --dry-run
-```
-
-## Desktop UI
-
-```bash
-python run_ui.py
-# Use a separate development configuration without changing the project config:
-python run_ui.py --config /path/to/config.json
-```
-
-Dashboard, tray and folder cards share one background synchronization service.
-Folder management supports add, edit, enable/disable, search and filtering.
-Each folder card also has **Delete**: confirm to remove that sync pair from
-the configuration while keeping local files, OneDrive files and backups.
-Delete is unavailable during an active UI synchronization.
-Settings and folder changes are validated before atomically replacing the
-configuration file; environment-variable references remain intact.
-
-In the installed Windows app, **Settings → App startup → Run at startup**
-opens the desktop app when you sign in. The checkbox saves immediately,
-independently of Apply/Cancel, and is disabled by default. The choice survives
-app updates and is removed on uninstall. Scheduled synchronization remains
-managed separately.
-
-**Folders → Force sync** bypasses only the selected folder's percentage
-threshold for one confirmed synchronization, using its configured direction.
-It retains backups, path checks, dry run, verification and the shared sync
-lock; the saved threshold and subsequent ordinary runs remain unchanged.
-
-**About → Update history** lists installation dates and version changes.
-Select an entry for its changelog. History survives upgrades and uninstall;
-opening the app does not count as an update. Release notes are maintained in
-[CHANGELOG.md](CHANGELOG.md).
-
-**Pause UI Sync** blocks new requests from the UI and lets the current copy
-finish. Independently scheduled Windows tasks continue to run. Exiting during
-synchronization waits for the copy to finish. Without a system tray, closing
-the window exits normally.
-
-For Linux development, use temporary local directories in a separate config
-and `QT_QPA_PLATFORM=offscreen` for headless Qt validation. Native Windows
-integration must be tested on Windows.
-
-## Automated setup (recommended)
-
-Instead of manually configuring Task Scheduler, run the included setup
-scripts once:
-
-### For startup/shutdown sync via scheduled tasks:
-```powershell
-powershell -ExecutionPolicy Bypass -File .\Setup-ScheduledTasks.ps1
-```
-
-### For shutdown monitor (catches actual Windows shutdown events):
-```powershell
-powershell -ExecutionPolicy Bypass -File .\Setup-ShutdownMonitor.ps1
-```
-
-(Or right-click the `.ps1` files in Explorer -> **Run with PowerShell**.)
-
-#### Tasks created by `Setup-ScheduledTasks.ps1`:
-These register three Scheduled Tasks under **Task Scheduler Library > OneDrivePCSync**:
-
-- **OneDrivePCSync - Startup (Download)** - fires 2 minutes after logon (delayed so the OneDrive client has time to start and mount before we try to read from it)
-- **OneDrivePCSync - Shutdown (Upload on Lock)** - fires on workstation lock (Win+L)
-- **OneDrivePCSync - Periodic Upload** - fires every 15 minutes while logged on
-
-#### Task created by `Setup-ShutdownMonitor.ps1`:
-- **OneDrivePCSync - Shutdown Monitor** - fires at logon and runs silently in the background, waiting for a Windows shutdown signal to trigger an immediate upload sync
-
-## How the shutdown monitor works
-
-The shutdown monitor is a lightweight resident program that starts at user logon and waits for Windows shutdown signals. When Windows begins shutting down (or restarting), it sends a `CTRL_SHUTDOWN_EVENT` to all console processes. The monitor intercepts this signal and immediately triggers an upload sync using the same safety-checked logic as the manual `shutdown` mode.
-
-This provides a more reliable shutdown-triggered sync than the lock-based task, because it fires at the actual beginning of system shutdown rather than relying on the workstation lock event (which doesn't always precede a shutdown/restart).
-
-**Important timing note:** The Windows shutdown handler only gives applications a limited time (typically ~5 seconds, registry-tunable via `HKEY_LOCAL_SYSTEM\SYSTEM\CurrentControlSet\Control\WaitToKillServiceTimeout`) to complete their shutdown handling before force-terminating the process. For most users with regular periodic syncs (every 15 minutes), the shutdown sync only needs to upload recent changes and completes quickly. If your sync typically takes longer than a few seconds, consider increasing the shutdown timeout via the registry setting mentioned above (requires reboot).
-
-## Important limitation note
-
-Even with the shutdown monitor, a direct Start Menu **Shut Down/Restart** still doesn't guarantee a successful sync if:
-
-1. Your sync takes longer than the Windows shutdown timeout (default ~5 seconds)
-2. You have Fast Startup enabled (where "shutdown" is actually a hybrid hibernation that may not send the shutdown signal to all applications)
-
-The existing **Periodic Upload** task (every 15 minutes) remains an important safety net - it ensures your last upload is never more than ~15 minutes old regardless of how the session ends. For maximum protection, press Win+L before shutting down to trigger both the lock-based upload *and* give the shutdown monitor a chance to run.
-
-The script auto-detects your project-local `.venv` if present, requires no
-admin rights, and is safe to re-run any time (it replaces the existing
-tasks rather than duplicating them - useful after moving the project folder
-or changing Python interpreters). To remove the tasks later:
-
-#### To remove startup/shutdown sync tasks:
-```powershell
-powershell -ExecutionPolicy Bypass -File .\Setup-ScheduledTasks.ps1 -Uninstall
-```
-
-#### To remove the shutdown monitor task:
-```powershell
-powershell -ExecutionPolicy Bypass -File .\Setup-ShutdownMonitor.ps1 -Uninstall
-```
-
-## Manual setup
-
-If you'd rather not use the scripts, wire these into Task Scheduler by hand:
-- Startup sync: Trigger "At log on" (with 2-minute delay), run `python main.py --mode startup`
-- Lock-triggered upload: Trigger "On workstation lock", run `python main.py --mode shutdown`
-- Periodic upload: Trigger "On a schedule" (every 15 minutes), run `python main.py --mode shutdown`
-- Shutdown monitor: Trigger "At log on", run `python src/shutdown_monitor.py` (hidden window)
-
-## Automatic pre-upload backups
-
-For any folder, you can enable an automatic backup of its CURRENT OneDrive
-contents immediately before every UPLOAD overwrites them - protection
-against exactly the failure mode where a bad or premature upload replaces
-good OneDrive data with something worse.
-
-```json
-"backup": {
-    "enabled": true,
-    "backup_path": "%OneDrive%\\PCSync\\Backups",
-    "retention_days": 7
-}
-```
-
-- **enabled** - opt-in per folder; omit the section entirely or set this
-  to `false` to disable (the default).
-- **backup_path** - where timestamped `.zip` archives are stored, namespaced
-  per folder (`<backup_path>\<folder_id>\<folder_id>_YYYYMMDD_HHMMSS.zip`).
-  **Must resolve inside your OneDrive folder** - the app validates this at
-  config-load time using the `%OneDrive%` environment variable and refuses
-  to start if `backup_path` points anywhere on local disk. Backups only
-  protect you if they survive independently of the machine that made them.
-- **retention_days** - archives older than this are deleted automatically
-  after each backup (failures here are logged as warnings and never block
-  the upload itself, since retention cleanup is housekeeping, not safety).
-
-Backups only ever happen before UPLOAD (local -> OneDrive), never before
-DOWNLOAD - a download doesn't overwrite OneDrive, so there's nothing to
-protect there. If a folder's OneDrive destination is empty (first-time
-sync), there's nothing to back up yet, so this is skipped automatically.
-If backup creation itself fails for any other reason, the upload for that
-folder is aborted rather than proceeding without one - the same
-per-folder isolation used everywhere else in this app means other
-folders are unaffected.
-
-## Configuring folders
-
-Edit `config.json` and add an entry under `"folders"` for each folder you
-want synchronized. **Only list explicit application subfolders** - never
-`AppData`, `AppData\Local`, or `AppData\Roaming` themselves; the app will
-refuse to load a config that tries to sync one of these.
+Add an entry like this to the `folders` array in `config.json`. Paths can use Windows environment variables.
 
 ```json
 {
-    "id": "elden_ring",
-    "name": "Elden Ring Save",
+  "id": "example_saves",
+  "name": "Example app saves",
+  "enabled": true,
+  "local_path": "%APPDATA%\\ExampleApp\\Saves",
+  "onedrive_path": "%OneDrive%\\EverySync\\ExampleApp\\Saves",
+  "minimum_sync_percentage": 80,
+  "verify_after_sync": true,
+  "create_destination": true,
+  "backup": {
     "enabled": true,
-    "local_path": "%APPDATA%\\EldenRing",
-    "onedrive_path": "%OneDrive%\\PCSync\\AppData\\Roaming\\EldenRing",
-    "minimum_sync_percentage": 80,
-    "verify_after_sync": true,
-    "create_destination": true
+    "backup_path": "%OneDrive%\\EverySync\\Backups",
+    "retention_days": 7
+  }
 }
 ```
 
-`minimum_sync_percentage` is the safety threshold: if the smaller of the
-two file counts (source vs. destination) is below this percentage of the
-larger, the sync for that folder aborts rather than risk overwriting
-recent data with stale data (or vice versa).
+Start from [the empty default configuration](packaging/default-config.json) when creating a new configuration file.
 
-## Safety guarantees
+| Setting | Behavior |
+| --- | --- |
+| `minimum_sync_percentage` | Compares the smaller file count with the larger: `min / max × 100`. A result below the threshold aborts that folder. Empty destinations are treated as first-time syncs. |
+| `verify_after_sync` | Checks that the destination contains at least as many files as the source after copying. This is a file-count check. |
+| `create_destination` | Allows a missing destination directory to be created. |
+| `general.dry_run` | Previews copies without changing synchronized files or creating backup archives. Logs and run history may still be written. |
+| `backup.enabled` | Creates a ZIP of the current OneDrive destination before an upload. Backups are opt-in per folder. |
+| `backup.backup_path` | Must resolve inside the folder identified by `%OneDrive%`. Archives are grouped by folder ID. |
+| `backup.retention_days` | Removes backup archives older than the configured retention period. |
 
-- **No destructive robocopy flags, ever.** `/MIR`, `/PURGE`, `/MOV`,
-  `/MOVE` are hard-blocked in `robocopy_manager.py`, independent of config.
-- **Dangerous root rejection**, checked both when `config.json` loads and
-  again immediately before every sync.
-- **File-count ratio abort**, per the `minimum_sync_percentage` rule above.
-- **Per-folder isolation** - one folder failing never stops the others.
-- **Dry-run mode** via `general.dry_run` in `config.json` or `--dry-run`.
-- **Post-sync verification** (optional) checks the destination file count
-  never dropped below the source's.
+Backups run before uploads; an empty destination has nothing to archive. If backup creation fails, that folder's upload stops while other folders can continue. Download-mode copies can overwrite local files, so check the direction before running them.
 
-## Running tests
+Configuration changes are validated and saved atomically. Dangerous root paths are checked again before copying. A failed folder does not stop the other configured folders.
 
-```bash
-pip install pytest
-python -m pytest tests/ --ignore=tests/test_shutdown_broadcast.py -v
+</details>
+
+<details>
+<summary><strong>Command-line usage</strong></summary>
+
+Use PowerShell with the default installation path below, or substitute your chosen path.
+
+```powershell
+$app = "$env:LOCALAPPDATA\Programs\OneDrivePCSync\OneDrivePCSync.exe"
+
+& $app                           # Open or reactivate the desktop app.
+& $app --check-updates           # Open Updates and check for a release.
+& $app --update                  # Check, download, verify and install if newer.
+& $app --mode startup --dry-run  # Preview OneDrive → local.
+& $app --mode startup            # Download configured folders.
+& $app --mode shutdown           # Upload configured folders.
 ```
 
-Tests use temporary directories. Functional tests copy fixture files and create backup archives there; dry-run tests verify that data remains unchanged. The excluded shutdown-broadcast script is a manual Windows diagnostic, not an automated pytest test.
+The mode directions above are the defaults. Use `--config PATH` to select a separate configuration for UI or sync commands. `--monitor` starts the native background shutdown monitor with the shared application configuration.
+
+</details>
+
+## Troubleshooting
+
+| Symptom | Check |
+| --- | --- |
+| Nothing is synchronized | Add at least one enabled folder pair and check that the selected sync mode is enabled. |
+| A folder is blocked by the safety threshold | Confirm the paths, direction and file counts. Use **Force sync** only after reviewing the difference. |
+| Closing the window leaves the app running | Open it from the tray. Choose **Exit** to close it after any active sync finishes. |
+| The desktop app opens at sign-in, but no automatic copy runs | Configure synchronization automation separately from **Run at startup**. |
+| Another PC has not received the latest files | Check the sync result and let OneDrive complete its cloud transfer on both PCs. |
+| A copy or update fails | Check **Logs**, the files under the user-data directory's `logs` folder, and `updates/install.log` for installation failures. |
+
+## Development
+
+Requires **Python 3.12+**. Build and test native Windows integration on Windows; the desktop uses PySide6, qtawesome and pyqtgraph, with pywin32 for Windows integration.
+
+<details>
+<summary><strong>Run from source</strong></summary>
+
+```powershell
+git clone https://github.com/Maniots/OneDriveSync.git
+Set-Location OneDriveSync
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+
+# Start with an empty development configuration.
+Copy-Item packaging\default-config.json config.dev.json
+.\.venv\Scripts\python.exe run_ui.py --config config.dev.json
+
+# Preview a configured download without copying files.
+.\.venv\Scripts\python.exe main.py --config config.dev.json --mode startup --dry-run
+```
+
+Source runs default to the repository's `config.json` and runtime paths. Use a separate configuration and temporary local folders for development. Linux Qt checks can use `QT_QPA_PLATFORM=offscreen`; native Windows behavior still needs Windows verification.
+
+</details>
+
+<details>
+<summary><strong>Build a Windows installer</strong></summary>
+
+On Windows x64, install **Inno Setup 6.7+**, then run:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements-build.txt
+powershell -NoProfile -ExecutionPolicy Bypass -File .\Build-Windows.ps1
+```
+
+Use `-InnoCompiler C:\path\ISCC.exe` if the compiler is outside a detected location, or `-BundleOnly` to build the application directory without an installer. Build tools are installed separately.
+
+| Output | Location |
+| --- | --- |
+| Self-contained application | `dist/OneDrivePCSync/` — keep `_internal` alongside the EXE. |
+| Distributable installer | `dist/installer/EverySync-Setup-<version>.exe` |
+| Update metadata | `dist/installer/update.json` |
+
+`src/app_info.py` defines the base version. `-BuildNumber N` sets the fourth numeric component; CI uses its workflow run number. The EXE, installer and manifest share the same build identity.
+
+</details>
+
+<details>
+<summary><strong>Run tests and Windows acceptance checks</strong></summary>
+
+From the repository root:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install pytest
+New-Item -ItemType Directory -Force build | Out-Null
+.\.venv\Scripts\python.exe -m pytest tests -q --basetemp build/readme-tests -p no:cacheprovider
+
+# After building the Windows bundle:
+.\.venv\Scripts\python.exe scripts\verify_windows_bundle.py dist\OneDrivePCSync\OneDrivePCSync.exe
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\Verify-WindowsAutomation.ps1
+
+# Compile a separate validation installer, then verify its lifecycle.
+ISCC.exe /DValidationBuild packaging\windows-installer.iss
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\Verify-WindowsInstaller.ps1
+
+# Test update/restart using the validation installer as both baseline and update.
+$version = (Get-Content dist\installer\update.json -Raw | ConvertFrom-Json).version
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\Verify-WindowsUpdate.ps1 -BaselineInstaller dist\installer\EverySync-Validation-Setup.exe -UpdateInstaller dist\installer\EverySync-Validation-Setup.exe -ExpectedVersion $version
+```
+
+For an upgrade across versions, retain a previous **validation** installer and pass it with `-BaselineInstaller`. Native checks use isolated data, tasks and installer registration; they need access to Task Scheduler and the current user's software registration. They do not request a system shutdown.
+
+The [Windows workflow](.github/workflows/windows-release.yml) runs regressions, frozen EXE checks, installer lifecycle checks and actual update/restart checks before publishing a release. [CHANGELOG.md](CHANGELOG.md) records user-facing changes.
+
+</details>
