@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+from dataclasses import asdict
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -30,6 +31,7 @@ from .config import (
     SyncTriggerSettings,
 )
 from .exceptions import ConfigurationError, PathValidationError
+from .cloud_models import ConnectionConfig, RemoteJobConfig, validate_local_path
 from .logger import get_logger
 from .utils import expand_env_vars, is_dangerous_root_path, is_under_onedrive_root
 
@@ -64,6 +66,8 @@ class ConfigManager:
             sync_settings = self._parse_sync(raw.get("sync", {}))
             copy_engine_settings = self._parse_copy_engine(raw.get("copy_engine", {}))
             folders = self._parse_folders(raw.get("folders", []))
+            connections = self._parse_cloud_entries(raw.get("connections", []), ConnectionConfig)
+            remote_jobs = self._parse_cloud_entries(raw.get("remote_jobs", []), RemoteJobConfig)
         except (KeyError, TypeError, ValueError) as exc:
             raise ConfigurationError(f"Invalid configuration structure: {exc}") from exc
 
@@ -72,9 +76,12 @@ class ConfigManager:
             sync=sync_settings,
             copy_engine=copy_engine_settings,
             folders=folders,
+            connections=connections,
+            remote_jobs=remote_jobs,
         )
 
         self._validate_folder_uniqueness(config.folders)
+        self._validate_cloud_references(config)
 
         logger.info(
             "Configuration loaded successfully: %d folder(s) defined, %d enabled.",
@@ -94,6 +101,34 @@ class ConfigManager:
             raise ConfigurationError(
                 f"Configuration file is not valid JSON: {self._config_path} ({exc})"
             ) from exc
+
+    @staticmethod
+    def _parse_cloud_entries(data, model):
+        if not isinstance(data, list) or any(not isinstance(entry, dict) for entry in data):
+            raise ValueError("Cloud configuration sections must be arrays of objects")
+        # Explicit model constructors reject unknown fields, including secrets.
+        return [model(**entry) for entry in data]
+
+    @staticmethod
+    def _validate_cloud_references(config: AppConfig) -> None:
+        connections = {}
+        for connection in config.connections:
+            if connection.id in connections:
+                raise ConfigurationError("Duplicate connection ID")
+            connections[connection.id] = connection
+        job_ids = {folder.id for folder in config.folders}
+        for job in config.remote_jobs:
+            if job.id in job_ids:
+                raise ConfigurationError("Duplicate sync job ID")
+            job_ids.add(job.id)
+            connection = connections.get(job.connection_id)
+            if connection is None:
+                raise ConfigurationError("Remote job references an unknown connection")
+            if connection.provider == "local":
+                remote_root = validate_local_path(connection.root)
+                local_root = job.local_path_resolved
+                if remote_root.is_relative_to(local_root) or local_root.is_relative_to(remote_root):
+                    raise ConfigurationError("A local connection and its job folder cannot overlap")
 
     @staticmethod
     def _parse_general(data: Dict[str, Any]) -> GeneralSettings:
@@ -317,6 +352,12 @@ class ConfigManager:
             else:
                 folder_raw["backup"] = None
             raw["folders"].append(folder_raw)
+
+        # Omit empty additions so saving old configurations retains their shape.
+        if app_config.connections:
+            raw["connections"] = [asdict(connection) for connection in app_config.connections]
+        if app_config.remote_jobs:
+            raw["remote_jobs"] = [asdict(job) for job in app_config.remote_jobs]
 
         return raw
 
