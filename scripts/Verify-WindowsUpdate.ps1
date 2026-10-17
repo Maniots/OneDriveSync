@@ -10,12 +10,36 @@ $UpdateInstaller = (Resolve-Path -LiteralPath $UpdateInstaller).Path
 $TestRoot = Join-Path $ProjectRoot ('build\update-install-' + [guid]::NewGuid().ToString('N'))
 $InstallDirectory = Join-Path $TestRoot 'app'
 $env:LOCALAPPDATA = Join-Path $TestRoot 'user'
+$env:EVERYSYNC_VALIDATION_INSTANCE = [guid]::NewGuid().ToString('N')
 $DataDirectory = Join-Path $env:LOCALAPPDATA 'OneDrivePCSync'
 $TaskFolderPath = '\OneDrivePCSyncUpdateValidation_' + [guid]::NewGuid().ToString('N')
 $ApplicationExe = Join-Path $InstallDirectory 'OneDrivePCSync.exe'
 $TaskService = New-Object -ComObject Schedule.Service
 $TaskService.Connect()
 $LockStream = $null
+$helper = $null
+Add-Type @'
+using System;
+using System.Runtime.InteropServices;
+public static class UpdateWindowValidation {
+    [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr window);
+    [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr window, int command);
+}
+'@
+function Get-TestApplication {
+    @(Get-Process -Name OneDrivePCSync -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $ApplicationExe })
+}
+function Wait-VisibleApplication {
+    $deadline = (Get-Date).AddSeconds(30)
+    do {
+        $applications = @(Get-TestApplication)
+        foreach ($application in $applications) {
+            if ($application.MainWindowHandle -ne [IntPtr]::Zero -and [UpdateWindowValidation]::IsWindowVisible($application.MainWindowHandle)) { return $application }
+        }
+        Start-Sleep -Milliseconds 100
+    } while ((Get-Date) -lt $deadline)
+    throw 'Updated application did not open a visible window'
+}
 function Invoke-CheckedProcess([string]$File, [string[]]$Arguments) {
     $process = Start-Process $File -ArgumentList $Arguments -WindowStyle Hidden -Wait -PassThru
     if ($process.ExitCode -ne 0) { throw "Process failed: $File, exit=$($process.ExitCode)" }
@@ -47,7 +71,7 @@ try {
     $StagedInstaller = Join-Path $StageDirectory 'setup.exe'
     Copy-Item -LiteralPath $UpdateInstaller -Destination $StagedInstaller
     $Hash = (Get-FileHash -LiteralPath $StagedInstaller -Algorithm SHA256).Hash.ToLower()
-    $HelperArguments = @('-NoProfile','-ExecutionPolicy','Bypass','-File',('"' + (Join-Path $ProjectRoot 'packaging/Apply-Update.ps1') + '"'),'-Installer',('"' + $StagedInstaller + '"'),'-ApplicationExe',('"' + $ApplicationExe + '"'),'-ParentPid','0','-ExpectedHash',$Hash,'-ExpectedVersion',$ExpectedVersion,'-DataDirectory',('"' + $DataDirectory + '"'),'-TaskFolderPath',$TaskFolderPath,'-NoRestart','-WaitSeconds','60')
+    $HelperArguments = @('-NoProfile','-ExecutionPolicy','Bypass','-File',('"' + (Join-Path $ProjectRoot 'packaging/Apply-Update.ps1') + '"'),'-Installer',('"' + $StagedInstaller + '"'),'-ApplicationExe',('"' + $ApplicationExe + '"'),'-ParentPid','0','-ExpectedHash',$Hash,'-ExpectedVersion',$ExpectedVersion,'-DataDirectory',('"' + $DataDirectory + '"'),'-TaskFolderPath',$TaskFolderPath,'-WaitSeconds','60')
     $LockPath = Join-Path $DataDirectory 'onedrive_pcsync.lock'
     $LockStream = [IO.File]::Open($LockPath, [IO.FileMode]::OpenOrCreate, [IO.FileAccess]::ReadWrite, [IO.FileShare]::ReadWrite)
     $LockStream.Lock(0, 1)
@@ -72,9 +96,32 @@ try {
     if (-not $folder.GetTask('OneDrivePCSync - Periodic Upload').Enabled) { throw 'Update disabled an enabled task' }
     if (-not $folder.GetTask('OneDrivePCSync - Shutdown Monitor').Enabled) { throw 'Update disabled the monitor task' }
     if (Test-Path -LiteralPath $StagedInstaller) { throw 'Successful update left the large staged download' }
-    Write-Output "PASS: detached install; sync lock wait; config preservation; four task enabled states; staged cleanup ($TestRoot)"
+    $application = Wait-VisibleApplication
+    $applicationId = $application.Id
+    [UpdateWindowValidation]::ShowWindow($application.MainWindowHandle, 0) | Out-Null
+    if ([UpdateWindowValidation]::IsWindowVisible($application.MainWindowHandle)) { throw 'Could not reproduce hidden native window' }
+    # A second launch must reactivate the existing GUI, even with SW_HIDE.
+    $activation = Start-Process -FilePath $ApplicationExe -WindowStyle Hidden -PassThru
+    if (-not $activation.WaitForExit(30000)) { throw 'Second launch did not activate the existing instance' }
+    $restored = Wait-VisibleApplication
+    if ($restored.Id -ne $applicationId -or @(Get-TestApplication).Count -ne 1) { throw 'Activation replaced or duplicated the running instance' }
+    Stop-Process -Id $applicationId -Force
+    $restored.WaitForExit()
+    # The first update still uses the helper shipped in the older installation.
+    $legacyRestart = Start-Process -FilePath $ApplicationExe -WindowStyle Hidden -PassThru
+    $legacyVisible = Wait-VisibleApplication
+    if ($legacyVisible.Id -ne $legacyRestart.Id) { throw 'Legacy hidden launch did not recover its window' }
+    Write-Output "PASS: detached install; sync lock wait; visible restart; hidden-window reactivation; legacy hidden launch; single instance; config preservation; four task enabled states; staged cleanup ($TestRoot)"
 } finally {
     if ($LockStream) { $LockStream.Unlock(0,1); $LockStream.Dispose() }
+    if ($helper -and -not $helper.HasExited -and -not $helper.WaitForExit(30000)) {
+        # This process and its installer children belong only to this fixture.
+        # Stop them before uninstall so they cannot install/restart afterwards.
+        & taskkill.exe /PID $helper.Id /T /F | Out-Null
+        $helper.WaitForExit()
+    }
+    # Only this fixture's executable, with empty dry-run config, may be stopped.
+    Get-TestApplication | Stop-Process -Force
     if (Test-Path -LiteralPath $ApplicationExe) {
         Invoke-TaskSetup 'Setup-ShutdownMonitor.ps1' -Uninstall
         Invoke-TaskSetup 'Setup-ScheduledTasks.ps1' -Uninstall

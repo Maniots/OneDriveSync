@@ -151,7 +151,7 @@ class MainWindow(QMainWindow):
         # Create context menu
         self.tray_menu = QMenu()
         self.toggle_window_action = QAction("Open", self)
-        self.toggle_window_action.triggered.connect(self.toggle_window)
+        self.toggle_window_action.triggered.connect(self.show_and_activate)
         self.tray_menu.addAction(self.toggle_window_action)
 
         self.sync_now_action = QAction("Sync Now", self)
@@ -199,6 +199,9 @@ class MainWindow(QMainWindow):
             self.show_and_activate()
 
     def show_and_activate(self):
+        # Windows may hide the HWND while Qt still considers it visible.
+        # Force a visibility transition before restoring and activating it.
+        self.hide()
         self.showNormal()
         self.raise_()
         self.activateWindow()
@@ -220,8 +223,7 @@ class MainWindow(QMainWindow):
 
     def open_settings(self):
         """Open the settings page."""
-        self.show()
-        self.activateWindow()
+        self.show_and_activate()
         # Navigate to Settings page
         for i in range(self.content_stack.count()):
             widget = self.content_stack.widget(i)
@@ -233,10 +235,11 @@ class MainWindow(QMainWindow):
 
     def exit_application(self):
         """Exit the application."""
+        self._exit_requested = True
         if getattr(self.sync_service, "is_syncing", False):
-            self._exit_requested = True
             self.status_bar.showMessage("Finishing synchronization before exit...")
             return
+        self.tray_icon.hide()
         QApplication.instance().quit()
 
     def open_updates(self, install=False):
@@ -255,6 +258,13 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event):
         """Override close event to hide to tray instead of closing."""
+        if self._exit_requested:
+            if getattr(self.sync_service, "is_syncing", False):
+                event.ignore()
+            else:
+                self.tray_icon.hide()
+                event.accept()
+            return
         if QSystemTrayIcon.isSystemTrayAvailable() and self.tray_icon.isVisible():
             self.hide()
             event.ignore()

@@ -62,6 +62,11 @@ jobs:
           & .\build\tools\inno\ISCC.exe /Qp /DValidationBuild packaging\windows-installer.iss
           if ($LASTEXITCODE -ne 0) { throw 'Validation installer compilation failed' }
           .\scripts\Verify-WindowsInstaller.ps1
+      - name: Validate update restart and window recovery
+        run: |
+          $manifest = Get-Content dist/installer/update.json -Raw | ConvertFrom-Json
+          & "$env:WINDIR\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File scripts/Verify-WindowsUpdate.ps1 -BaselineInstaller dist/installer/EverySync-Validation-Setup.exe -UpdateInstaller dist/installer/EverySync-Validation-Setup.exe -ExpectedVersion $manifest.version
+          if ($LASTEXITCODE -ne 0) { throw 'Update restart validation failed' }
       - name: Upload downloadable Windows setup
         uses: actions/upload-artifact@v4
         with:

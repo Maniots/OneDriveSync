@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.4.1 — 2026-10-17
+
+- Updates restart EverySync with its window visible after installation.
+- Tray and single-instance activation restore windows hidden by Windows.
+- Explicit exit bypasses minimize-to-tray and waits for an active synchronization to finish.
+
 ## 1.4.0 — 2026-10-17
 
 - Renamed the application to EverySync throughout the desktop and Windows setup.

@@ -99,7 +99,7 @@ try {
         } catch { Write-UpdateLog ('Could not restore task: ' + $_.Exception.Message) }
     }
     if (-not $NoRestart -and (Test-Path -LiteralPath $ApplicationExe -PathType Leaf)) {
-        Start-Process -FilePath $ApplicationExe -WorkingDirectory $InstallDirectory -WindowStyle Hidden | Out-Null
+        Start-Process -FilePath $ApplicationExe -WorkingDirectory $InstallDirectory -WindowStyle Normal | Out-Null
     }
 }
 if (-not $Succeeded) { exit 1 }

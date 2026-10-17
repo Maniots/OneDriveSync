@@ -5,7 +5,7 @@ import os
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import QElapsedTimer, QIODevice
+from PySide6.QtCore import QElapsedTimer, QIODevice, QTimer
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWidgets import QApplication
 
@@ -15,7 +15,9 @@ from .themes.theme import get_dark_theme
 from .resources.icons import get_app_icon
 from src.app_info import APP_NAME
 
-SERVER_NAME = "OneDrivePCSyncUIInstance"
+# Native installer verification uses an isolated instance and data directory.
+_INSTANCE_SUFFIX = os.environ.get("EVERYSYNC_VALIDATION_INSTANCE", "")
+SERVER_NAME = "OneDrivePCSyncUIInstance" + _INSTANCE_SUFFIX
 
 if sys.platform == "win32":
     import ctypes
@@ -109,7 +111,7 @@ def main(argv=None) -> int:
     try:
         if not offscreen:
             if sys.platform == "win32":
-                mutex_handle, last_error = create_ui_mutex("Global\\OneDrivePCSyncUIMutex")
+                mutex_handle, last_error = create_ui_mutex("Global\\OneDrivePCSyncUIMutex" + _INSTANCE_SUFFIX)
                 if not mutex_handle:
                     raise OSError(last_error, "Cannot acquire UI mutex")
                 if last_error == ERROR_ALREADY_EXISTS:
@@ -131,6 +133,8 @@ def main(argv=None) -> int:
         if server is not None:
             connect_activation_server(server, window)
         window.show()
+        # Also recover when the updater from an older install launches us hidden.
+        QTimer.singleShot(0, window.show_and_activate)
         if args.updates:
             window.open_updates(install=args.install_update)
         return app.exec()
