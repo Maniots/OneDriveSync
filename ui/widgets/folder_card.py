@@ -17,10 +17,12 @@ from ..resources.icons import get_icon
 class FolderCard(QFrame):
     """
     A reusable card widget displaying folder synchronization information and actions.
-    Emits signals for actions (Sync Now, Edit, Enable/Disable) without executing synchronization.
+    Emits action signals without changing configuration or synchronized files.
     """
     sync_now_clicked = Signal()
+    force_sync_clicked = Signal()
     edit_clicked = Signal()
+    delete_clicked = Signal()
     enabled_toggled = Signal(bool)  # True for enabled, False for disabled
 
     def __init__(self, folder_data=None, parent=None):
@@ -171,6 +173,11 @@ class FolderCard(QFrame):
         self.sync_now_button.clicked.connect(self.sync_now_clicked.emit)
         actions_layout.addWidget(self.sync_now_button)
 
+        self.force_sync_button = QPushButton("Force sync")
+        self.force_sync_button.setToolTip("Sync this folder once without the percentage threshold. Other safety checks remain active.")
+        self.force_sync_button.clicked.connect(self.force_sync_clicked.emit)
+        actions_layout.addWidget(self.force_sync_button)
+
         # Edit button
         self.edit_button = QPushButton("Edit")
         self.edit_button.setIcon(get_icon("edit"))
@@ -183,6 +190,13 @@ class FolderCard(QFrame):
         self.toggle_enabled_button.clicked.connect(self.toggle_enabled)
         actions_layout.addWidget(self.toggle_enabled_button)
         actions_layout.addStretch()
+
+        self.delete_button = QPushButton("Delete")
+        self.delete_button.setIcon(get_icon("delete"))
+        self.delete_button.setAccessibleName(f"Delete folder {self.folder_data.get('name', '')}")
+        self.delete_button.setToolTip("Remove this folder from synchronization. Local and OneDrive files are kept.")
+        self.delete_button.clicked.connect(self.delete_clicked.emit)
+        actions_layout.addWidget(self.delete_button)
 
         main_layout.addLayout(actions_layout)
 

@@ -20,7 +20,7 @@ from ..themes import spacing
 from ..resources.icons import get_icon
 from ..models.folder_model import FolderModel
 from backend.services.configuration_service import ConfigurationService
-from src.config import AppConfig, BackupSettings, FolderSyncConfig
+from src.config import AppConfig, BackupSettings, FolderSyncConfig, SyncDirection
 from dataclasses import asdict, replace
 from datetime import datetime
 from ..widgets.add_folder_wizard import AddFolderWizard
@@ -183,6 +183,10 @@ class FoldersPage(QWidget):
             pass
 
         history = self._folder_history.get(folder_config.id, {})
+        sync_status = (("Dry run" if history.get("dry_run") else "Success") if history.get("succeeded")
+                       else ("Failed (dry run)" if history.get("dry_run") else "Failed")) if history else None
+        if history.get("threshold_bypassed"):
+            sync_status = f"Forced {sync_status}"
         return FolderModel(
             id=folder_config.id,
             name=folder_config.name,
@@ -193,7 +197,7 @@ class FoldersPage(QWidget):
             verify_after_sync=folder_config.verify_after_sync,
             create_destination=folder_config.create_destination,
             # UI-specific fields - these would normally come from a sync status service
-            last_sync_status=(("Dry run" if history.get("dry_run") else "Success") if history.get("succeeded") else ("Failed (dry run)" if history.get("dry_run") else "Failed")) if history else None,
+            last_sync_status=sync_status,
             last_sync_time=datetime.fromisoformat(history["timestamp"]).astimezone().strftime("%Y-%m-%d %H:%M:%S") if history else None,
             backup_enabled=folder_config.backup is not None and folder_config.backup.enabled,
             backup_retention_days=folder_config.backup.retention_days if folder_config.backup else 0
@@ -227,7 +231,9 @@ class FoldersPage(QWidget):
             card = FolderCard(folder_data)
             # Connect card signals to page signals (if needed)
             card.sync_now_clicked.connect(lambda f_id=folder_model.id: self.on_folder_sync_requested(f_id))
+            card.force_sync_clicked.connect(lambda f_id=folder_model.id: self.on_folder_force_sync_requested(f_id))
             card.edit_clicked.connect(lambda f_id=folder_model.id: self.on_folder_edit_requested(f_id))
+            card.delete_clicked.connect(lambda f_id=folder_model.id: self.on_folder_delete_requested(f_id))
             card.enabled_toggled.connect(lambda enabled, f_id=folder_model.id: self.on_folder_toggle_requested(f_id, enabled))
             # A full-width row keeps paths readable at the minimum window size.
             self.folders_layout.addWidget(card, i, 0)
@@ -235,10 +241,14 @@ class FoldersPage(QWidget):
 
     def update_sync_buttons(self):
         if self.sync_service is None:
+            for card in self.findChildren(FolderCard):
+                card.force_sync_button.setEnabled(False)
             return
         available = not self.sync_service.is_syncing and not self.sync_service.is_paused and self.sync_service.is_shutdown_sync_enabled()
         for card in self.findChildren(FolderCard):
+            card.delete_button.setEnabled(not self.sync_service.is_syncing)
             card.sync_now_button.setEnabled(available and card.folder_data.get("enabled", False))
+            card.force_sync_button.setEnabled(available and card.folder_data.get("enabled", False))
 
     def refresh_history(self):
         if self.sync_service and self.sync_service.get_folder_history() != self._folder_history:
@@ -348,3 +358,59 @@ class FoldersPage(QWidget):
     def on_folder_sync_requested(self, folder_id):
         if self.sync_service is not None:
             self.sync_service.request_sync("shutdown", folder_id=folder_id)
+
+    def on_folder_delete_requested(self, folder_id):
+        if self.sync_service is not None and self.sync_service.is_syncing:
+            return
+        config = self.config_service.get_app_config()
+        if config is None:
+            return
+        folder = next((folder for folder in config.folders if folder.id == folder_id), None)
+        if folder is None:
+            return
+        answer = QMessageBox.question(
+            self, "Remove folder from synchronization?",
+            f'Remove "{folder.name}" from the configured folders?\n\n'
+            "Local files, OneDrive files and existing backups will be kept.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        if self.sync_service is not None and self.sync_service.is_syncing:
+            return
+        # Modal dialogs process events; use the latest configuration when saving.
+        config = self.config_service.get_app_config()
+        if config is None or not any(folder.id == folder_id for folder in config.folders):
+            return
+        try:
+            self.config_service.save(replace(
+                config, folders=[folder for folder in config.folders if folder.id != folder_id],
+            ))
+            self.status_label.setText("Folder removed from configuration. Files were kept.")
+        except Exception as exc:
+            QMessageBox.warning(self, "Cannot Remove Folder", str(exc))
+
+    def on_folder_force_sync_requested(self, folder_id):
+        if self.sync_service is None or self.sync_service.is_syncing or self.sync_service.is_paused:
+            return
+        config = self.config_service.get_app_config()
+        if config is None or not config.sync.shutdown.enabled:
+            return
+        folder = next((f for f in config.enabled_folders() if f.id == folder_id), None)
+        if folder is None:
+            return
+        source, destination = (folder.local_path_resolved, folder.onedrive_path_resolved)
+        if config.sync.shutdown.direction == SyncDirection.DOWNLOAD:
+            source, destination = destination, source
+        answer = QMessageBox.question(
+            self, "Force sync without threshold?",
+            f"Folder: {folder.name}\nDirection: {config.sync.shutdown.direction.value.capitalize()}\n"
+            f"From: {source}\nTo: {destination}\n\n"
+            f"Ignore the {folder.minimum_sync_percentage:g}% safety threshold for this run only?\n"
+            "Files at the destination can be updated. Backups, path checks, dry run and verification remain active.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer == QMessageBox.StandardButton.Yes:
+            self.sync_service.request_sync("shutdown", folder_id=folder_id, ignore_threshold=True)

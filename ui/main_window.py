@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (
     QSizePolicy,
 )
 from PySide6.QtGui import QAction
-from PySide6.QtCore import Qt, QSize, QTimer, QObject
+from PySide6.QtCore import Qt, QSize, QTimer, QObject, QEvent
 from .pages.dashboard import DashboardPage
 from .pages.folders import FoldersPage
 from .pages.backups import BackupsPage
@@ -33,10 +33,11 @@ from backend.services.backup_service import BackupService
 from backend.services.scheduler_service import SchedulerService
 from backend.services.monitor_service import MonitorService
 from backend.services.log_service import LogService
+from backend.services.update_service import UpdateService
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, configuration_service=None, sync_service=None, backup_service=None, scheduler_service=None, monitor_service=None, log_service=None):
+    def __init__(self, configuration_service=None, sync_service=None, backup_service=None, scheduler_service=None, monitor_service=None, log_service=None, update_service=None):
         super().__init__()
         self.setWindowTitle("OneDrive PC Sync")
         self.setMinimumSize(1100, 700)
@@ -49,15 +50,38 @@ class MainWindow(QMainWindow):
         self.scheduler_service = scheduler_service if scheduler_service is not None else SchedulerService(self.configuration_service)
         self.monitor_service = monitor_service if monitor_service is not None else MonitorService(self.configuration_service)
         self.log_service = log_service if log_service is not None else LogService()
+        self.update_service = update_service if update_service is not None else UpdateService(self.sync_service, parent=self)
         self.config_error = None
         self._exit_requested = False
         self.setup_ui()
         self.load_services()
         self.create_tray_icon()
+        self.update_service.available.connect(self.on_update_available)
+        self.update_service.install_started.connect(self.exit_application)
+        QApplication.instance().aboutToQuit.connect(self.prepare_for_exit)
         if isinstance(self.sync_service, SyncService):
             QApplication.instance().aboutToQuit.connect(self.sync_service.wait_for_finished)
         if isinstance(self.scheduler_service, SchedulerService):
             self.destroyed.connect(self.scheduler_service.wait_for_finished)
+
+    def prepare_for_exit(self):
+        self.update_service.wait_for_finished()
+        if isinstance(self.sync_service, SyncService):
+            self.sync_service.wait_for_finished()
+        if isinstance(self.scheduler_service, SchedulerService):
+            self.scheduler_service.wait_for_finished()
+        # pyqtgraph requires PlotItem.close before native scene destruction.
+        # Parent QWidget deletion does not call PlotWidget.close automatically.
+        from pyqtgraph import PlotWidget
+        for chart in self.findChildren(PlotWidget):
+            if chart.plotItem is not None:
+                chart.close()
+                chart.deleteLater()
+
+    def event(self, event):
+        if event.type() == QEvent.Type.DeferredDelete and hasattr(self, "update_service"):
+            self.prepare_for_exit()
+        return super().event(event)
 
     def setup_ui(self):
         # Central widget
@@ -143,6 +167,10 @@ class MainWindow(QMainWindow):
         self.settings_action.triggered.connect(self.open_settings)
         self.tray_menu.addAction(self.settings_action)
 
+        self.updates_action = QAction("Check for updates", self)
+        self.updates_action.triggered.connect(lambda: self.open_updates())
+        self.tray_menu.addAction(self.updates_action)
+
         self.exit_action = QAction("Exit", self)
         self.exit_action.triggered.connect(self.exit_application)
         self.tray_menu.addAction(self.exit_action)
@@ -209,6 +237,20 @@ class MainWindow(QMainWindow):
             self.status_bar.showMessage("Finishing synchronization before exit...")
             return
         QApplication.instance().quit()
+
+    def open_updates(self, install=False):
+        self.show_and_activate()
+        for index in range(self.content_stack.count()):
+            if isinstance(self.content_stack.widget(index), AboutPage):
+                self.nav_list.setCurrentRow(index)
+                break
+        self.update_service.check(install=install)
+
+    def on_update_available(self, version):
+        self.status_bar.showMessage(f"Update {version} is available. Open About to install it.")
+        if self.tray_icon.isVisible():
+            self.tray_icon.showMessage("OneDrive PC Sync update", f"Version {version} is available. Open About to install.",
+                                       QSystemTrayIcon.MessageIcon.Information, 5000)
 
     def closeEvent(self, event):
         """Override close event to hide to tray instead of closing."""
@@ -292,7 +334,7 @@ class MainWindow(QMainWindow):
             "Settings": lambda: SettingsPage(
                 config_service=self.configuration_service
             ),
-            "About": lambda: AboutPage(config_service=self.configuration_service)
+            "About": lambda: AboutPage(config_service=self.configuration_service, update_service=self.update_service)
         }
 
         page_names = [

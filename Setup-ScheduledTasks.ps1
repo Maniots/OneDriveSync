@@ -52,14 +52,16 @@
 
 [CmdletBinding()]
 param(
-    [switch]$Uninstall
+    [switch]$Uninstall,
+    [string]$ApplicationExe,
+    [ValidatePattern('^\\[^\\].+')]
+    [string]$TaskFolderPath = "\OneDrivePCSync"
 )
 
 $ErrorActionPreference = "Stop"
 
 # --- Constants ----------------------------------------------------------------
 $ProjectRoot      = $PSScriptRoot
-$TaskFolderPath   = "\OneDrivePCSync"
 $StartupTaskName  = "OneDrivePCSync - Startup (Download)"
 $ShutdownTaskName = "OneDrivePCSync - Shutdown (Upload on Lock)"
 $PeriodicTaskName = "OneDrivePCSync - Periodic Upload"
@@ -89,6 +91,14 @@ function Remove-ExistingTask {
     param([string]$Name)
     try {
         $folder = $TaskService.GetFolder($TaskFolderPath)
+        if ($ApplicationExe) {
+            $task = $folder.GetTask($Name)
+            if ($task.Definition.Actions.Item(1).Path -ine $ApplicationExe) {
+                Write-Info "Preserving task owned by another installation: $Name"
+                return
+            }
+            $task.Stop(0)
+        }
         $folder.DeleteTask($Name, 0)
         Write-Info "Removed existing task: $Name"
     } catch {
@@ -117,6 +127,15 @@ if ($Uninstall) {
 
 # --- Install path -----------------------------------------------------------
 Write-Info "Project root detected as: $ProjectRoot"
+
+if ($ApplicationExe) {
+    $ApplicationExe = [System.IO.Path]::GetFullPath($ApplicationExe)
+    if (-not (Test-Path -LiteralPath $ApplicationExe -PathType Leaf)) {
+        throw "Application executable not found: $ApplicationExe"
+    }
+    $ProjectRoot = Split-Path -Parent $ApplicationExe
+    Write-Ok "Using installed executable: $ApplicationExe"
+} else {
 
 # Locate a Python interpreter. Preference order:
 #   1. Project-local virtual environment (pythonw.exe - no console flash)
@@ -226,6 +245,7 @@ $WscriptExe = (Get-Command wscript.exe -ErrorAction SilentlyContinue).Source
 if (-not $WscriptExe) {
     $WscriptExe = Join-Path $env:SystemRoot "System32\wscript.exe"
 }
+}
 
 $Folder = Get-OrCreateTaskFolder
 Remove-ExistingTask -Name $StartupTaskName
@@ -271,8 +291,13 @@ function New-OneDrivePCSyncTask {
     }
 
     $Action = $TaskDef.Actions.Create($TASK_ACTION_EXEC)
-    $Action.Path = $WscriptExe
-    $Action.Arguments = "`"$RunHiddenVbsPath`" `"$PythonExe`" `"$MainScript`" --mode $Mode `"$ProjectRoot`""
+    if ($ApplicationExe) {
+        $Action.Path = $ApplicationExe
+        $Action.Arguments = "--mode $Mode"
+    } else {
+        $Action.Path = $WscriptExe
+        $Action.Arguments = "`"$RunHiddenVbsPath`" `"$PythonExe`" `"$MainScript`" --mode $Mode `"$ProjectRoot`""
+    }
     $Action.WorkingDirectory = $ProjectRoot
 
     $Principal = $TaskDef.Principal

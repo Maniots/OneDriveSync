@@ -16,13 +16,16 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt
 from ..themes import spacing
 from backend.services.configuration_service import ConfigurationService
+from backend.services.app_startup_service import AppStartupService
 from src.config import AppConfig, GeneralSettings, SyncSettings, CopyEngineSettings, BackupSettings, SyncDirection, LogLevel, SyncTriggerSettings
 
 
 class SettingsPage(QWidget):
-    def __init__(self, config_service: ConfigurationService, parent=None):
+    def __init__(self, config_service: ConfigurationService, parent=None, startup_service=None):
         super().__init__(parent)
         self.config_service = config_service
+        self.startup_service = startup_service if startup_service is not None else AppStartupService()
+        self._startup_enabled = False
         self._original_app_config: Optional[AppConfig] = None
         self._dirty = False
         self.setup_ui()
@@ -38,6 +41,29 @@ class SettingsPage(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(spacing.LARGE, spacing.LARGE, spacing.LARGE, spacing.LARGE)
         layout.setSpacing(spacing.MEDIUM)
+
+        startup_group = QGroupBox("App startup")
+        startup_group.setProperty("card", "true")
+        startup_layout = QVBoxLayout(startup_group)
+        self.run_at_startup_check = QCheckBox("Run at startup")
+        self.run_at_startup_check.setAccessibleName("Run at startup")
+        self.run_at_startup_check.setToolTip("Open the desktop app when you sign in to Windows.")
+        startup_layout.addWidget(self.run_at_startup_check)
+        hint = QLabel("Open the app when you sign in to Windows. This choice is saved immediately. "
+                      "Scheduled synchronization is configured separately.")
+        hint.setWordWrap(True)
+        hint.setProperty("description", "true")
+        startup_layout.addWidget(hint)
+        self.startup_status = QLabel()
+        self.startup_status.setTextFormat(Qt.TextFormat.PlainText)
+        self.startup_status.setWordWrap(True)
+        startup_layout.addWidget(self.startup_status)
+        self.startup_retry_button = QPushButton("Retry")
+        self.startup_retry_button.clicked.connect(self.refresh_startup)
+        startup_layout.addWidget(self.startup_retry_button)
+        layout.addWidget(startup_group)
+        self.run_at_startup_check.toggled.connect(self.set_run_at_startup)
+        self.refresh_startup()
 
         # Scroll area for settings
         scroll_area = QScrollArea()
@@ -76,6 +102,41 @@ class SettingsPage(QWidget):
         self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.status_label.setProperty("description", "true")
         layout.addWidget(self.status_label)
+
+    def showEvent(self, event):
+        self.refresh_startup()
+        super().showEvent(event)
+
+    def refresh_startup(self):
+        supported = self.startup_service.supported
+        self.run_at_startup_check.setEnabled(supported)
+        self.startup_retry_button.hide()
+        if not supported:
+            self.startup_status.setText("Available in the installed Windows app.")
+            return
+        try:
+            self._startup_enabled = self.startup_service.is_enabled()
+            self._set_startup_checked(self._startup_enabled)
+            self.startup_status.setText("Startup is enabled." if self._startup_enabled else "Startup is disabled.")
+        except Exception as exc:
+            self.run_at_startup_check.setEnabled(False)
+            self.startup_status.setText(f"Cannot read the startup setting: {exc}")
+            self.startup_retry_button.show()
+
+    def _set_startup_checked(self, enabled):
+        self.run_at_startup_check.blockSignals(True)
+        self.run_at_startup_check.setChecked(enabled)
+        self.run_at_startup_check.blockSignals(False)
+
+    def set_run_at_startup(self, enabled):
+        try:
+            self.startup_service.set_enabled(enabled)
+        except Exception as exc:
+            self._set_startup_checked(self._startup_enabled)
+            self.startup_status.setText(f"Could not change startup: {exc}")
+            self.startup_retry_button.show()
+            return
+        self.refresh_startup()
 
     def load_configuration_data(self, app_config: AppConfig):
         """Load and display settings from the configuration."""

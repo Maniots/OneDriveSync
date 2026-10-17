@@ -86,6 +86,9 @@ def test_folder_paths_wrap_without_horizontal_overflow(qapp, rendered_window):
     assert scroll.horizontalScrollBar().maximum() == 0
     assert card.width() <= scroll.viewport().width()
     assert card.sync_now_button.isVisible()
+    assert card.delete_button.isVisible()
+    assert card.delete_button.width() >= card.delete_button.minimumSizeHint().width()
+    assert card.rect().contains(card.delete_button.geometry())
 
 
 def test_scheduler_bottom_controls_remain_reachable(qapp, rendered_window):

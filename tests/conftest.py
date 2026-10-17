@@ -12,14 +12,29 @@ def dispose_qt_widgets(app, widgets):
     from PySide6.QtCore import QCoreApplication, QEvent, QTimer
     from shiboken6 import isValid
 
+    valid_ids = {id(widget) for widget in widgets if isValid(widget)}
     # A native child may already have been destroyed by its parent. A Python
     # wrapper in an earlier snapshot is not evidence that its C++ object lives.
     for widget in widgets:
         if not isValid(widget):
             continue
+        ancestor = widget.parentWidget()
+        while ancestor is not None and id(ancestor) not in valid_ids:
+            ancestor = ancestor.parentWidget()
+        if ancestor is not None:
+            continue  # The parent owns native deletion of this menu/window.
         service = getattr(widget, "sync_service", None)
         if getattr(service, "is_syncing", False):
             service.wait_for_finished()
+        updater = getattr(widget, "update_service", None)
+        if updater is not None:
+            updater.wait_for_finished()
+        from pyqtgraph import PlotWidget
+        charts = ([widget] if isinstance(widget, PlotWidget) else widget.findChildren(PlotWidget))
+        for chart in charts:
+            if isValid(chart) and chart.plotItem is not None:
+                chart.close()
+                chart.deleteLater()
         for timer in widget.findChildren(QTimer):
             if isValid(timer):
                 timer.stop()

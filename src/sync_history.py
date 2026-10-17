@@ -16,7 +16,8 @@ class SyncHistory:
             db.execute("CREATE TABLE IF NOT EXISTS runs (id INTEGER PRIMARY KEY, timestamp TEXT NOT NULL, mode TEXT NOT NULL, dry_run INTEGER NOT NULL, outcomes TEXT NOT NULL)")
             values = [{"folder_id": o.folder_id, "folder_name": o.folder_name,
                        "direction": o.direction.value, "succeeded": o.succeeded,
-                       "message": o.message} for o in outcomes]
+                       "message": o.message,
+                       "threshold_bypassed": o.threshold_bypassed} for o in outcomes]
             db.execute("INSERT INTO runs(timestamp, mode, dry_run, outcomes) VALUES (?, ?, ?, ?)",
                        (datetime.now(timezone.utc).isoformat(), mode, int(dry_run), json.dumps(values)))
             db.execute("DELETE FROM runs WHERE id NOT IN (SELECT id FROM runs ORDER BY id DESC LIMIT 1000)")

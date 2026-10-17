@@ -1,0 +1,24 @@
+{
+  "general": {
+    "log_level": "INFO",
+    "dry_run": false,
+    "verify_after_sync": true,
+    "create_destination": true,
+    "max_parallel_jobs": 2
+  },
+  "sync": {
+    "startup": {"enabled": true, "direction": "download"},
+    "shutdown": {"enabled": true, "direction": "upload"}
+  },
+  "copy_engine": {
+    "retry_count": 2,
+    "retry_wait_seconds": 2,
+    "multithreading": 16,
+    "copy_subdirectories": true,
+    "copy_empty_directories": true,
+    "exclude_junctions": true,
+    "fat_file_times": true,
+    "monitor_mode": false
+  },
+  "folders": []
+}

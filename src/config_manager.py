@@ -358,7 +358,8 @@ class ConfigManager:
         If the status file cannot be read, returns a default status with
         status: "unknown".
         """
-        status_file = Path(__file__).resolve().parent.parent / "shutdown_monitor_status.json"
+        from src.runtime_paths import data_root
+        status_file = data_root() / "shutdown_monitor_status.json"
         try:
             if status_file.exists():
                 with status_file.open("r", encoding="utf-8") as f:

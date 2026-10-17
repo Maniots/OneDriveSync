@@ -9,6 +9,7 @@ from src.config import AppConfig
 from src.logger import setup_logger
 from src.single_instance import acquire_single_instance_lock
 from src.sync_manager import SyncManager
+from src.runtime_paths import sync_lock_path
 
 if TYPE_CHECKING:
     from backend.services.sync_service import SyncService
@@ -22,10 +23,11 @@ class SyncWorker(QObject):
     finished = Signal()
 
     def __init__(self, sync_service: "SyncService", parent: Optional[QObject] = None,
-                 config: Optional[AppConfig] = None):
+                 config: Optional[AppConfig] = None, ignore_threshold_for: Optional[str] = None):
         super().__init__(parent)
         self._sync_service = sync_service
         self._config = config
+        self._ignore_threshold_for = ignore_threshold_for
 
     def _run_sync(self, operation: str):
         lock_handle = None
@@ -40,7 +42,7 @@ class SyncWorker(QObject):
             if not trigger.enabled:
                 raise RuntimeError(f"{operation.capitalize()} sync is disabled in configuration")
 
-            lock_path = Path(__file__).resolve().parents[2] / "onedrive_pcsync.lock"
+            lock_path = sync_lock_path()
             lock_handle = acquire_single_instance_lock(lock_path)
             if lock_handle is None:
                 raise RuntimeError("Another synchronization is already running on this machine")
@@ -49,7 +51,7 @@ class SyncWorker(QObject):
             self.started.emit(operation)
             manager = SyncManager(config, history_path=self._sync_service.history_path)
             run = manager.run_startup_sync if operation == "startup" else manager.run_shutdown_sync
-            outcomes = run(progress_callback=self.progress.emit)
+            outcomes = run(progress_callback=self.progress.emit, ignore_threshold_for=self._ignore_threshold_for)
             self.progress.emit(100, f"{operation.capitalize()} synchronization finished.")
             self.completed.emit(outcomes)
         except Exception as exc:
