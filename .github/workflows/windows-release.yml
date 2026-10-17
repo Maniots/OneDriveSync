@@ -1,7 +1,9 @@
-name: Windows master release
+name: Windows installer and release
 
 on:
   push:
+    branches: [master]
+  pull_request:
     branches: [master]
   workflow_dispatch:
 
@@ -9,12 +11,11 @@ permissions:
   contents: write
 
 concurrency:
-  group: windows-master-release
+  group: windows-installer-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
   release:
-    if: github.ref == 'refs/heads/master'
     runs-on: windows-2022
     timeout-minutes: 30
     defaults:
@@ -55,7 +56,23 @@ jobs:
         run: |
           .\.venv\Scripts\python.exe scripts/verify_windows_bundle.py dist/OneDrivePCSync/OneDrivePCSync.exe
           if ($LASTEXITCODE -ne 0) { throw 'Frozen acceptance checks failed' }
+      - name: Validate installer lifecycle
+        run: |
+          & .\build\tools\inno\ISCC.exe /Qp /DValidationBuild packaging\windows-installer.iss
+          if ($LASTEXITCODE -ne 0) { throw 'Validation installer compilation failed' }
+          .\scripts\Verify-WindowsInstaller.ps1
+      - name: Upload downloadable Windows setup
+        uses: actions/upload-artifact@v4
+        with:
+          name: OneDrivePCSync-Windows-Setup-${{ github.run_number }}
+          path: |
+            dist/installer/OneDrivePCSync-Setup-*.exe
+            dist/installer/update.json
+            dist/installer/release-notes.md
+          if-no-files-found: error
+          compression-level: 0
       - name: Publish the current master build
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master'
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
@@ -68,5 +85,5 @@ jobs:
           $installer = Join-Path 'dist/installer' $manifest.installer
           gh release view $tag *> $null
           if ($LASTEXITCODE -eq 0) { Write-Host 'This build was already published'; exit 0 }
-          gh release create $tag $installer dist/installer/update.json --target '${{ github.sha }}' --latest --title "Windows $($manifest.version)" --notes-file dist/installer/release-notes.md
+          gh release create $tag "${installer}#Windows setup (installation wizard)" dist/installer/update.json --target '${{ github.sha }}' --latest --title "Windows $($manifest.version)" --notes-file dist/installer/release-notes.md
           if ($LASTEXITCODE -ne 0) { throw 'Release publication failed' }

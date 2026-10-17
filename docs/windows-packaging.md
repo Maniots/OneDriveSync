@@ -54,3 +54,24 @@ Completed on Windows x64, 2026-10-12, Python 3.14.6 / PySide6 6.11.1.
 Confidence B: the binary, installation lifecycle and targeted native signals
 are verified; a real Windows restart/shutdown and its OS-enforced timeout were
 not exercised. No changes to selected folders, copy policy or backup policy.
+
+## Installation wizard and release delivery (2026-10-17)
+
+The existing Inno Setup wizard now explicitly displays welcome and destination
+pages, with Italian/English optional-task and launch labels. Production setup:
+`dist/installer/OneDrivePCSync-Setup-1.3.0.0.exe` (49,312,487 bytes). Its size and
+SHA-256 match `dist/installer/update.json`.
+
+- 233 regression tests passed on Windows, Python 3.14.6 / PySide6 6.12.0
+  (`build/installer-regressions-full.log`); actionlint 1.7.12 passed.
+- The actual frozen app passed UI, native navigation, startup/update controls,
+  isolated copies, forced sync and native monitor checks
+  (`build/windows-setup-bundle-check-full.log`).
+- A separate validation setup passed install, installed UI, upgrade preserving
+  config/startup, installation history and uninstall preserving user data
+  (`build/windows-setup-installer-check.log`).
+- The workflow now runs for pull requests to master and manual branch builds,
+  and uploads only the production setup, manifest and release notes as an
+  Actions artifact after EXE and installer checks pass. Current-master builds
+  still publish the setup and manifest to GitHub Releases. These workflow
+  changes are locally validated; hosted execution/publication is pending.

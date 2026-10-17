@@ -59,11 +59,19 @@ OneDrivePCSync/
 
 ### Windows EXE (no Python required on the target PC)
 
-Run the versioned `OneDrivePCSync-Setup-*.exe` from a Windows release (or
-`dist/installer` after building locally). It installs the app for
+Download `OneDrivePCSync-Setup-*.exe` from the **Assets** section of the
+[latest Windows release](https://github.com/Maniots/OneDriveSync/releases/latest)
+and double-click it (or use `dist/installer` after building locally).
+The Italian/English installation wizard shows a welcome page, lets you choose
+the installation folder and optional desktop shortcut/automatic synchronization,
+then offers to launch the app. Python is not required. It installs the app for
 the current Windows user under `%LOCALAPPDATA%\Programs\OneDrivePCSync`,
 adds Start menu links and registers an uninstaller. A desktop shortcut and
 automatic synchronization are optional installer checkboxes.
+
+`OneDrivePCSync.exe` is the application; `OneDrivePCSync-Setup-*.exe` is the
+installer to distribute. GitHub's **Source code** ZIP/TAR downloads contain
+source files; download the setup asset to install the app.
 
 User data lives under `%LOCALAPPDATA%\OneDrivePCSync`: `config.json`, sync
 history, logs, monitor status and locks. Updates and uninstall preserve that
@@ -100,8 +108,13 @@ automatic installation can be enabled explicitly in the Updates card.
 
 The workflow in `.github/workflows/windows-release.yml` creates a Windows
 release after a successful push to `master`, including tests, the actual frozen
-EXE acceptance check, and a matching `update.json` manifest. Commits only on a
-local PC do not trigger GitHub. The workflow must first be present on GitHub's
+EXE acceptance check, install/upgrade/uninstall checks, and a matching
+`update.json` manifest. Pull requests targeting `master` and manual workflow
+runs also build and verify the installer, uploading a
+`OneDrivePCSync-Windows-Setup-N` artifact on the Actions run page. Extract that
+artifact and run the setup EXE to try a branch build. Only `master` builds
+publish a public release and update the application's release channel.
+Commits only on a local PC do not trigger GitHub. The workflow must first be present on GitHub's
 `master` branch, with Actions enabled and permission to create releases.
 The application reads the public `Maniots/OneDriveSync` repository without a
 GitHub token. Network errors leave synchronization available and allow retry;

@@ -2,7 +2,38 @@ This architecture ensures the UI remains independent from the core synchronizati
 
 The main window features a modern header with page title and optional subtitle, a navigation sidebar with application logo, grouped navigation items, and a bottom section for Settings and About. The design follows Windows 11-inspired Fluent Design principles with proper spacing, rounded corners, and subtle hover effects.
 
-Last updated: 2026-10-13
+Last updated: 2026-10-17
+
+## Repository workflow preference (2026-10-17)
+
+- `AGENTS.md` records the user's standing instruction: after each requested
+  change and verification, commit and push to the current branch without
+  asking for confirmation again.
+
+## Downloadable Windows installation wizard (2026-10-17)
+
+- The existing Inno Setup installer explicitly shows welcome and destination
+  pages, including on interactive upgrades. Optional desktop shortcut,
+  synchronization automation and the final launch checkbox have Italian and
+  English labels. Silent updates continue to use the same installer.
+- The Windows workflow builds pull requests targeting master and manual branch
+  runs as well as master pushes. After frozen EXE and isolated installer
+  install/upgrade/uninstall checks, it uploads the production setup EXE,
+  update manifest and release notes as an Actions artifact. The separate
+  validation setup is excluded from distribution.
+- Public release publication remains restricted to the current master commit.
+  Its setup asset is labelled as the Windows installation wizard. README
+  links to release Assets and distinguishes the setup from the application
+  executable and GitHub source archives.
+- Verification: 233 regressions passed on Windows with Python 3.14.6 and
+  PySide6 6.12.0; actionlint 1.7.12 passed. The actual frozen EXE passed native
+  navigation, update/startup settings, isolated copy, forced sync and monitor
+  checks. The production setup is `dist/installer/OneDrivePCSync-Setup-1.3.0.0.exe`
+  (49,312,487 bytes), with size and SHA-256 matching `update.json`.
+  The separate validation installer passed install, installed UI, upgrade
+  preserving configuration/startup, history append and uninstall cleanup
+  preserving user data (`build/windows-setup-installer-check.log`). Local
+  artifacts are ready; the changed workflow has not yet run on GitHub.
 
 ## Update changelog and forced folder sync (2026-10-13)
 

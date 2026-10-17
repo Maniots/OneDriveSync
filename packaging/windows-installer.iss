@@ -31,6 +31,8 @@ OutputBaseFilename=OneDrivePCSync-Setup-{#AppVersion}
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
+DisableWelcomePage=no
+DisableDirPage=no
 UninstallDisplayIcon={app}\{#AppExe}
 CloseApplications=yes
 RestartApplications=no
@@ -41,8 +43,16 @@ Name: "italian"; MessagesFile: "compiler:Languages\Italian.isl"
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
-Name: "desktopicon"; Description: "Crea un collegamento sul desktop"; Flags: unchecked
-Name: "automation"; Description: "Abilita sincronizzazione all'accesso, al blocco, ogni 15 minuti e allo spegnimento"; Flags: unchecked
+Name: "desktopicon"; Description: "{cm:DesktopShortcut}"; Flags: unchecked
+Name: "automation"; Description: "{cm:SyncAutomation}"; Flags: unchecked
+
+[CustomMessages]
+italian.DesktopShortcut=Crea un collegamento sul desktop
+english.DesktopShortcut=Create a desktop shortcut
+italian.SyncAutomation=Abilita sincronizzazione all'accesso, al blocco, ogni 15 minuti e allo spegnimento
+english.SyncAutomation=Enable synchronization at sign-in, on lock, every 15 minutes and at shutdown
+italian.LaunchApplication=Avvia %1
+english.LaunchApplication=Launch %1
 
 [Files]
 Source: "..\dist\OneDrivePCSync\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
@@ -57,7 +67,7 @@ Name: "{userdesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; WorkingDir: "{app
 #endif
 
 [Run]
-Filename: "{app}\{#AppExe}"; Description: "Avvia {#AppName}"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\{#AppExe}"; Description: "{cm:LaunchApplication,{#AppName}}"; Flags: nowait postinstall skipifsilent
 
 [UninstallRun]
 Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\Setup-ShutdownMonitor.ps1"" -Uninstall -ApplicationExe ""{app}\{#AppExe}"""; Flags: runhidden waituntilterminated; RunOnceId: "RemoveMonitor"
