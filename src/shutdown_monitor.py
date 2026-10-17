@@ -334,7 +334,7 @@ class ShutdownMonitorWindow:
         self._hwnd = win32gui.CreateWindowEx(  # type: ignore[union-attr]
             0,  # dwExStyle
             self._wc_atom,
-            "OneDrivePCSync Shutdown Monitor",
+            "EverySync Shutdown Monitor",
             win32con.WS_OVERLAPPED,  # type: ignore[union-attr]
             0, 0, 0, 0,  # x, y, width, height
             0,  # hWndParent — NULL = hidden top-level window
@@ -357,7 +357,7 @@ class ShutdownMonitorWindow:
         try:
             import ctypes
             ctypes.windll.user32.ShutdownBlockReasonCreate(
-                self._hwnd, "OneDrivePCSync is uploading your saves"
+                self._hwnd, "EverySync is uploading your saves"
             )
             _emergency_log("ShutdownBlockReasonCreate OK")
         except Exception as e:  # noqa: BLE001
@@ -458,7 +458,7 @@ def main() -> int:
         return 1
 
     pid = os.getpid()
-    logger.info("OneDrivePCSync shutdown monitor starting (PID=%s).", pid)
+    logger.info("EverySync shutdown monitor starting (PID=%s).", pid)
 
     lock_handle = acquire_single_instance_lock(MONITOR_LOCK_PATH)
     if lock_handle is None:

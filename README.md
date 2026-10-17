@@ -1,4 +1,4 @@
-# OneDrive PC Sync
+# EverySync
 
 A safety-first Windows application that synchronizes explicitly chosen
 application data folders between the local PC and OneDrive - on **startup**
@@ -20,7 +20,7 @@ and unsafe. This project **only** syncs folders you explicitly list in
 ## Project structure
 
 ```
-OneDrivePCSync/
+EverySync/
 │
 ├── README.md
 ├── requirements.txt
@@ -59,7 +59,7 @@ OneDrivePCSync/
 
 ### Windows EXE (no Python required on the target PC)
 
-Download `OneDrivePCSync-Setup-*.exe` from the **Assets** section of the
+Download `EverySync-Setup-*.exe` from the **Assets** section of the
 [latest Windows release](https://github.com/Maniots/OneDriveSync/releases/latest)
 and double-click it (or use `dist/installer` after building locally).
 The Italian/English installation wizard shows a welcome page, lets you choose
@@ -69,7 +69,7 @@ the current Windows user under `%LOCALAPPDATA%\Programs\OneDrivePCSync`,
 adds Start menu links and registers an uninstaller. A desktop shortcut and
 automatic synchronization are optional installer checkboxes.
 
-`OneDrivePCSync.exe` is the application; `OneDrivePCSync-Setup-*.exe` is the
+`OneDrivePCSync.exe` is the application; `EverySync-Setup-*.exe` is the
 installer to distribute. GitHub's **Source code** ZIP/TAR downloads contain
 source files; download the setup asset to install the app.
 
@@ -111,17 +111,37 @@ release after a successful push to `master`, including tests, the actual frozen
 EXE acceptance check, install/upgrade/uninstall checks, and a matching
 `update.json` manifest. Pull requests targeting `master` and manual workflow
 runs also build and verify the installer, uploading a
-`OneDrivePCSync-Windows-Setup-N` artifact on the Actions run page. Extract that
+`EverySync-Windows-Setup-N` artifact on the Actions run page. Extract that
 artifact and run the setup EXE to try a branch build. Only `master` builds
 publish a public release and update the application's release channel.
 Commits only on a local PC do not trigger GitHub. The workflow must first be present on GitHub's
 `master` branch, with Actions enabled and permission to create releases.
+The EverySync rebranding branch does not publish production updates. Its
+installer becomes available to the production update channel only after merge
+into `master` and a successful release workflow.
 The application reads the public `Maniots/OneDriveSync` repository without a
 GitHub token. Network errors leave synchronization available and allow retry;
 before the first release the Updates card reports that none has been published.
 
 Existing installations from version 1.0 need the new installer once to gain
 the updater; subsequent updates are downloaded from inside the app.
+
+### Compatibility identifiers
+
+EverySync keeps the existing technical namespace so upgrades from OneDrive PC
+Sync retain configuration, history, startup choice and scheduled tasks. The
+EXE filename (`OneDrivePCSync.exe`), bundle directory (`dist/OneDrivePCSync`),
+installation and data directories, installer AppId, startup registry value,
+task names and lock files keep their existing identifiers. These names are
+compatibility details; Windows product metadata, the app and shortcuts display
+EverySync. The GitHub repository remains `Maniots/OneDriveSync`.
+
+Each release includes `EverySync-Setup-VERSION.exe` and a byte-identical
+`OneDrivePCSync-Setup-VERSION.exe` alias. `update.json` deliberately references
+the legacy alias required by installed 1.3 clients, allowing those clients to
+discover and install EverySync. Existing installer-created shortcuts are renamed
+on upgrade, preserving an existing desktop shortcut even during silent updates.
+No data migration or second installation is required.
 
 ### Building the Windows release
 
@@ -139,6 +159,8 @@ Supply `-InnoCompiler C:\path\ISCC.exe` if it is not in a detected location.
 `src/app_info.py` owns the base version. `-BuildNumber N` stamps the fourth
 numeric component; CI uses the workflow run number. Installer, EXE and update
 manifest share that build identity.
+The build generates `packaging/build-version-info.txt` for the EXE's Windows
+product name, description and numeric version before PyInstaller runs.
 The bundle is `dist/OneDrivePCSync`; keep its `_internal` directory with the
 EXE. The installer contains the entire bundle in a single setup EXE.
 Builds do not automatically download or install build tools.
@@ -154,8 +176,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\Verify-WindowsAutoma
 # Separate validation installer identity and data location:
 ISCC.exe /DValidationBuild packaging\windows-installer.iss
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\Verify-WindowsInstaller.ps1
+# Optional: exercise an actual previous validation installer as the baseline:
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\Verify-WindowsInstaller.ps1 -BaselineInstaller build\update-baseline-validation.exe -PythonExe .venv\Scripts\python.exe
 # Keep a previous validation installer before compiling the next one:
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts\Verify-WindowsUpdate.ps1 -BaselineInstaller build\update-baseline-validation.exe -UpdateInstaller dist\installer\OneDrivePCSync-Validation-Setup.exe -ExpectedVersion 1.1.0.0
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\Verify-WindowsUpdate.ps1 -BaselineInstaller build\update-baseline-validation.exe -UpdateInstaller dist\installer\EverySync-Validation-Setup.exe -ExpectedVersion 1.4.0.0
 ```
 
 The automation and installer checks need access to the Windows Task Scheduler

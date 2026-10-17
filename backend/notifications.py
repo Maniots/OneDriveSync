@@ -21,7 +21,7 @@ class NotificationsBackend:
 
     def show_sync_success(self) -> None:
         """Show a success toast for sync completion."""
-        self.show_toast("OneDrive PC Sync", "Sync completed successfully.")
+        self.show_toast("EverySync", "Sync completed successfully.")
 
     def show_sync_failed(self, failed_count: int) -> None:
         """
@@ -31,6 +31,6 @@ class NotificationsBackend:
             failed_count: Number of folders that failed to sync.
         """
         self.show_toast(
-            "OneDrive PC Sync — Issues",
+            "EverySync — Issues",
             f"{failed_count} folder(s) failed to sync. Check logs.",
         )

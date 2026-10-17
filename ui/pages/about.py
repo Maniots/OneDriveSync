@@ -1,8 +1,8 @@
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel, QFrame, QPushButton, QHBoxLayout, QCheckBox, QProgressBar, QScrollArea, QPlainTextEdit, QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView
 from PySide6.QtCore import Qt, QSize
 from ..themes import spacing
-from ..resources.icons import get_icon
-from src.app_info import VERSION, release_notes
+from ..resources.icons import get_app_icon
+from src.app_info import APP_NAME, VERSION, release_notes
 from datetime import datetime
 
 
@@ -32,9 +32,9 @@ class AboutPage(QWidget):
         card_layout.setContentsMargins(28, 28, 28, 28)
         card_layout.setSpacing(16)
         icon = QLabel()
-        icon.setPixmap(get_icon("cloud").pixmap(QSize(44, 44)))
+        icon.setPixmap(get_app_icon().pixmap(QSize(56, 56)))
         card_layout.addWidget(icon)
-        label = QLabel("OneDrive PC Sync")
+        label = QLabel(APP_NAME)
         label.setProperty("h2", "true")
         card_layout.addWidget(label)
 
@@ -45,7 +45,7 @@ class AboutPage(QWidget):
             "Synchronization adds and updates files without deleting them. "
             "Optional backups preserve OneDrive contents before an upload.\n\n"
             f"Version: {VERSION}\n"
-            "© 2026 OneDrive PC Sync Team"
+            "© 2026 EverySync Team"
         )
         about_text.setAlignment(Qt.AlignmentFlag.AlignLeft)
         about_text.setWordWrap(True)

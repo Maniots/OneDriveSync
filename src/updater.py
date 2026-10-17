@@ -67,7 +67,7 @@ class UpdateClient:
         self.opener = opener or urlopen
 
     def _open(self, url):
-        request = Request(url, headers={"User-Agent": "OneDrivePCSync-Updater",
+        request = Request(url, headers={"User-Agent": "EverySync-Updater",
                                        "Accept": "application/vnd.github+json"})
         try:
             return self.opener(request, timeout=20)
@@ -116,6 +116,8 @@ class UpdateClient:
             raise UpdateError("Cannot retrieve update information. Try again later.") from exc
         version = manifest.get("version")
         latest = version_key(version)
+        # Installed 1.x clients require this filename; releases also offer an
+        # EverySync-named download of the same verified installer.
         filename = f"OneDrivePCSync-Setup-{version}.exe"
         if (manifest.get("schema") != 1 or manifest.get("channel") != "master" or
                 manifest.get("repository") != REPOSITORY or manifest.get("installer") != filename or

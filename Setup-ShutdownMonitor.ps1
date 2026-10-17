@@ -47,7 +47,7 @@ $ErrorActionPreference = "Stop"
 # --- Constants ----------------------------------------------------------------
 $ProjectRoot      = $PSScriptRoot
 $MonitorTaskName  = "OneDrivePCSync - Shutdown Monitor"
-$MonitorTaskDescription = "Runs the OneDrivePCSync shutdown monitor at logon to catch Windows session-ending notifications (shutdown, restart, logoff) and trigger an upload sync."
+$MonitorTaskDescription = "Runs the EverySync shutdown monitor at logon to catch Windows session-ending notifications (shutdown, restart, logoff) and trigger an upload sync."
 
 # Task Scheduler COM API constants.
 $TASK_TRIGGER_LOGON                 = 9
@@ -95,7 +95,7 @@ function Get-OrCreateTaskFolder {
 
 # --- Uninstall path -------------------------------------------------------
 if ($Uninstall) {
-    Write-Info "Uninstalling OneDrivePCSync shutdown monitor scheduled task..."
+    Write-Info "Uninstalling EverySync shutdown monitor scheduled task..."
     Remove-ExistingTask -Name $MonitorTaskName
     Write-Ok "Uninstall complete."
     return
@@ -163,7 +163,7 @@ Write-Ok "Using Python interpreter: $PythonExe"
 $MonitorScript = Join-Path $ProjectRoot "src\shutdown_monitor.py"
 if (-not (Test-Path $MonitorScript -PathType Leaf)) {
     Write-Err "shutdown_monitor.py not found at: $MonitorScript"
-    Write-Err "Run this script from inside the OneDrivePCSync project folder."
+    Write-Err "Run this script from inside the EverySync project folder."
     exit 1
 }
 
@@ -237,7 +237,7 @@ function New-OneDrivePCSyncMonitorTask {
 New-OneDrivePCSyncMonitorTask -Name $MonitorTaskName
 
 Write-Host ""
-Write-Ok "Setup complete. OneDrivePCSync shutdown monitor will now run at logon:"
+Write-Ok "Setup complete. EverySync shutdown monitor will now run at logon:"
 Write-Host "    - At logon: starts the shutdown monitor (hidden)"
 Write-Host "    - The monitor waits for Windows session-ending notifications"
 Write-Host "      (shutdown, restart, or logoff) and triggers an upload sync."

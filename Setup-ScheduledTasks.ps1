@@ -117,7 +117,7 @@ function Get-OrCreateTaskFolder {
 
 # --- Uninstall path -------------------------------------------------------
 if ($Uninstall) {
-    Write-Info "Uninstalling OneDrivePCSync scheduled tasks..."
+    Write-Info "Uninstalling EverySync scheduled tasks..."
     Remove-ExistingTask -Name $StartupTaskName
     Remove-ExistingTask -Name $ShutdownTaskName
     Remove-ExistingTask -Name $PeriodicTaskName
@@ -187,7 +187,7 @@ Write-Ok "Using Python interpreter: $PythonExe"
 $MainScript = Join-Path $ProjectRoot "main.py"
 if (-not (Test-Path $MainScript -PathType Leaf)) {
     Write-Err "main.py not found at: $MainScript"
-    Write-Err "Run this script from inside the OneDrivePCSync project folder."
+    Write-Err "Run this script from inside the EverySync project folder."
     exit 1
 }
 
@@ -263,7 +263,7 @@ function New-OneDrivePCSyncTask {
 
     $TaskDef = $TaskService.NewTask(0)
     $TaskDef.RegistrationInfo.Description =
-        "Runs 'python main.py --mode $Mode' for OneDrivePCSync. " +
+        "Runs 'python main.py --mode $Mode' for EverySync. " +
         "Managed by Setup-ScheduledTasks.ps1 - re-run that script to change or reinstall this task rather than editing it by hand."
 
     $TaskDef.Settings.Enabled = $true
@@ -322,7 +322,7 @@ New-OneDrivePCSyncTask -Name $ShutdownTaskName -Mode "shutdown" -TriggerType $TA
 New-OneDrivePCSyncTask -Name $PeriodicTaskName -Mode "shutdown" -TriggerType $TASK_TRIGGER_TIME
 
 Write-Host ""
-Write-Ok "Setup complete. OneDrivePCSync now runs automatically:"
+Write-Ok "Setup complete. EverySync now runs automatically:"
 Write-Host "    - On logon ($StartupDelayMinutes min delay)   -> downloads from OneDrive"
 Write-Host "    - On workstation lock (Win+L) -> uploads to OneDrive"
 Write-Host "    - Every $PeriodicIntervalMinutes minutes while logged on -> uploads to OneDrive"

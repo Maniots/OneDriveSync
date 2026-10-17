@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import subprocess
 import sys
+from pathlib import Path
 
 from .logger import get_logger
 
@@ -44,6 +45,7 @@ $template = @'
 <toast>
     <visual>
         <binding template="ToastGeneric">
+            <image placement="appLogoOverride" src="{icon_uri}"/>
             <text>{title}</text>
             <text>{message}</text>
         </binding>
@@ -77,7 +79,8 @@ def show_windows_toast(title: str, message: str) -> None:
     safe_title = title.replace("'", "''")
     safe_message = message.replace("'", "''")
     script = _TOAST_SCRIPT_TEMPLATE.format(
-        app_id=_TOAST_APP_ID, title=safe_title, message=safe_message
+        app_id=_TOAST_APP_ID, title=safe_title, message=safe_message,
+        icon_uri=(Path(__file__).resolve().parent.parent / "ui/resources/app.png").as_uri(),
     )
 
     try:
