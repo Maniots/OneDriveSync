@@ -31,6 +31,7 @@ OutputBaseFilename=OneDrivePCSync-Setup-{#AppVersion}
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
+SetupIconFile=..\ui\resources\app.ico
 DisableWelcomePage=no
 DisableDirPage=no
 UninstallDisplayIcon={app}\{#AppExe}

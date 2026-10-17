@@ -18,6 +18,7 @@ a = Analysis([str(root / "desktop_entry.py")], pathex=[str(root)],
              noarchive=False)
 pyz = PYZ(a.pure)
 exe = EXE(pyz, a.scripts, [], exclude_binaries=True, name="OneDrivePCSync",
+          icon=str(root / "ui" / "resources" / "app.ico"),
           debug=False, bootloader_ignore_signals=False, strip=False, upx=False,
           console=False, disable_windowed_traceback=True)
 coll = COLLECT(exe, a.binaries, a.datas, strip=False, upx=False, name="OneDrivePCSync")
