@@ -26,7 +26,8 @@ from .pages.settings import SettingsPage
 from .pages.about import AboutPage
 from .themes.theme import get_dark_theme, get_sidebar_stylesheet
 from .themes import spacing
-from .resources.icons import get_icon
+from .resources.icons import get_icon, get_app_icon
+from src.app_info import APP_NAME
 from backend.services.configuration_service import ConfigurationService
 from backend.services.sync_service import SyncService
 from backend.services.backup_service import BackupService
@@ -39,10 +40,10 @@ from backend.services.update_service import UpdateService
 class MainWindow(QMainWindow):
     def __init__(self, configuration_service=None, sync_service=None, backup_service=None, scheduler_service=None, monitor_service=None, log_service=None, update_service=None):
         super().__init__()
-        self.setWindowTitle("OneDrive PC Sync")
+        self.setWindowTitle(APP_NAME)
         self.setMinimumSize(1100, 700)
         self.resize(1360, 900)
-        self.setWindowIcon(get_icon("cloud"))
+        self.setWindowIcon(get_app_icon())
         # Services
         self.configuration_service = configuration_service if configuration_service is not None else ConfigurationService()
         self.sync_service = sync_service if sync_service is not None else SyncService(self.configuration_service)
@@ -144,8 +145,8 @@ class MainWindow(QMainWindow):
     def create_tray_icon(self):
         """Create the system tray icon and context menu."""
         self.tray_icon = QSystemTrayIcon(self)
-        self.tray_icon.setIcon(get_icon("stopped"))  # Idle state
-        self.tray_icon.setToolTip("OneDrive PC Sync - Idle")
+        self.tray_icon.setIcon(get_app_icon("idle"))
+        self.tray_icon.setToolTip("EverySync - Idle")
 
         # Create context menu
         self.tray_menu = QMenu()
@@ -249,8 +250,8 @@ class MainWindow(QMainWindow):
     def on_update_available(self, version):
         self.status_bar.showMessage(f"Update {version} is available. Open About to install it.")
         if self.tray_icon.isVisible():
-            self.tray_icon.showMessage("OneDrive PC Sync update", f"Version {version} is available. Open About to install.",
-                                       QSystemTrayIcon.MessageIcon.Information, 5000)
+            self.tray_icon.showMessage("EverySync update", f"Version {version} is available. Open About to install.",
+                                       get_app_icon(), 5000)
 
     def closeEvent(self, event):
         """Override close event to hide to tray instead of closing."""
@@ -258,9 +259,9 @@ class MainWindow(QMainWindow):
             self.hide()
             event.ignore()
             self.tray_icon.showMessage(
-                "OneDrive PC Sync",
+                "EverySync",
                 "Application was minimized to tray. To exit, right-click the tray icon and select Exit.",
-                QSystemTrayIcon.MessageIcon.Information,
+                get_app_icon(),
                 2000,
             )
         else:
@@ -272,23 +273,23 @@ class MainWindow(QMainWindow):
 
     def on_sync_started(self, operation: str):
         """Handle sync started signal from service."""
-        self.tray_icon.setIcon(get_icon("running"))  # Syncing state
-        self.tray_icon.setToolTip(f"OneDrive PC Sync - {operation.capitalize()} synchronization in progress...")
+        self.tray_icon.setIcon(get_app_icon("running"))
+        self.tray_icon.setToolTip(f"EverySync - {operation.capitalize()} synchronization in progress...")
 
     def on_sync_completed(self, outcomes):
         """Handle sync completed signal from service."""
         # Determine if all succeeded
         if all(outcome.succeeded for outcome in outcomes):
-            self.tray_icon.setIcon(get_icon("success"))  # Success state
-            self.tray_icon.setToolTip("OneDrive PC Sync - Synchronization completed successfully")
+            self.tray_icon.setIcon(get_app_icon("success"))
+            self.tray_icon.setToolTip("EverySync - Synchronization completed successfully")
         else:
-            self.tray_icon.setIcon(get_icon("error"))  # Error state (some failed)
-            self.tray_icon.setToolTip("OneDrive PC Sync - Synchronization completed with errors")
+            self.tray_icon.setIcon(get_app_icon("error"))
+            self.tray_icon.setToolTip("EverySync - Synchronization completed with errors")
 
     def on_sync_failed(self, error_message: str):
         """Handle sync failed signal from service."""
-        self.tray_icon.setIcon(get_icon("error"))  # Error state
-        self.tray_icon.setToolTip(f"OneDrive PC Sync - Synchronization failed: {error_message}")
+        self.tray_icon.setIcon(get_app_icon("error"))
+        self.tray_icon.setToolTip(f"EverySync - Synchronization failed: {error_message}")
 
     def on_sync_finished(self):
         """Handle sync finished signal from service."""
@@ -418,9 +419,9 @@ class MainWindow(QMainWindow):
 
         # Sidebar title (logo/name)
         brand_icon = QLabel()
-        brand_icon.setPixmap(get_icon("cloud").pixmap(QSize(30, 30)))
+        brand_icon.setPixmap(get_app_icon().pixmap(QSize(36, 36)))
         sidebar_layout.addWidget(brand_icon)
-        title_label = QLabel("OneDrive PC Sync")
+        title_label = QLabel(APP_NAME)
         title_label.setObjectName("sidebarTitle")
         sidebar_layout.addWidget(title_label)
         caption = QLabel("Your folders. In sync.")
@@ -506,7 +507,7 @@ class MainWindow(QMainWindow):
                 "Scheduler": ("Scheduler", "View scheduled tasks"),
                 "Logs": ("Logs", "View application logs"),
                 "Settings": ("Settings", "Configure application settings"),
-                "About": ("About", "About OneDrive PC Sync"),
+                "About": ("About", "About EverySync"),
             }
             title, subtitle = page_titles.get(current.text(), ("", ""))
             self.update_header(title, subtitle)

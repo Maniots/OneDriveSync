@@ -64,6 +64,9 @@ try {
     }
     $result = Get-Content -LiteralPath (Join-Path $DataDirectory 'updates/result.json') -Raw | ConvertFrom-Json
     if ($result.status -ne 'installed' -or $result.version -ne $ExpectedVersion) { throw 'Wrong update result' }
+    $VersionInfo = (Get-Item -LiteralPath $ApplicationExe).VersionInfo
+    if ($VersionInfo.ProductName -cne 'EverySync' -or $VersionInfo.FileDescription -cne 'EverySync') { throw 'Updated EXE has incorrect product branding' }
+    if ($VersionInfo.ProductVersion -cne $ExpectedVersion) { throw 'Updated EXE has incorrect product version' }
     if ([Convert]::ToBase64String([IO.File]::ReadAllBytes($ConfigPath)) -ne $OriginalConfiguration) { throw 'Update replaced user configuration' }
     if ($folder.GetTask('OneDrivePCSync - Startup (Download)').Enabled) { throw 'Update enabled a previously disabled task' }
     if (-not $folder.GetTask('OneDrivePCSync - Periodic Upload').Enabled) { throw 'Update disabled an enabled task' }

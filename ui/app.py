@@ -12,6 +12,8 @@ from PySide6.QtWidgets import QApplication
 from backend.services.configuration_service import ConfigurationService
 from .main_window import MainWindow
 from .themes.theme import get_dark_theme
+from .resources.icons import get_app_icon
+from src.app_info import APP_NAME
 
 SERVER_NAME = "OneDrivePCSyncUIInstance"
 
@@ -88,12 +90,14 @@ def connect_activation_server(server: QLocalServer, window: MainWindow) -> None:
 
 
 def main(argv=None) -> int:
-    parser = argparse.ArgumentParser(description="OneDrive PC Sync UI")
+    parser = argparse.ArgumentParser(description="EverySync UI")
     parser.add_argument("--config", type=Path, help="Configuration file (defaults to application config.json)")
     parser.add_argument("--updates", action="store_true")
     parser.add_argument("--install-update", action="store_true")
     args, qt_args = parser.parse_known_args(argv)
     app = QApplication.instance() or QApplication([sys.argv[0], *qt_args])
+    app.setApplicationName(APP_NAME)
+    app.setWindowIcon(get_app_icon())
     app.setStyleSheet(get_dark_theme())
     offscreen = os.environ.get("QT_QPA_PLATFORM") == "offscreen"
     mutex_handle = 0

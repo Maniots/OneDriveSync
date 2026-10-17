@@ -1,7 +1,7 @@
 """
 main.py
 
-Entry point for OneDrive PC Sync.
+Entry point for EverySync.
 
 Usage:
     python main.py --mode startup
@@ -32,6 +32,7 @@ import argparse
 from src.single_instance import acquire_single_instance_lock
 from src.sync_runner import run_sync
 from src.runtime_paths import data_root, default_config_path, sync_lock_path
+from src.app_info import APP_NAME
 
 APP_ROOT = data_root()
 LOCK_FILE_PATH = sync_lock_path()
@@ -47,7 +48,7 @@ def parse_arguments(argv: list[str]) -> argparse.Namespace:
         Parsed arguments namespace.
     """
     parser = argparse.ArgumentParser(
-        prog="OneDrivePCSync",
+        prog=APP_NAME,
         description="Safely synchronize selected application data folders with OneDrive.",
     )
     parser.add_argument(
@@ -92,7 +93,7 @@ def main(argv: list[str] | None = None) -> int:
     lock_handle = acquire_single_instance_lock(LOCK_FILE_PATH)
     if lock_handle is None:
         print(
-            "Another OneDrivePCSync run is already in progress on this machine "
+            "Another EverySync run is already in progress on this machine "
             "(this can happen when two triggers fire close together - e.g. the "
             "periodic upload and the delayed startup download). Skipping this run.",
             file=sys.stderr,

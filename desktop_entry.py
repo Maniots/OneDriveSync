@@ -9,11 +9,11 @@ import traceback
 from pathlib import Path
 
 from src.runtime_paths import data_root, default_config_path, ensure_default_config, log_dir
-from src.app_info import VERSION
+from src.app_info import APP_NAME, VERSION
 
 
 def parse_arguments(argv):
-    parser = argparse.ArgumentParser(description="OneDrive PC Sync desktop application")
+    parser = argparse.ArgumentParser(description="EverySync desktop application")
     action = parser.add_mutually_exclusive_group()
     action.add_argument("--mode", choices=["startup", "shutdown"])
     action.add_argument("--monitor", action="store_true")
@@ -51,13 +51,14 @@ def write_diagnostics(path: Path, smoke_test: bool, config_path: Path,
     config = ConfigManager(config_path).load()
     resources = Path(__file__).resolve().parent / "ui" / "resources"
     report = {
+        "product_name": APP_NAME,
         "version": VERSION, "frozen": bool(getattr(sys, "frozen", False)),
         "executable": sys.executable, "data_root": str(data_root()),
         "config": str(config_path), "logs": str(log_dir()),
         "sync_lock": str(sync_lock_path()), "folder_count": len(config.folders),
         "qt_version": PySide6.__version__, "win32gui": win32gui.__name__,
         "resources_present": all((resources / name).is_file() for name in
-                                 ("check.svg", "chevron-down.svg", "chevron-up.svg")),
+                                 ("check.svg", "chevron-down.svg", "chevron-up.svg", "app.svg", "app.png")),
     }
     if not report["resources_present"]:
         raise RuntimeError("Bundled UI resources are missing")
@@ -77,6 +78,9 @@ def write_diagnostics(path: Path, smoke_test: bool, config_path: Path,
         window = MainWindow(configuration_service=ConfigurationService(config_path))
         window.show()
         app.processEvents()
+        if window.windowTitle() != APP_NAME or window.windowIcon().isNull():
+            raise RuntimeError("EverySync window branding is missing")
+        report["branding_verified"] = True
         if window.configuration_service.get_app_config() is None:
             raise RuntimeError("Desktop configuration failed to load")
         if window.config_error:
@@ -311,7 +315,7 @@ def _launch() -> int:
         if len(sys.argv) == 1 and sys.platform == "win32":
             import ctypes
             ctypes.windll.user32.MessageBoxW(None, f"Avvio non riuscito. Dettagli: {crash_log}",
-                                            "OneDrive PC Sync", 0x10)
+                                            "EverySync", 0x10)
         return 2
 
 

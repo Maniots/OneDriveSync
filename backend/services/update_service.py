@@ -40,7 +40,7 @@ class UpdateService(QObject):
         self.client = client or UpdateClient()
         self.sync_service = sync_service
         self.state = "idle"
-        self.message = "Check for new versions of OneDrive PC Sync."
+        self.message = "Check for new versions of EverySync."
         self.update = None
         self.installer: Path | None = None
         self.progress = 0

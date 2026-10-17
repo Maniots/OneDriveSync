@@ -20,6 +20,19 @@ import src.notifications as notifications_module
 from src.notifications import show_windows_toast
 
 
+def test_windows_toast_displays_product_logo(monkeypatch):
+    from pathlib import Path
+
+    monkeypatch.setattr(sys, "platform", "win32")
+    calls = []
+    monkeypatch.setattr(subprocess, "run", lambda command, **kwargs: calls.append(command))
+    show_windows_toast("EverySync", "Synchronization complete")
+    script = calls[0][-1]
+    logo = Path(notifications_module.__file__).resolve().parent.parent / "ui/resources/app.png"
+    assert 'placement="appLogoOverride"' in script
+    assert logo.as_uri() in script
+
+
 def test_non_windows_platforms_do_not_invoke_subprocess(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(sys, "platform", "linux")
 

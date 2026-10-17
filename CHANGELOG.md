@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.4.0 — 2026-10-17
+
+- Renamed the application to EverySync throughout the desktop and Windows setup.
+- Added a consistent synchronization logo to the window, taskbar, tray, notifications and installer.
+- Tray badges keep idle, running, success and error states visible.
+- Existing installations retain their configuration, backups, history, startup choice and automation.
+- EverySync downloads retain a compatible update package for earlier OneDrive PC Sync installations.
+
 ## 1.3.1 — 2026-10-17
 
 - Added Delete on folder cards, with confirmation before removing a sync pair.

@@ -8,6 +8,7 @@ build/
 dist/
 src/build-info.json
 packaging/build-version.iss
+packaging/build-version-info.txt
 
 # Virtual environments
 .venv/

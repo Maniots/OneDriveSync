@@ -65,7 +65,7 @@ def run_sync(mode: str, config_path: Path = DEFAULT_CONFIG_PATH, dry_run: bool =
     setup_logger(DEFAULT_LOG_DIR, log_level="INFO")
     logger = get_logger(__name__)
 
-    logger.info("OneDrive PC Sync running (mode=%s, config=%s, dry_run=%s).",
+    logger.info("EverySync running (mode=%s, config=%s, dry_run=%s).",
                 mode, config_path, dry_run)
 
     try:
@@ -102,7 +102,7 @@ def run_sync(mode: str, config_path: Path = DEFAULT_CONFIG_PATH, dry_run: bool =
         # user is actually waiting on before they start playing/working.
         # Uploads happen silently in the background by design.
         show_windows_toast(
-            "OneDrivePCSync - Download complete",
+            "EverySync - Download complete",
             _build_notification_summary(outcomes),
         )
 
@@ -117,7 +117,7 @@ if __name__ == "__main__":
 
     def parse_arguments(argv: list[str]) -> argparse.Namespace:
         parser = argparse.ArgumentParser(
-            prog="OneDrivePCSync",
+            prog="EverySync",
             description="Safely synchronize selected application data folders with OneDrive.",
         )
         parser.add_argument(
@@ -144,7 +144,7 @@ if __name__ == "__main__":
     args = parse_arguments(sys.argv[1:])
     lock_handle = acquire_single_instance_lock(PROJECT_ROOT / "onedrive_pcsync.lock")
     if lock_handle is None:
-        print("Another OneDrivePCSync run is already in progress. Exiting.", file=sys.stderr)
+        print("Another EverySync run is already in progress. Exiting.", file=sys.stderr)
         sys.exit(1)
     try:
         sys.exit(run_sync(mode=args.mode, config_path=args.config, dry_run=args.dry_run))

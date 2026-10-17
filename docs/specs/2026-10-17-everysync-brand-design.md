@@ -1,6 +1,6 @@
 # EverySync branding proposal
 
-Status: awaiting design approval. No application implementation has changed.
+Status: implemented and locally verified on `feat/everysync-rebranding`.
 
 ## Requested outcome
 
@@ -53,8 +53,9 @@ technical filename remains necessary for compatibility.
 - Run relevant regression tests and the complete suite before publication.
 - Verify existing updater compatibility, installer upgrade preservation,
   startup registration and single-instance behavior.
-- Commit and push to the current branch; follow CI through publication and
-  verify the published update is discoverable from 1.3.1.4.
+- Commit and push the rebranding branch and verify its CI build and downloadable
+  installer. Production publication and live update discovery follow a later
+  merge to master; this branch task does not authorize that merge.
 
 ## Self-review
 

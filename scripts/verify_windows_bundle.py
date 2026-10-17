@@ -36,6 +36,7 @@ def verify(executable: Path, root: Path) -> dict:
     run("--smoke-test", report_path)
     report = json.loads(report_path.read_text())
     assert report["frozen"] and report["ui_rendered"] and report["folder_count"] == 0
+    assert report["product_name"] == "EverySync" and report["branding_verified"]
     config_path = Path(report["config"])
     config = json.loads(config_path.read_text())
     local, cloud = root / "local", root / "cloud"
