@@ -16,6 +16,7 @@ $TaskFolderPath = '\OneDrivePCSyncUpdateValidation_' + [guid]::NewGuid().ToStrin
 $ApplicationExe = Join-Path $InstallDirectory 'OneDrivePCSync.exe'
 $TaskService = New-Object -ComObject Schedule.Service
 $TaskService.Connect()
+. (Join-Path $PSScriptRoot 'Validation-TaskIsolation.ps1')
 $LockStream = $null
 $helper = $null
 Add-Type @'
@@ -48,6 +49,9 @@ function Invoke-TaskSetup([string]$Name, [switch]$Uninstall) {
     $arguments = @('-NoProfile','-ExecutionPolicy','Bypass','-File',('"' + (Join-Path $ProjectRoot $Name) + '"'),'-ApplicationExe',('"' + $ApplicationExe + '"'),'-TaskFolderPath',$TaskFolderPath)
     if ($Uninstall) { $arguments += '-Uninstall' }
     Invoke-CheckedProcess 'powershell.exe' $arguments
+    if (-not $Uninstall) {
+        Disable-ValidationTaskTriggers $TaskService $TaskFolderPath $ApplicationExe
+    }
 }
 try {
     New-Item -ItemType Directory -Path $DataDirectory -Force | Out-Null
