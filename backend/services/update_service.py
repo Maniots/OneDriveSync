@@ -35,10 +35,11 @@ class UpdateService(QObject):
     available = Signal(str)
     install_started = Signal()
 
-    def __init__(self, sync_service=None, client=None, parent=None):
+    def __init__(self, sync_service=None, client=None, parent=None, *, cloud_service=None):
         super().__init__(parent)
         self.client = client or UpdateClient()
         self.sync_service = sync_service
+        self.cloud_service = cloud_service
         self.state = "idle"
         self.message = "Check for new versions of EverySync."
         self.update = None
@@ -66,6 +67,8 @@ class UpdateService(QObject):
             self.timer.start()
         if sync_service is not None and hasattr(sync_service, "state_changed"):
             sync_service.state_changed.connect(self.install_when_idle)
+        if cloud_service is not None:
+            cloud_service.busy_changed.connect(self.install_when_idle)
 
     @property
     def busy(self):
@@ -165,7 +168,8 @@ class UpdateService(QObject):
     def install_when_idle(self):
         if self.state != "ready" or not self._install_requested:
             return
-        if self.sync_service is not None and getattr(self.sync_service, "is_syncing", False):
+        if ((self.sync_service is not None and getattr(self.sync_service, "is_syncing", False))
+                or (self.cloud_service is not None and self.cloud_service.busy)):
             self.message = "The update will install when synchronization finishes."
             self.changed.emit()
             return

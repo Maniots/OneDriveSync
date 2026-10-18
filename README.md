@@ -6,7 +6,7 @@
 
 **Your app data, ready on your next PC.**
 
-Sync selected game saves, settings and application folders through OneDrive.
+Sync selected game saves, settings and application folders across local and cloud storage.
 
 [![Windows build](https://github.com/Maniots/OneDriveSync/actions/workflows/windows-release.yml/badge.svg)](https://github.com/Maniots/OneDriveSync/actions/workflows/windows-release.yml)
 
@@ -20,7 +20,7 @@ Windows 10+ · x64 · No Python required to install
 
 [Get started](#get-started) · [Daily use](#daily-use) · [Automation](#automation) · [Updates](#updates) · [Configuration](#configuration) · [Troubleshooting](#troubleshooting) · [Development](#development)
 
-EverySync copies between the local application folders you choose and a local OneDrive folder. The OneDrive client handles the cloud transfer between PCs.
+EverySync copies your selected application folders to local OneDrive folders or directly to cloud storage. **Connections** and **Cloud Sync** add direct OneDrive, Google Drive, Amazon S3 / compatible storage, SFTP, WebDAV, Dropbox, Azure Blob and Backblaze B2. See the [guided cloud setup](docs/cloud-sync.md) for account requirements, snapshots and validation status. Live account certification is pending; real-engine Windows checks use isolated local storage.
 
 | Mode | Default direction | Purpose |
 | --- | --- | --- |
@@ -46,6 +46,8 @@ The setup installs for the current Windows user and includes an uninstaller. Dow
 | --- | --- |
 | **Dashboard** | Start a download or upload and follow background progress. |
 | **Folders** | Add, edit, enable, disable, search and filter folder pairs. |
+| **Connections** | Connect storage with guided provider fields/browser sign-in, test access and disconnect. |
+| **Cloud Sync** | Manage cloud activities, run transfers, enable conservative bidirectional sync and restore remote snapshots. |
 | **Folders → Delete** | Remove a pair from the configuration after confirmation. Local files, OneDrive files and backups stay in place. |
 | **Folders → Force sync** | Bypass the selected folder's percentage threshold for one confirmed run. Other safety checks and backups still apply. |
 | **Backups** | Browse, open, restore or delete backup archives. |
@@ -71,6 +73,8 @@ Closing the window keeps EverySync in the tray when a system tray is available. 
 | Shutdown, restart or sign-out | The background shutdown monitor attempts an upload. |
 
 The monitor receives Windows session-ending notifications and runs the copy before allowing the session to end. Completion depends on Windows allowing enough time and on the files being available. Periodic uploads reduce the work left at shutdown; let OneDrive finish its cloud transfer before switching PCs.
+
+Direct cloud activities are queued during session shutdown and retried on the next ordinary run. Manual, lock and periodic runs perform actual transfers. Cloud snapshots are full remote copies with manual retention; providers without native SHA-256 may require extra downloads for verification. See [cloud behavior and recovery](docs/cloud-sync.md#run-and-recover).
 
 <details>
 <summary><strong>Set up or remove automation manually</strong></summary>
@@ -207,6 +211,7 @@ git clone https://github.com/Maniots/OneDriveSync.git
 Set-Location OneDriveSync
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\scripts\Prepare-Rclone.ps1 # Pinned cloud engine, verified by SHA-256.
 
 # Start with an empty development configuration.
 Copy-Item packaging\default-config.json config.dev.json
@@ -254,6 +259,7 @@ New-Item -ItemType Directory -Force build | Out-Null
 
 # After building the Windows bundle:
 .\.venv\Scripts\python.exe scripts\verify_windows_bundle.py dist\OneDrivePCSync\OneDrivePCSync.exe
+.\.venv\Scripts\python.exe scripts\verify_cloud_bundle.py dist\OneDrivePCSync\OneDrivePCSync.exe
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\Verify-WindowsAutomation.ps1
 
 # Compile a separate validation installer, then verify its lifecycle.

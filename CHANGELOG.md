@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.5.0 — 2026-10-18
+
+- Added Connections and Cloud Sync pages with guided account setup for direct OneDrive, Google Drive, Amazon S3, SFTP, WebDAV, Dropbox, Azure Blob and Backblaze B2, plus local/network storage.
+- Cloud jobs support additive uploads/downloads, content verification, full remote snapshots and restore into an empty folder.
+- Optional bidirectional jobs preserve conflicting changes for explicit resolution; interrupted work resumes before the next requested direction. Deletes are never propagated.
+- Cloud credentials use an encrypted app-owned rclone configuration protected by Windows DPAPI. The installer includes a pinned, checksum-verified rclone engine.
+- Session shutdown queues cloud work for the next ordinary run; periodic and manual runs perform transfers while Windows remains available.
+- Real cloud account certification is pending; Windows acceptance checks use isolated local storage through the actual cloud engine.
+
 ## 1.4.1 — 2026-10-17
 
 - Updates restart EverySync with its window visible after installation.

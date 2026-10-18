@@ -12,7 +12,7 @@ datas = collect_data_files("qtawesome") + [
 ]
 a = Analysis([str(root / "desktop_entry.py")], pathex=[str(root)],
              binaries=[], datas=datas,
-             hiddenimports=["win32gui", "win32api", "win32con"],
+             hiddenimports=["win32gui", "win32api", "win32con", "win32crypt"],
              hookspath=[], hooksconfig={}, runtime_hooks=[],
              excludes=["graphify", "pytest", "tkinter", "matplotlib", "scipy"],
              noarchive=False)

@@ -24,6 +24,8 @@ from .pages.scheduler import SchedulerPage
 from .pages.logs import LogsPage
 from .pages.settings import SettingsPage
 from .pages.about import AboutPage
+from .pages.connections import ConnectionsPage
+from .pages.cloud_sync import CloudSyncPage
 from .themes.theme import get_dark_theme, get_sidebar_stylesheet
 from .themes import spacing
 from .resources.icons import get_icon, get_app_icon
@@ -35,6 +37,7 @@ from backend.services.scheduler_service import SchedulerService
 from backend.services.monitor_service import MonitorService
 from backend.services.log_service import LogService
 from backend.services.update_service import UpdateService
+from backend.services.cloud_service import CloudService
 
 
 class MainWindow(QMainWindow):
@@ -51,9 +54,11 @@ class MainWindow(QMainWindow):
         self.scheduler_service = scheduler_service if scheduler_service is not None else SchedulerService(self.configuration_service)
         self.monitor_service = monitor_service if monitor_service is not None else MonitorService(self.configuration_service)
         self.log_service = log_service if log_service is not None else LogService()
-        self.update_service = update_service if update_service is not None else UpdateService(self.sync_service, parent=self)
         self.config_error = None
         self._exit_requested = False
+        self.cloud_service = CloudService(self.configuration_service, self.sync_service, parent=self)
+        self.update_service = update_service if update_service is not None else UpdateService(self.sync_service, parent=self, cloud_service=self.cloud_service)
+        self.cloud_service.finished.connect(self.on_sync_finished)
         self.setup_ui()
         self.load_services()
         self.create_tray_icon()
@@ -66,6 +71,7 @@ class MainWindow(QMainWindow):
             self.destroyed.connect(self.scheduler_service.wait_for_finished)
 
     def prepare_for_exit(self):
+        self.cloud_service.wait_for_finished()
         self.update_service.wait_for_finished()
         if isinstance(self.sync_service, SyncService):
             self.sync_service.wait_for_finished()
@@ -239,6 +245,10 @@ class MainWindow(QMainWindow):
         if getattr(self.sync_service, "is_syncing", False):
             self.status_bar.showMessage("Finishing synchronization before exit...")
             return
+        if self.cloud_service.busy:
+            self.cloud_service.cancel()
+            self.status_bar.showMessage("Finishing the cloud operation before exit...")
+            return
         self.tray_icon.hide()
         QApplication.instance().quit()
 
@@ -259,7 +269,7 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event):
         """Override close event to hide to tray instead of closing."""
         if self._exit_requested:
-            if getattr(self.sync_service, "is_syncing", False):
+            if getattr(self.sync_service, "is_syncing", False) or self.cloud_service.busy:
                 event.ignore()
             else:
                 self.tray_icon.hide()
@@ -345,7 +355,9 @@ class MainWindow(QMainWindow):
             "Settings": lambda: SettingsPage(
                 config_service=self.configuration_service
             ),
-            "About": lambda: AboutPage(config_service=self.configuration_service, update_service=self.update_service)
+            "About": lambda: AboutPage(config_service=self.configuration_service, update_service=self.update_service),
+            "Connections": lambda: ConnectionsPage(self.configuration_service, self.cloud_service),
+            "Cloud Sync": lambda: CloudSyncPage(self.configuration_service, self.cloud_service),
         }
 
         page_names = [
@@ -356,6 +368,8 @@ class MainWindow(QMainWindow):
             "Logs",
             "Settings",
             "About",
+            "Connections",
+            "Cloud Sync",
         ]
 
         for name in page_names:
@@ -476,6 +490,8 @@ class MainWindow(QMainWindow):
         bottom_entries = [
             ("Settings", "settings"),
             ("About", "about"),
+            ("Connections", "settings"),
+            ("Cloud Sync", "folders"),
         ]
 
         for text, icon_name in bottom_entries:
@@ -489,7 +505,7 @@ class MainWindow(QMainWindow):
 
         sidebar_layout.addWidget(self.nav_list, 1)
         sidebar_layout.addWidget(separator)
-        footer = QLabel("Local PC  /  OneDrive")
+        footer = QLabel("Local folders  /  Connected storage")
         footer.setObjectName("sidebarCaption")
         sidebar_layout.addWidget(footer)
         detail = QLabel("Only the folders you choose.")
@@ -518,6 +534,8 @@ class MainWindow(QMainWindow):
                 "Logs": ("Logs", "View application logs"),
                 "Settings": ("Settings", "Configure application settings"),
                 "About": ("About", "About EverySync"),
+                "Connections": ("Connections", "Connect cloud accounts and network storage"),
+                "Cloud Sync": ("Cloud Sync", "Synchronize activities and recover verified snapshots"),
             }
             title, subtitle = page_titles.get(current.text(), ("", ""))
             self.update_header(title, subtitle)

@@ -393,7 +393,7 @@ def test_launcher_accepts_temporary_configuration(qapp, configuration, monkeypat
 
     def check_window():
         windows = [w for w in qapp.topLevelWidgets() if isinstance(w, MainWindow) and w.isVisible()]
-        assert any(w.config_error is None and w.content_stack.count() == 7 for w in windows)
+        assert any(w.config_error is None and w.content_stack.count() == 9 for w in windows)
         return 0
 
     monkeypatch.setattr(qapp, "exec", check_window)

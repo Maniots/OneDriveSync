@@ -40,6 +40,7 @@ jobs:
       - name: Run regressions
         run: |
           New-Item -ItemType Directory -Force build | Out-Null
+          .\scripts\Prepare-Rclone.ps1
           .\.venv\Scripts\python.exe -m pytest tests -q --basetemp build/ci-tests -p no:cacheprovider
           if ($LASTEXITCODE -ne 0) { throw 'Tests failed' }
       - name: Prepare official Inno Setup compiler
@@ -57,6 +58,10 @@ jobs:
         run: |
           .\.venv\Scripts\python.exe scripts/verify_windows_bundle.py dist/OneDrivePCSync/OneDrivePCSync.exe
           if ($LASTEXITCODE -ne 0) { throw 'Frozen acceptance checks failed' }
+      - name: Validate frozen cloud transfers and recovery
+        run: |
+          .\.venv\Scripts\python.exe scripts/verify_cloud_bundle.py dist/OneDrivePCSync/OneDrivePCSync.exe
+          if ($LASTEXITCODE -ne 0) { throw 'Frozen cloud synchronization checks failed' }
       - name: Validate installer lifecycle
         run: |
           & .\build\tools\inno\ISCC.exe /Qp /DValidationBuild packaging\windows-installer.iss
