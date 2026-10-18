@@ -37,7 +37,6 @@ try {
     & $PythonExe scripts\release_metadata.py manifest
     if ($LASTEXITCODE -ne 0) { throw 'Update manifest generation failed.' }
     Write-Host "Installer: dist\installer\EverySync-Setup-$ReleaseVersion.exe"
-    Write-Host "Compatibility alias: dist\installer\OneDrivePCSync-Setup-$ReleaseVersion.exe"
 } finally {
     Pop-Location
 }

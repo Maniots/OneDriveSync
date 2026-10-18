@@ -20,7 +20,7 @@ from ui.pages.about import AboutPage
 def release_data():
     payload = b"isolated executable bytes"
     version, tag = "1.1.0.10", "master-10"
-    filename = f"OneDrivePCSync-Setup-{version}.exe"
+    filename = f"EverySync-Setup-{version}.exe"
     base = f"https://github.com/{REPOSITORY}/releases/download/{tag}/"
     manifest = {"schema": 1, "channel": "master", "repository": REPOSITORY,
                 "version": version, "commit": "a" * 40, "installer": filename,
@@ -71,7 +71,8 @@ def test_check_and_verified_download(tmp_path, release_data):
 @pytest.mark.parametrize("field,value", [("version", "../bad"), ("sha256", "bad"),
                                          ("size", True), ("size", 0), ("size", 300 * 1024**2),
                                          ("repository", "other/repository"), ("channel", "preview"),
-                                         ("installer", "../../unsafe.exe"), ("commit", "x")])
+                                         ("installer", "../../unsafe.exe"),
+                                         ("installer", "EverySync-Setup-9.9.9.9.exe"), ("commit", "x")])
 def test_rejects_invalid_manifest(tmp_path, release_data, field, value):
     release_data[1][field] = value
     client, requests = client_for(tmp_path, release_data)

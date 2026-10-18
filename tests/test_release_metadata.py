@@ -1,4 +1,4 @@
-"""Release identity and the installer alias consumed by pre-rebranding clients."""
+"""Release identity and the single EverySync installer consumed by the updater."""
 import hashlib
 import io
 import json
@@ -44,20 +44,18 @@ def test_windows_product_metadata_uses_brand_and_legacy_executable(release_root,
     assert version.ffi.productVersionLS == version.ffi.fileVersionLS
 
 
-def test_manifest_publishes_identical_alias_readable_by_old_updater(release_root, monkeypatch):
+def test_manifest_publishes_only_everysync_installer_and_updater_downloads_it(release_root, monkeypatch):
     build(monkeypatch)
     version = f"{BASE_VERSION}.42"
     directory = release_root / "dist/installer"
     payload = b"canonical EverySync installer bytes"
     canonical = directory / f"EverySync-Setup-{version}.exe"
     canonical.write_bytes(payload)
-    legacy = directory / f"OneDrivePCSync-Setup-{version}.exe"
-    legacy.write_bytes(b"outdated alias must be replaced")
     monkeypatch.setattr(sys, "argv", ["release_metadata.py", "manifest"])
     release_metadata.main()
-    assert legacy.read_bytes() == canonical.read_bytes()
+    assert list(directory.glob("*.exe")) == [canonical]
     manifest = json.loads((directory / "update.json").read_text(encoding="utf-8"))
-    assert manifest["installer"] == legacy.name
+    assert manifest["installer"] == canonical.name
     assert manifest["sha256"] == hashlib.sha256(payload).hexdigest()
     assert manifest["size"] == len(payload)
     tag = "master-42"
@@ -65,7 +63,7 @@ def test_manifest_publishes_identical_alias_readable_by_old_updater(release_root
     release = {"tag_name": tag, "draft": False, "prerelease": False, "assets": [
         {"name": name, "size": size, "browser_download_url": base + name}
         for name, size in [("update.json", (directory / "update.json").stat().st_size),
-                           (legacy.name, len(payload)), (canonical.name, len(payload))]]}
+                           (canonical.name, len(payload))]]}
     def opener(request, timeout):
         data = json.dumps(release if request.full_url == API_URL else manifest).encode() if (
             request.full_url == API_URL or request.full_url.endswith("update.json")) else payload
