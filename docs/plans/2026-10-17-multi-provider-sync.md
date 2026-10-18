@@ -33,5 +33,6 @@ Contract: `docs/contracts/cloud-sync.md` and `cloud-config.schema.json`. Baselin
 
 - Design/contract independently reviewed and approved before implementation.
 - M1 implemented and approved in separate spec and Python quality reviews; 51 fresh configuration/UI preservation tests passed. Legacy baseline was 247 passed, 2 skipped; all existing regressions remained green during M1.
-- M2 in progress: native transport copies/dry-run/content checks passed; preliminary security findings are being addressed before milestone approval. Coordinator/state work is isolated to a second implementer.
+- M2 and M4 core implemented and independently approved after spec and Python/security reviews. Fresh focused suite: 111 passed, including native rclone. Review regressions prove selected copies replace differing bytes even with equal size/mtime and cross-endpoint Windows case/prefix/file-directory aliases stop before any writes.
+- M3 pages and guided setup are implemented; 63 UI/updater regressions passed. Packaging review approved. Final full suite, frozen cloud/desktop acceptance, installer/update checks and final UI quality review remain in progress.
 - User has no test accounts and requested guided account setup. Actual cloud-account certification remains pending; isolated native transfer tests do not substitute for it.

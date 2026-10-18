@@ -49,7 +49,8 @@ class SyncWorker(QObject):
 
             setup_logger(lock_path.parent / "logs", log_level=config.general.log_level.value)
             self.started.emit(operation)
-            manager = SyncManager(config, history_path=self._sync_service.history_path)
+            manager = SyncManager(config, history_path=self._sync_service.history_path,
+                                  cloud_root=self._sync_service.cloud_root)
             run = manager.run_startup_sync if operation == "startup" else manager.run_shutdown_sync
             outcomes = run(progress_callback=self.progress.emit, ignore_threshold_for=self._ignore_threshold_for)
             self.progress.emit(100, f"{operation.capitalize()} synchronization finished.")

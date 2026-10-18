@@ -50,7 +50,8 @@ class FolderSyncOutcome:
 class SyncManager:
     """Coordinates safe synchronization of all configured folders."""
 
-    def __init__(self, config: AppConfig, history_path: Optional[Path] = None) -> None:
+    def __init__(self, config: AppConfig, history_path: Optional[Path] = None, *,
+                 cloud_root: Optional[Path] = None, defer_remote: bool = False) -> None:
         self._config = config
         self._copy_engine = CopyEngine(
             settings=config.copy_engine,
@@ -60,6 +61,8 @@ class SyncManager:
         # Track the current sync mode for logging context in copy_engine.
         self._mode: str = "unknown"
         self._history_path = history_path
+        self._cloud_root = cloud_root
+        self._defer_remote = defer_remote
 
     def run_startup_sync(self, progress_callback: Optional[Callable[[int, str], None]] = None, *, ignore_threshold_for: Optional[str] = None) -> List[FolderSyncOutcome]:
         """Run the configured startup synchronization (typically download)."""
@@ -139,6 +142,20 @@ class SyncManager:
                 outcomes.append(outcome)
                 if progress_callback is not None:
                     progress_callback(int((index + 1) / len(folders) * 100), f"Processed folder {outcome.folder_name} ({index + 1}/{len(folders)})")
+
+        if any(job.enabled for job in self._config.remote_jobs):
+            if self._cloud_root is None:
+                outcomes.extend(FolderSyncOutcome(job.id, job.name, direction, False,
+                    "Cloud state location is unavailable. Run this configuration through EverySync.")
+                    for job in self._config.remote_jobs if job.enabled)
+            else:
+                from .cloud_sync import CloudSyncRunner
+                if progress_callback:
+                    progress_callback(0, "Processing cloud jobs")
+                outcomes.extend(CloudSyncRunner(self._config, self._cloud_root).run(
+                    direction, ignore_threshold_for=ignore_threshold_for, defer=self._defer_remote))
+                if progress_callback:
+                    progress_callback(100, "Cloud jobs processed")
 
         self._log_summary(outcomes)
         if self._history_path is not None:
