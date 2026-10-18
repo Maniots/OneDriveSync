@@ -163,17 +163,27 @@ class CloudService(QObject):
                 else:
                     result = client.configure(connection, parameters, state=state, answer=answer)
                 for _ in range(8):
-                    option = result.get("Option") or {}
-                    if (connection.provider not in OAUTH_PROVIDERS or result.get("Error")
-                            or not result.get("State") or option.get("Name") != "config_is_local"
-                            or option.get("IsPassword") or option.get("Default") is not True):
+                    option = result.get("Option")
+                    if result.get("Error") or not result.get("State"):
+                        break
+                    if option is None:
+                        next_answer = ""
+                    elif (connection.provider in OAUTH_PROVIDERS and isinstance(option, dict)
+                            and option.get("Name") == "config_is_local"
+                            and not option.get("IsPassword") and option.get("Default") is True):
+                        next_answer = "true"
+                    else:
                         break
                     if cancel_event.is_set():
                         raise CloudSyncError("Account operation cancelled.")
-                    result = client.configure(connection, parameters, state=result["State"], answer="true")
+                    result = client.configure(connection, parameters, state=result["State"], answer=next_answer)
                 else:
                     raise CloudSyncError("Account setup repeated an unexpected step. Cancel and sign in again.")
+                if result.get("Error") and result.get("State") and result.get("Option") is None:
+                    return {"connection": connection, "question": self._setup_retry(connection, result)}
                 if result.get("State") or result.get("Option"):
+                    if not result.get("State") or not isinstance(result.get("Option"), dict) or not result["Option"]:
+                        raise CloudSyncError("The provider returned an incomplete account setup step. Cancel and sign in again.")
                     question = {"State": result.get("State", ""), "Option": result.get("Option"),
                                 "Error": "The provider rejected that answer. Check it and retry." if result.get("Error") else ""}
                     return {"connection": connection, "question": question}
@@ -184,6 +194,24 @@ class CloudService(QObject):
                 self._verify_root(client, connection, create_root)
                 return {"connection": connection, "question": None}
         self._submit("configure", configure)
+
+    @staticmethod
+    def _setup_retry(connection, result):
+        state = result["State"]
+        message = "Account setup could not continue. Retry to return to the setup choices, or cancel and sign in again."
+        if connection.provider == "onedrive":
+            error = str(result["Error"]).casefold()
+            if "failed to query available drives" in error:
+                message = ("Microsoft could not list your OneDrive storage. Retry to load your drives again. "
+                           "If this continues, open OneDrive in your browser with the same account and check access.")
+                if state == "driveid":
+                    state = "onedrive"
+            elif "no drives found" in error:
+                message = ("Microsoft did not find OneDrive storage for this account. Open OneDrive in your browser "
+                           "to check that it is set up, then retry or sign in with another account.")
+            elif "failed to query root for drive" in error:
+                message = "Microsoft could not open the selected drive. Retry to choose another drive or cancel and sign in again."
+        return {"State": state, "Option": None, "Error": message}
 
     @staticmethod
     def _verify_root(client, connection, create_root):

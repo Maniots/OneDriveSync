@@ -1,4 +1,7 @@
 import os
+import json
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from unittest.mock import Mock
 from pathlib import Path
 
@@ -119,6 +122,49 @@ def test_native_google_token_import_keeps_pkce_token_without_second_login(transp
         {"client_id": "desktop.apps.googleusercontent.com", "client_secret": "desktop"},
         {"access_token": "test-access", "refresh_token": "test-refresh", "token_type": "Bearer", "expiry": "2099-01-01T00:00:00Z"})
     assert result.get("Option", {}).get("Name") not in {"config_refresh_token", "config_is_local", "config_verification_code"}
+
+
+def test_native_onedrive_error_only_state_can_rediscover_drives(transport):
+    from src.cloud_models import ConnectionConfig
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, *args):
+            pass
+        def do_GET(self):
+            if self.server.fail:
+                status, value = 403, {"error": {"code": "accessDenied", "message": "Isolated fixture"}}
+            else:
+                drive = {"id": "fixture", "name": "Test drive", "driveType": "personal"}
+                status = 200
+                value = {"value": [drive]} if self.path.endswith("/drives") else drive
+            body = json.dumps(value).encode()
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    server.fail = True
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        result = transport.operation("config/create", {
+            "name": "es_onedrive", "type": "onedrive",
+            "parameters": {"tenant_url": f"http://127.0.0.1:{server.server_port}", "config_type": "onedrive",
+                           "config_refresh_token": "false", "token": json.dumps({"access_token": "fixture-only",
+                           "refresh_token": "fixture-refresh", "token_type": "Bearer", "expiry": "2099-01-01T00:00:00Z"})},
+            "opt": {"nonInteractive": True, "obscure": True}})
+        assert result["State"] == "driveid"
+        assert result["Option"] is None
+        assert "Failed to query available drives" in result["Error"]
+        server.fail = False
+        result = transport.configure(ConnectionConfig("onedrive", "OneDrive", "onedrive", "EverySync"),
+                                     {}, state="onedrive", answer="")
+        assert not result.get("Error")
+        assert result["Option"]["Name"] == "config_driveid"
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
 
 
 @pytest.mark.parametrize("paths", [["A/first", "a/second"], ["file", "file/child"], ["file/child", "file"]])

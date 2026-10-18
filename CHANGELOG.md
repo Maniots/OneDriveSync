@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fixed OneDrive setup displaying a blank question after a recoverable drive-discovery error. Retry now reloads available drives and keeps the authorized account pending until folder selection.
+
 - Added integrated Microsoft, Google and Dropbox browser sign-in, automatic technical browser setup and cloud folder selection after authorization.
 - Custom OAuth applications are available under Advanced settings. Google native sign-in uses PKCE; the maintainer's local and installed build is now configured for Google sign-in without manual credential entry. Application credentials remain local.
 - Accounts are saved only after folder verification. Cancelling an unfinished login removes its credentials while preserving existing connections.

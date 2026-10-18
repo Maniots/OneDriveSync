@@ -32,6 +32,14 @@ This Python-internal contract is reviewed before implementation. It does not def
   auth URLs, scopes or arbitrary engine flags from user fields.
 - Auto-answer only a valid, error-free OAuth `config_is_local` browser choice;
   all account/drive/shared-drive and unknown questions remain user choices.
+- Recoverable setup errors can contain `State` and `Error` with no `Option`.
+  These are retry steps, not answer questions: show a static safe message, hide
+  answer controls, preserve the authorized pending remote and require an explicit
+  retry or cancel. Never expose the raw provider error. For OneDrive's failed
+  drive-discovery fallback (`driveid`), retry the known `onedrive` discovery
+  state instead of asking the user to supply an unavailable drive ID. Other
+  error continuations keep the provider's returned state. Error-free states
+  without options may advance automatically, bounded by the existing step cap.
 - `test(connection) -> success`: authenticated read of the configured root; does not write a sentinel into user data.
 - `close()`: release owned subprocesses and socket resources, including failure/cancel paths.
 

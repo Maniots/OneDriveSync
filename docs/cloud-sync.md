@@ -13,6 +13,11 @@ EverySync can connect directly to storage through its bundled rclone engine. The
 
 Cloud folders can be created during setup with the explicit checkbox. Buckets and containers must already exist. Local/network roots must be existing directories.
 
+If OneDrive cannot load your drives, choose **Retry account setup** to repeat
+discovery without entering a manual drive ID. If it continues, open OneDrive in
+your browser with the same Microsoft account to check that storage is available.
+You can cancel the pending setup and sign in again; existing connections remain.
+
 | Provider | Setup |
 | --- | --- |
 | **Local folder / NAS** | Browse an existing local or accessible network folder. No account is needed. Use this to try the complete workflow first. |

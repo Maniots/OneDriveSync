@@ -268,17 +268,22 @@ class ConnectionsPage(QWidget):
                 self.load_cloud_folders("")
             elif self.question:
                 option = self.question.get("Option") or {}
-                self.question_label.setText((self.question.get("Error") or "") + "\n" + str(option.get("Help", "Choose an account setup option.")))
+                retry_only = self.question.get("Option") is None
+                self.question_group.setTitle("Account setup needs attention" if retry_only else "Finish account setup")
+                self.continue_button.setText("Retry account setup" if retry_only else "Continue setup")
+                self.question_label.setText((self.question.get("Error") or "") +
+                    ("" if retry_only else "\n" + str(option.get("Help", "Choose an account setup option."))))
                 self.answer_combo.clear()
                 for item in option.get("Examples") or []:
                     self.answer_combo.addItem(str(item.get("Help") or item.get("Value")), item.get("Value"))
-                self.answer_combo.setVisible(bool(option.get("Exclusive")))
-                self.answer_edit.setVisible(not option.get("Exclusive"))
+                self.answer_combo.setVisible(not retry_only and bool(option.get("Exclusive")))
+                self.answer_edit.setVisible(not retry_only and not option.get("Exclusive"))
                 self.answer_edit.setEchoMode(QLineEdit.EchoMode.Password if option.get("IsPassword") else QLineEdit.EchoMode.Normal)
                 default = option.get("Default", "")
-                self.answer_edit.setText("" if option.get("IsPassword") else str(default).lower() if isinstance(default, bool) else str(default or ""))
+                self.answer_edit.setText("" if retry_only or option.get("IsPassword") else str(default).lower() if isinstance(default, bool) else str(default or ""))
                 self.question_group.show()
-                self.status_label.setText("One more step is required to authorize this account.")
+                self.status_label.setText("Account setup paused. Retry or cancel to sign in again." if retry_only else
+                                          "One more step is required to authorize this account.")
             else:
                 self.clear_setup()
                 self.status_label.setText("Connected. Add a folder activity in Cloud Sync.")
