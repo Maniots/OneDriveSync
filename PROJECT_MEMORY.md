@@ -14,6 +14,13 @@ Last updated: 2026-10-18
   same AppUserModelID and explicitly use the EXE's embedded icon at index 0.
   Regression tests read the actual process identity before Qt initialization
   and check shortcut/runtime identity consistency.
+- Follow-up user screenshot still showed a generic taskbar icon on 1.5.0.4.
+  Pixel checks of all native window icon formats, the EXE and Shell-resolved
+  shortcut were correct; the installed SVG plugins were loaded. A Shell
+  association refresh (`SHChangeNotify`, `SHCNE_ASSOCCHANGED`) resolved the
+  display, with explicit visual confirmation from the user. This supports stale
+  Shell icon caching; no further application patch was needed. Temporary window
+  property experiments were reverted; no cache deletion or Explorer restart.
 
 ## Cloud account and eligible drive policy (2026-10-18)
 
