@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 
 APP_NAME = "EverySync"
+APP_USER_MODEL_ID = "EverySync.Desktop"
 BASE_VERSION = "1.5.0"
 REPOSITORY = "Maniots/OneDriveSync"
 

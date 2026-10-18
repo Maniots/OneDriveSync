@@ -72,10 +72,10 @@ Type: dirifempty; Name: "{#ShortcutPrograms}\OneDrive PC Sync"
 Type: files; Name: "{#ShortcutDesktop}\OneDrive PC Sync.lnk"
 
 [Icons]
-Name: "{#ShortcutPrograms}\{#AppName}\{#AppName}"; Filename: "{app}\{#AppExe}"; WorkingDir: "{app}"
+Name: "{#ShortcutPrograms}\{#AppName}\{#AppName}"; Filename: "{app}\{#AppExe}"; WorkingDir: "{app}"; AppUserModelID: "EverySync.Desktop"; IconFilename: "{app}\{#AppExe}"; IconIndex: 0
 Name: "{#ShortcutPrograms}\{#AppName}\Configurazione"; Filename: "{#DataDirectory}\config.json"
 Name: "{#ShortcutPrograms}\{#AppName}\Disinstalla"; Filename: "{uninstallexe}"
-Name: "{#ShortcutDesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; WorkingDir: "{app}"; Check: ShouldCreateDesktopShortcut
+Name: "{#ShortcutDesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; WorkingDir: "{app}"; AppUserModelID: "EverySync.Desktop"; IconFilename: "{app}\{#AppExe}"; IconIndex: 0; Check: ShouldCreateDesktopShortcut
 
 [Run]
 Filename: "{app}\{#AppExe}"; Description: "{cm:LaunchApplication,{#AppName}}"; Flags: nowait postinstall skipifsilent

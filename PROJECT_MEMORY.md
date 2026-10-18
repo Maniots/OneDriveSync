@@ -4,6 +4,17 @@ The main window features a modern header with page title and optional subtitle, 
 
 Last updated: 2026-10-18
 
+## Windows taskbar identity (2026-10-18)
+
+- `src/app_info.py` owns the stable, version-independent `EverySync.Desktop`
+  AppUserModelID. `ui/app.py` applies it using the Windows shell API before
+  accessing or creating QApplication. The existing EverySync application,
+  window, tray and embedded EXE icons remain the shared product assets.
+- Installer application shortcuts on the desktop and Start menu declare the
+  same AppUserModelID and explicitly use the EXE's embedded icon at index 0.
+  Regression tests read the actual process identity before Qt initialization
+  and check shortcut/runtime identity consistency.
+
 ## Cloud account and eligible drive policy (2026-10-18)
 
 - `CloudService` permits one new saved connection per non-local provider,
