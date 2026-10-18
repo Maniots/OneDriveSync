@@ -14,7 +14,9 @@ graphifyy
 pywin32; sys_platform == "win32"
 #
 # PySide6 is the primary UI framework.
-PySide6
+# Keep the native Qt stack aligned with the verified Windows build. The full
+# suite crashes in Qt event processing with 6.12.0; validate before upgrading.
+PySide6==6.11.1
 #
 # UI enhancements: icons, theme, and charts.
 qtawesome

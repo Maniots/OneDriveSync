@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Pin PySide6 to the verified 6.11.1 Windows stack so CI and new builds do not silently upgrade to an unvalidated Qt minor release.
+
 - Windows taskbar grouping now uses the stable EverySync application identity before Qt starts. Start menu and desktop shortcuts use the same identity and explicitly select the EverySync icon embedded in the executable.
 
 - Each cloud service now permits one connected account. Connected providers explain how to add Cloud Sync activities or disconnect before changing accounts. Existing connections remain usable; local/NAS connections are exempt.

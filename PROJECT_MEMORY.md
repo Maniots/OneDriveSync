@@ -4,6 +4,16 @@ The main window features a modern header with page title and optional subtitle, 
 
 Last updated: 2026-10-18
 
+## Windows CI dependency compatibility (2026-10-18)
+
+- `requirements.txt` pins PySide6 to 6.11.1, matching the locally verified
+  desktop/frozen stack. The previously unconstrained dependency installed
+  6.12.0 on GitHub and crashed natively during `test_server` event processing.
+  The same full-suite crash was reproduced in an isolated local 6.12 environment;
+  isolated server tests still pass, so no specific socket-lifetime defect or
+  upstream Qt root cause is asserted. Future Qt upgrades require full-suite and
+  frozen acceptance validation, not only isolated tests.
+
 ## Windows taskbar identity (2026-10-18)
 
 - `src/app_info.py` owns the stable, version-independent `EverySync.Desktop`
