@@ -106,7 +106,7 @@ def _run_shutdown_sync():
     if lock is None:
         raise RuntimeError("Another synchronization or update is in progress; shutdown upload skipped.")
     try:
-        return run_sync(mode="shutdown", config_path=DEFAULT_CONFIG_PATH, dry_run=False)
+        return run_sync(mode="shutdown", config_path=DEFAULT_CONFIG_PATH, dry_run=False, defer_remote=True)
     finally:
         lock.close()
 

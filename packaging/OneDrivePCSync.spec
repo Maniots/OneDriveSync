@@ -8,11 +8,12 @@ datas = collect_data_files("qtawesome") + [
     (str(root / "ui" / "resources"), "ui/resources"),
     (str(root / "packaging" / "default-config.json"), "packaging"),
     (str(root / "src" / "build-info.json"), "src"),
+    (str(root / "src" / "oauth-apps.json"), "src"),
     (str(root / "packaging" / "Apply-Update.ps1"), "packaging"),
 ]
 a = Analysis([str(root / "desktop_entry.py")], pathex=[str(root)],
              binaries=[], datas=datas,
-             hiddenimports=["win32gui", "win32api", "win32con"],
+             hiddenimports=["win32gui", "win32api", "win32con", "win32crypt"],
              hookspath=[], hooksconfig={}, runtime_hooks=[],
              excludes=["graphify", "pytest", "tkinter", "matplotlib", "scipy"],
              noarchive=False)

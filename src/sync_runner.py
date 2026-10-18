@@ -49,7 +49,7 @@ def _exit_code_for_outcomes(outcomes: list[FolderSyncOutcome]) -> int:
     return 1
 
 
-def run_sync(mode: str, config_path: Path = DEFAULT_CONFIG_PATH, dry_run: bool = False) -> int:
+def run_sync(mode: str, config_path: Path = DEFAULT_CONFIG_PATH, dry_run: bool = False, *, defer_remote: bool = False) -> int:
     """Run a sync operation in the specified mode.
 
     Args:
@@ -84,7 +84,8 @@ def run_sync(mode: str, config_path: Path = DEFAULT_CONFIG_PATH, dry_run: bool =
         config = _with_dry_run_override(config)
 
     try:
-        sync_manager = SyncManager(config, history_path=Path(config_path).with_suffix(".history.sqlite3"))
+        sync_manager = SyncManager(config, history_path=Path(config_path).with_suffix(".history.sqlite3"),
+                                   cloud_root=Path(config_path).with_suffix(".cloud"), defer_remote=defer_remote)
 
         if mode == "startup":
             outcomes = sync_manager.run_startup_sync()

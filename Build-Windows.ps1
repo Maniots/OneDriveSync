@@ -13,11 +13,15 @@ if (-not (Test-Path -LiteralPath $PythonExe -PathType Leaf)) {
 }
 Push-Location $PSScriptRoot
 try {
+    $RcloneExe = & .\scripts\Prepare-Rclone.ps1
+    if (-not (Test-Path -LiteralPath $RcloneExe)) { throw 'Cloud engine preparation failed.' }
     $ReleaseVersion = & $PythonExe scripts\release_metadata.py build --build-number $BuildNumber
     if ($LASTEXITCODE -ne 0) { throw 'Build metadata generation failed.' }
     & $PythonExe -m PyInstaller --noconfirm --workpath build\windows packaging\OneDrivePCSync.spec
     if ($LASTEXITCODE -ne 0) { throw 'PyInstaller build failed.' }
     Copy-Item -LiteralPath Setup-ScheduledTasks.ps1,Setup-ShutdownMonitor.ps1 -Destination dist\OneDrivePCSync
+    Copy-Item -LiteralPath $RcloneExe -Destination dist\OneDrivePCSync\rclone.exe
+    Copy-Item -LiteralPath packaging\rclone-LICENSE.txt -Destination dist\OneDrivePCSync\rclone-LICENSE.txt
     if ($BundleOnly) { return }
     if (-not $InnoCompiler) {
         $candidates = @(

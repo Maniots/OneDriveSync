@@ -1,3 +1,5 @@
+from dataclasses import replace
+
 from PySide6.QtWidgets import (
     QWidget,
     QVBoxLayout,
@@ -424,8 +426,9 @@ class SettingsPage(QWidget):
             fat_file_times = self.fat_time_check.isChecked()
             monitor_mode = self.monitor_check.isChecked()
 
-            # Build the new AppConfig, keeping folders from the original
-            new_app_config = AppConfig(
+            # Preserve current folders and connections changed on other pages.
+            new_app_config = replace(
+                self.config_service.get_app_config(),
                 general=GeneralSettings(
                     log_level=log_level,
                     dry_run=dry_run,
@@ -453,7 +456,6 @@ class SettingsPage(QWidget):
                     fat_file_times=fat_file_times,
                     monitor_mode=monitor_mode,
                 ),
-                folders=self.config_service.get_app_config().folders,
             )
 
             # Save the new configuration

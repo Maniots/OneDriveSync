@@ -55,6 +55,11 @@ class ConfigurationService(QObject):
     def history_path(self) -> Path:
         return self._config_manager.config_path.with_suffix(".history.sqlite3")
 
+    @property
+    def cloud_root(self) -> Path:
+        """Keep credentials and retry state beside the selected configuration."""
+        return self._config_manager.config_path.with_suffix(".cloud")
+
     def save(self, app_config: AppConfig) -> None:
         """Save the given AppConfig to the configuration file.
 

@@ -2,7 +2,62 @@ This architecture ensures the UI remains independent from the core synchronizati
 
 The main window features a modern header with page title and optional subtitle, a navigation sidebar with application logo, grouped navigation items, and a bottom section for Settings and About. The design follows Windows 11-inspired Fluent Design principles with proper spacing, rounded corners, and subtle hover effects.
 
-Last updated: 2026-10-17
+Last updated: 2026-10-18
+
+## Windows CI Qt lifecycle and dependency compatibility (2026-10-18)
+
+- `requirements.txt` pins PySide6 to 6.11.1, matching the locally verified
+  desktop/frozen stack. The previously unconstrained dependency installed
+  6.12.0 on GitHub and crashed natively during `test_server` event processing.
+  Pinning alone did not resolve CI: the same failure occurred with 6.11.1.
+  Monitor tests left parentless SyncService retry/poll timers alive after test
+  teardown, including a 30-second retry retained by a bound-method cycle.
+  A managed service factory now stops timers, joins workers and explicitly
+  destroys those test-owned QObjects. A regression proves callbacks do not run
+  after cleanup. No application socket workaround or test skip was added.
+  Future Qt upgrades require full-suite and frozen acceptance validation.
+
+## Windows taskbar identity (2026-10-18)
+
+- `src/app_info.py` owns the stable, version-independent `EverySync.Desktop`
+  AppUserModelID. `ui/app.py` applies it using the Windows shell API before
+  accessing or creating QApplication. The existing EverySync application,
+  window, tray and embedded EXE icons remain the shared product assets.
+- Installer application shortcuts on the desktop and Start menu declare the
+  same AppUserModelID and explicitly use the EXE's embedded icon at index 0.
+  Regression tests read the actual process identity before Qt initialization
+  and check shortcut/runtime identity consistency.
+- Follow-up user screenshot still showed a generic taskbar icon on 1.5.0.4.
+  Pixel checks of all native window icon formats, the EXE and Shell-resolved
+  shortcut were correct; the installed SVG plugins were loaded. A Shell
+  association refresh (`SHChangeNotify`, `SHCNE_ASSOCCHANGED`) resolved the
+  display, with explicit visual confirmation from the user. This supports stale
+  Shell icon caching; no further application patch was needed. Temporary window
+  property experiments were reverted; no cache deletion or Explorer restart.
+
+## Cloud account and eligible drive policy (2026-10-18)
+
+- `CloudService` permits one new saved connection per non-local provider,
+  checking before authorization and before publication. The Connections page
+  disables sign-in and explains how to use Cloud Sync or disconnect first.
+  Existing duplicate configurations remain loadable and individually removable;
+  no accounts or activities are automatically deleted. Local/NAS connections
+  remain multiple. Conflicts before publication discard only pending credentials.
+- Before exposing OneDrive `config_driveid`, `RcloneTransport` reads each
+  candidate root through the pinned engine setup state. Successful candidates
+  must have a stored type of personal, business or documentLibrary; SharePoint
+  libraries are included. `config/get` reads only the pending remote internally;
+  its credential-bearing response never reaches UI or logs. The selector is
+  exclusive, deduplicated and has an eligible default. The service rejects
+  unlisted IDs or a substituted continuation state. Empty lists offer retry.
+- Probes update only the encrypted pending configuration. The user's eventual
+  selection is reapplied before confirmation; probes never create remote files.
+  Root-read eligibility does not certify write permissions; folder verification
+  and normal transfer error handling continue to apply.
+- Tests cover duplicate guards, disconnect recovery, legacy/local compatibility,
+  late-save conflicts, supported/denied drive selection and protected metadata.
+  An isolated Graph fixture exercises the actual pinned rclone engine, including
+  rejecting a drive and selecting a different one after the eligibility probes.
 
 ## Remove configured folders (2026-10-17)
 

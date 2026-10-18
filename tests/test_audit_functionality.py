@@ -10,7 +10,6 @@ from datetime import datetime, timezone
 import pytest
 from backend.services.configuration_service import ConfigurationService
 from backend.services.scheduler_service import SchedulerService
-from backend.services.sync_service import SyncService
 from backend.services.backup_service import BackupService
 from backend.services.log_service import LogService
 from src.config import CopyEngineSettings, GeneralSettings
@@ -173,14 +172,14 @@ def test_scheduler_reads_disabled_state_and_real_trigger_json(configured, monkey
     assert scheduler.get_periodic_sync_info()["direction"] == "Download"
 
 
-def test_history_drives_folder_and_dashboard_state_across_services(qapp, configured, monkeypatch):
+def test_history_drives_folder_and_dashboard_state_across_services(qapp, configured, sync_service_factory, monkeypatch):
     from ui.pages.folders import FoldersPage
     from ui.widgets.folder_card import FolderCard
     from ui.pages.dashboard import DashboardPage
     service, local, cloud = configured
     (local / "file").write_text("saved")
     outcomes = SyncManager(service.get_app_config(), service.history_path).run_shutdown_sync()
-    sync = SyncService(service)
+    sync = sync_service_factory(service)
     scheduler = SchedulerService(service)
     monkeypatch.setattr(scheduler, "get_scheduler_summary", lambda: {"periodic": {"enabled": "Enabled", "next_run_time": "2026-10-13T12:00:00+00:00"}})
     folder_page = FoldersPage(service, sync_service=sync)
@@ -194,11 +193,11 @@ def test_history_drives_folder_and_dashboard_state_across_services(qapp, configu
     dashboard.close()
 
 
-def test_monitor_watches_real_file_changes_and_respects_pause(qapp, configured):
+def test_monitor_watches_real_file_changes_and_respects_pause(qapp, configured, sync_service_factory):
     service, local, cloud = configured
     config = service.get_app_config()
     service.save(replace(config, copy_engine=replace(config.copy_engine, monitor_mode=True)))
-    sync = SyncService(service)
+    sync = sync_service_factory(service)
     sync._monitor_timer.setInterval(30)
     sync.set_paused(True)
     (local / "monitored.txt").write_text("changed")
@@ -214,10 +213,10 @@ def test_monitor_watches_real_file_changes_and_respects_pause(qapp, configured):
         time.sleep(.005)
     sync.wait_for_finished()
     assert (cloud / "monitored.txt").read_text() == "changed"
-    assert SyncService(service).get_folder_history()["app"]["succeeded"]
+    assert sync_service_factory(service).get_folder_history()["app"]["succeeded"]
 
 
-def test_failed_dry_run_remains_failed_in_folder_history(qapp, configured):
+def test_failed_dry_run_remains_failed_in_folder_history(qapp, configured, sync_service_factory):
     from ui.pages.folders import FoldersPage
     from ui.widgets.folder_card import FolderCard
     service, *_ = configured
@@ -227,28 +226,28 @@ def test_failed_dry_run_remains_failed_in_folder_history(qapp, configured):
     service.save(config)
     outcomes = SyncManager(config, service.history_path).run_shutdown_sync()
     assert not outcomes[0].succeeded
-    page = FoldersPage(service, sync_service=SyncService(service))
+    page = FoldersPage(service, sync_service=sync_service_factory(service))
     assert page.findChild(FolderCard).folder_data["sync_status"] == "Failed (dry run)"
     page.close()
 
 
-def test_corrupt_history_does_not_hide_configured_folders(qapp, configured):
+def test_corrupt_history_does_not_hide_configured_folders(qapp, configured, sync_service_factory):
     from ui.pages.folders import FoldersPage
     from ui.widgets.folder_card import FolderCard
     service, *_ = configured
     service.history_path.write_bytes(b"not a database")
-    sync = SyncService(service)
+    sync = sync_service_factory(service)
     page = FoldersPage(service, sync_service=sync)
     assert page.findChild(FolderCard) is not None
     assert "history unavailable" in page.status_label.text().lower()
     page.close()
 
 
-def test_monitored_failed_request_retains_changes_for_retry(qapp, configured, monkeypatch):
+def test_monitored_failed_request_retains_changes_for_retry(qapp, configured, sync_service_factory, monkeypatch):
     service, *_ = configured
     config = service.get_app_config()
     service.save(replace(config, copy_engine=replace(config.copy_engine, monitor_mode=True)))
-    sync = SyncService(service)
+    sync = sync_service_factory(service)
     calls = []
     def request(operation):
         calls.append(operation)
@@ -262,13 +261,13 @@ def test_monitored_failed_request_retains_changes_for_retry(qapp, configured, mo
     assert calls == ["shutdown"] and sync._monitor_dirty and sync._monitor_timer.isActive()
 
 
-def test_monitor_polls_paths_when_native_registration_fails(qapp, configured, monkeypatch):
+def test_monitor_polls_paths_when_native_registration_fails(qapp, configured, sync_service_factory, monkeypatch):
     service, local, _ = configured
     file = local / "file"
     file.write_text("initial")
     config = service.get_app_config()
     service.save(replace(config, copy_engine=replace(config.copy_engine, monitor_mode=True)))
-    sync = SyncService(service)
+    sync = sync_service_factory(service)
     monkeypatch.setattr(sync._watcher, "addPaths", lambda paths: paths)
     sync._refresh_monitor()
     assert str(file) in sync._unwatched_state and sync._poll_timer.isActive()
@@ -290,23 +289,23 @@ def test_scheduler_script_handles_missing_task_and_missing_folder(configured, mo
     assert "-2147024894" in scripts[0] and "-2147024893" in scripts[0]
 
 
-def test_cli_writes_same_history_read_by_gui(qapp, configured):
+def test_cli_writes_same_history_read_by_gui(qapp, configured, sync_service_factory):
     from src.sync_runner import run_sync
     service, local, cloud = configured
     (local / "file").write_text("cli data")
     config_path = service.history_path.with_suffix("").with_suffix(".json")
     assert run_sync("shutdown", config_path) == 0
     assert (cloud / "file").read_text() == "cli data"
-    assert SyncService(service).get_folder_history()["app"]["succeeded"]
+    assert sync_service_factory(service).get_folder_history()["app"]["succeeded"]
 
 
-def test_monitor_retries_failed_folder_outcome_from_real_worker(qapp, configured, monkeypatch):
+def test_monitor_retries_failed_folder_outcome_from_real_worker(qapp, configured, sync_service_factory, monkeypatch):
     service, local, cloud = configured
     (local / "file").write_text("source")
     config = service.get_app_config()
     service.save(replace(config, copy_engine=replace(config.copy_engine, monitor_mode=True)))
     monkeypatch.setattr(CopyEngine, "run", lambda *a, **k: CopyResult(local, cloud, 8, False, "", "locked files", False))
-    sync = SyncService(service)
+    sync = sync_service_factory(service)
     sync._monitor_dirty = True
     sync._run_monitored_sync()
     deadline = time.monotonic() + 5

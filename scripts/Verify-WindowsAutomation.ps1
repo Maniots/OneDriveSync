@@ -8,11 +8,15 @@ $ApplicationExe = (Resolve-Path -LiteralPath $ApplicationExe).Path
 $ValidationFolder = '\OneDrivePCSyncValidation_' + [guid]::NewGuid().ToString('N')
 $service = New-Object -ComObject Schedule.Service
 $service.Connect()
+. (Join-Path $PSScriptRoot 'Validation-TaskIsolation.ps1')
 function Invoke-Setup([string]$ScriptName, [switch]$Uninstall, [string]$Exe = $ApplicationExe) {
     $arguments = @('-NoProfile','-ExecutionPolicy','Bypass','-File',(Join-Path $ProjectRoot $ScriptName),'-ApplicationExe',$Exe,'-TaskFolderPath',$ValidationFolder)
     if ($Uninstall) { $arguments += '-Uninstall' }
     & powershell.exe @arguments | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "Setup script failed: $ScriptName" }
+    if (-not $Uninstall) {
+        Disable-ValidationTaskTriggers $service $ValidationFolder $ApplicationExe
+    }
 }
 try {
     Invoke-Setup 'Setup-ScheduledTasks.ps1'

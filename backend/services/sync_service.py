@@ -69,6 +69,10 @@ class SyncService(QObject):
     def history_path(self):
         return self._config_service.history_path
 
+    @property
+    def cloud_root(self):
+        return self._config_service.cloud_root
+
     def get_folder_history(self):
         latest = {}
         for run in self.get_history(1000):
@@ -88,8 +92,11 @@ class SyncService(QObject):
             return
         from src.robocopy_manager import _walk_source, _collect_files
         watched = set()
-        for folder in config.enabled_folders():
-            source = folder.local_path_resolved if config.sync.shutdown.direction.value == "upload" else folder.onedrive_path_resolved
+        sources = [folder.local_path_resolved if config.sync.shutdown.direction.value == "upload" else folder.onedrive_path_resolved
+                   for folder in config.enabled_folders()]
+        sources.extend(job.local_path_resolved for job in config.remote_jobs
+                       if job.enabled and (job.bidirectional or config.sync.shutdown.direction.value == "upload"))
+        for source in sources:
             parent = source
             while not parent.exists() and parent != parent.parent:
                 parent = parent.parent
@@ -188,10 +195,11 @@ class SyncService(QObject):
             return None
         if folder_id is not None:
             folders = [folder for folder in config.enabled_folders() if folder.id == folder_id]
-            if not folders:
+            jobs = [job for job in config.remote_jobs if job.enabled and job.id == folder_id]
+            if len(folders) + len(jobs) != 1:
                 self.failed.emit("Folder not found or disabled")
                 return None
-            config = replace(config, folders=folders)
+            config = replace(config, folders=folders, remote_jobs=jobs)
         self._is_syncing = True
         self.state_changed.emit()
         return config

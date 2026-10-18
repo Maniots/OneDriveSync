@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "EverySync cloud configuration additions",
+  "type": "object",
+  "properties": {
+    "connections": {"type": "array", "items": {"$ref": "#/$defs/connection"}},
+    "remote_jobs": {"type": "array", "items": {"$ref": "#/$defs/job"}}
+  },
+  "$defs": {
+    "id": {"type": "string", "pattern": "^[a-z][a-z0-9_]{0,47}$"},
+    "connection": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "name", "provider", "root"],
+      "properties": {
+        "id": {"$ref": "#/$defs/id"},
+        "name": {"type": "string", "minLength": 1},
+        "provider": {"enum": ["local", "onedrive", "drive", "s3", "sftp", "webdav", "dropbox", "azureblob", "b2"]},
+        "root": {"type": "string", "minLength": 1}
+      }
+    },
+    "job": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "name", "local_path", "connection_id", "remote_path"],
+      "properties": {
+        "id": {"$ref": "#/$defs/id"}, "name": {"type": "string", "minLength": 1},
+        "enabled": {"type": "boolean", "default": true},
+        "local_path": {"type": "string", "minLength": 1},
+        "connection_id": {"$ref": "#/$defs/id"},
+        "remote_path": {"type": "string", "minLength": 1},
+        "minimum_sync_percentage": {"type": "number", "minimum": 0, "maximum": 100, "default": 80},
+        "verify_after_sync": {"type": "boolean", "default": true},
+        "backup_enabled": {"type": "boolean", "default": true},
+        "bidirectional": {"type": "boolean", "default": false}
+      }
+    }
+  }
+}

@@ -177,6 +177,27 @@ def test_download_waits_for_ui_sync_before_launching_installer(qapp, tmp_path, r
         service.wait_for_finished()
 
 
+def test_installer_waits_for_cloud_restore_and_retries_when_it_finishes(qapp, tmp_path, release_data):
+    class CloudState(QObject):
+        busy_changed = Signal(bool)
+        busy = True
+    cloud = CloudState()
+    client, _ = client_for(tmp_path, release_data)
+    client.launch_install = Mock()
+    service = UpdateService(client=client, cloud_service=cloud)
+    service.can_install = True
+    try:
+        assert service.check(install=True)
+        spin(qapp, lambda: service.state == "ready")
+        client.launch_install.assert_not_called()
+        cloud.busy = False
+        cloud.busy_changed.emit(False)
+        client.launch_install.assert_called_once()
+        assert service.state == "installing"
+    finally:
+        service.wait_for_finished()
+
+
 def test_error_state_allows_retry_without_installing(qapp, tmp_path):
     client = UpdateClient(root=tmp_path)
     client.check = Mock(side_effect=[UpdateError("Offline, retry later"), CheckResult("current")])

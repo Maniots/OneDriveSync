@@ -13,7 +13,7 @@ from backend.services.configuration_service import ConfigurationService
 from .main_window import MainWindow
 from .themes.theme import get_dark_theme
 from .resources.icons import get_app_icon
-from src.app_info import APP_NAME
+from src.app_info import APP_NAME, APP_USER_MODEL_ID
 
 # Native installer verification uses an isolated instance and data directory.
 _INSTANCE_SUFFIX = os.environ.get("EVERYSYNC_VALIDATION_INSTANCE", "")
@@ -97,6 +97,11 @@ def main(argv=None) -> int:
     parser.add_argument("--updates", action="store_true")
     parser.add_argument("--install-update", action="store_true")
     args, qt_args = parser.parse_known_args(argv)
+    if sys.platform == "win32":
+        set_app_id = ctypes.OleDLL("shell32").SetCurrentProcessExplicitAppUserModelID
+        set_app_id.argtypes = [wintypes.LPCWSTR]
+        set_app_id.restype = ctypes.HRESULT
+        set_app_id(APP_USER_MODEL_ID)
     app = QApplication.instance() or QApplication([sys.argv[0], *qt_args])
     app.setApplicationName(APP_NAME)
     app.setWindowIcon(get_app_icon())
