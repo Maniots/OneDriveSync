@@ -5,9 +5,9 @@ EverySync can connect directly to storage through its bundled rclone engine. The
 ## Connect storage
 
 1. Open **Connections**, select a provider and give the connection a name.
-2. Choose the root folder or existing bucket/container. A cloud folder is a relative path such as `EverySync`; an object-storage root is `bucket-name/prefix`. Jobs stay below this root.
-3. Fill in the provider fields, then choose **Connect account**. Passwords are masked. For browser sign-in, complete the questions in **Finish account setup** and authorize access in the system browser.
-4. When the connection is saved, select it and choose **Test connection**. This reads the root without writing a test file.
+2. For **OneDrive**, **Google Drive** or **Dropbox**, choose **Sign in with Microsoft / Google / Dropbox** and authorize access in your browser. If the account has multiple drives, choose the one you want in the app. Technical browser questions are handled automatically. Google sign-in requires a release configured with the EverySync Google application; unavailable builds explain this before setup starts.
+3. After sign-in, open folders in **Choose your cloud folder**, or enter a relative folder path such as `EverySync`. Choose **Use this folder**. The app verifies the folder before saving the account; the checkbox allows creation if missing. You can cancel before saving. Personal OAuth application credentials are optional under **Advanced settings**.
+4. For other providers, choose the root folder or existing bucket/container, fill in the provider fields and choose **Connect account**. Object-storage roots use `bucket-name/prefix`. Passwords are masked. Select a saved account and choose **Test connection** to read its root without writing a test file. Jobs stay below the chosen root.
 5. Open **Cloud Sync**, choose the connection, local application folder and folder below the root, such as `ExampleGame/Saves`. Save the activity.
 6. Close the application that owns the files. Enable **Settings → Dry Run**, apply it and preview a run. Turn dry run off for actual transfers.
 
@@ -16,8 +16,8 @@ Cloud folders can be created during setup with the explicit checkbox. Buckets an
 | Provider | Setup |
 | --- | --- |
 | **Local folder / NAS** | Browse an existing local or accessible network folder. No account is needed. Use this to try the complete workflow first. |
-| **OneDrive online** | Sign in with Microsoft, answer the account/drive selection questions and choose the intended drive. Optional custom OAuth credentials are supported. [Provider setup](https://rclone.org/onedrive/). |
-| **Google Drive** | Supply your own Desktop OAuth client, then authorize in the browser; see below. |
+| **OneDrive online** | Sign in with Microsoft, choose a drive if requested, then choose a folder. No application registration is required from the user. |
+| **Google Drive** | Sign in with Google, then choose a folder. Available after the maintainer configures the EverySync Google desktop application for the release. |
 | **Amazon S3 / compatible** | Supply an existing AWS profile or access key ID and secret; optionally session token, region and HTTPS endpoint. Root: `bucket-name/prefix`. Custom endpoints use the generic S3 provider. [Provider setup](https://rclone.org/s3/). |
 | **SFTP** | Enter host/user and a password or private-key file, plus a trusted `known_hosts` file. Verify the server fingerprint through your server administrator before using that file. [Provider setup](https://rclone.org/sftp/). |
 | **WebDAV / Nextcloud** | Enter the HTTPS WebDAV URL, user and app password. |
@@ -25,11 +25,11 @@ Cloud folders can be created during setup with the explicit checkbox. Buckets an
 | **Azure Blob Storage** | Enter storage account and account key; root: `container-name/prefix`. |
 | **Backblaze B2** | Enter application key ID and key; root: `bucket-name/prefix`. |
 
-### Create a Google OAuth client
+### Google availability and advanced applications
 
-The shared rclone Google client is being retired during 2026. EverySync therefore requires your own client. In [Google Cloud Console](https://console.cloud.google.com/), select/create a project, enable **Google Drive API**, configure the OAuth consent screen and add your Google account as a test user when using testing mode. Create an OAuth client with application type **Desktop app**. Copy its client ID and secret into Connections. Follow the [official rclone walkthrough](https://rclone.org/drive/#making-your-own-client-id) for the current console screens and consent requirements.
+The shared rclone Google client is being retired during 2026. EverySync uses a maintainer-owned desktop OAuth application instead. The source repository currently ships empty application metadata because registration is pending; Google sign-in is disabled until that metadata is supplied. The maintainer completes registration once for the release, following [maintainer setup](oauth-maintainer.md). End users of an enabled release only sign in and consent in their browser.
 
-The client secret belongs in the masked setup field; do not paste tokens into `config.json` or send them in issue reports. Authorization can require additional approval for organization-managed accounts.
+Advanced users with an existing desktop OAuth application can supply its client ID and client secret under **Advanced settings**. Do not paste user tokens into `config.json` or send them in issue reports. Organization-managed accounts can require administrator approval. Native Google login uses PKCE; token storage and renewal remain managed by the encrypted rclone configuration.
 
 ## Run and recover
 
@@ -71,6 +71,6 @@ Existing folder pairs remain unchanged. To return to a version without cloud sup
 
 ## Validation status
 
-The adapter, encrypted configuration, transfer, dry run, snapshots, restore, pending recovery and conflicts are exercised with isolated Windows local storage through the real pinned engine. The frozen executable receives a separate acceptance check. Guided OAuth continuation is tested with controlled responses.
+The adapter, encrypted configuration, transfer, dry run, snapshots, restore, pending recovery and conflicts are exercised with isolated Windows local storage through the real pinned engine. The frozen executable receives a separate acceptance check. Integrated sign-in, explicit account choices and post-login folder selection are tested with controlled responses. Native Google PKCE tests use real local callbacks and controlled token exchanges.
 
 **Live account certification is pending for every remote provider.** No test Microsoft/Google OAuth apps, S3 buckets or other service accounts were available for this implementation. Provider availability is an integration capability, not a claim that each account type, policy or server has been certified. Begin with a disposable folder/account before using important application data.

@@ -113,6 +113,14 @@ def test_configuration_rejects_unregistered_provider_options(tmp_path, monkeypat
     operation.assert_not_called()
 
 
+def test_native_google_token_import_keeps_pkce_token_without_second_login(transport):
+    from src.cloud_models import ConnectionConfig
+    result = transport.configure_google(ConnectionConfig("google", "Google", "drive", "EverySync"),
+        {"client_id": "desktop.apps.googleusercontent.com", "client_secret": "desktop"},
+        {"access_token": "test-access", "refresh_token": "test-refresh", "token_type": "Bearer", "expiry": "2099-01-01T00:00:00Z"})
+    assert result.get("Option", {}).get("Name") not in {"config_refresh_token", "config_is_local", "config_verification_code"}
+
+
 @pytest.mark.parametrize("paths", [["A/first", "a/second"], ["file", "file/child"], ["file/child", "file"]])
 def test_inventory_rejects_directory_aliases(tmp_path, monkeypatch, paths):
     client = RcloneTransport(tmp_path, executable=tmp_path / "unused")

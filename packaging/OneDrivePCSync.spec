@@ -8,6 +8,7 @@ datas = collect_data_files("qtawesome") + [
     (str(root / "ui" / "resources"), "ui/resources"),
     (str(root / "packaging" / "default-config.json"), "packaging"),
     (str(root / "src" / "build-info.json"), "src"),
+    (str(root / "src" / "oauth-apps.json"), "src"),
     (str(root / "packaging" / "Apply-Update.ps1"), "packaging"),
 ]
 a = Analysis([str(root / "desktop_entry.py")], pathex=[str(root)],

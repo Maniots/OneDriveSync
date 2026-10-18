@@ -8,6 +8,8 @@ from src.cloud_sync import CloudSyncRunner
 from src.rclone_transport import RcloneTransport, CloudSyncError, CloudNotFound
 from src.single_instance import acquire_single_instance_lock
 from src.runtime_paths import sync_lock_path
+from src.cloud_providers import OAUTH_PROVIDERS, setup_parameters
+from src.cloud_models import validate_relative_path
 
 
 class _Task(QThread):
@@ -45,6 +47,8 @@ class CloudService(QObject):
         self.transport_factory = transport_factory or RcloneTransport
         self._task = None
         self._pending_connection = None
+        self._choose_root = False
+        self._authorized = False
         self.action = ""
 
     @property
@@ -61,6 +65,8 @@ class CloudService(QObject):
 
     def _submit(self, action, function):
         self.ensure_idle()
+        if self._pending_connection is not None and action not in {"configure", "discard", "folders", "save_root"}:
+            raise ValueError("Finish or cancel account setup before starting another cloud operation.")
         self.action = action
         task = self._task = _Task(function, self)
         task.action = action
@@ -72,18 +78,20 @@ class CloudService(QObject):
         # wait_for_finished may have already handled this queued signal. Never
         # let an earlier worker's signal complete a replacement cleanup worker.
         task = task if task is not None else self.sender()
-        if task is not self._task:
+        if task is None or task is not self._task:
             return
         task.wait()
         self._task = None
         try:
-            if task.action == "configure" and (task.error or task.cancel_event.is_set()):
+            if ((task.action == "configure" and (task.error or task.cancel_event.is_set()))
+                    or (task.action in {"save_root", "folders"} and task.cancel_event.is_set())):
                 self._discard_pending(task.error or "Account operation cancelled.")
             elif task.action == "discard":
                 if task.error:
                     self.failed.emit("Could not remove unfinished account credentials. Cancel account setup again to retry.")
                 else:
                     self._pending_connection = None
+                    self._authorized = False
                     self.failed.emit(task.value)
             elif task.error:
                 self.failed.emit(task.error)
@@ -92,10 +100,13 @@ class CloudService(QObject):
             else:
                 value = task.value
                 config = self.config_service.get_app_config()
-                if task.action == "configure" and not value.get("question"):
+                if task.action == "configure" and value.get("choose_root"):
+                    self._authorized = True
+                elif task.action in {"configure", "save_root"} and not value.get("question"):
                     connection = value["connection"]
                     self.config_service.save(replace(config, connections=[*config.connections, connection]))
                     self._pending_connection = None
+                    self._authorized = False
                 elif task.action == "remove":
                     self.config_service.save(replace(config, connections=[c for c in config.connections if c.id != value]))
                 self.completed.emit(task.action, value)
@@ -126,7 +137,7 @@ class CloudService(QObject):
             return message
         self._submit("discard", discard)
 
-    def configure_connection(self, connection, parameters, *, state=None, answer=None, create_root=False):
+    def configure_connection(self, connection, parameters, *, state=None, answer=None, create_root=False, choose_root=False):
         self.ensure_idle()
         if any(item.id == connection.id for item in self.config_service.get_app_config().connections):
             raise ValueError("This connection is already configured.")
@@ -134,25 +145,77 @@ class CloudService(QObject):
             raise ValueError("Finish or cancel the pending account setup first.")
         if state is not None and self._pending_connection != connection:
             raise ValueError("Start account setup again before continuing authorization.")
+        if self._authorized:
+            raise ValueError("Choose a cloud folder to finish connecting this account.")
+        if state is None:
+            self._choose_root = choose_root and connection.provider in OAUTH_PROVIDERS
+            if connection.provider == "drive":
+                # Fail before starting a worker or creating an unfinished remote
+                # when this release has no Google application identity.
+                parameters = setup_parameters("drive", parameters)
         self._pending_connection = connection
         def configure(cancel_event):
             with self.transport_factory(self.config_service.cloud_root, cancel_event=cancel_event) as client:
-                result = client.configure(connection, parameters, state=state, answer=answer)
+                if connection.provider == "drive" and state is None:
+                    from src.cloud_oauth import google_login
+                    token = google_login(parameters, cancel_event)
+                    result = client.configure_google(connection, parameters, token)
+                else:
+                    result = client.configure(connection, parameters, state=state, answer=answer)
+                for _ in range(8):
+                    option = result.get("Option") or {}
+                    if (connection.provider not in OAUTH_PROVIDERS or result.get("Error")
+                            or not result.get("State") or option.get("Name") != "config_is_local"
+                            or option.get("IsPassword") or option.get("Default") is not True):
+                        break
+                    if cancel_event.is_set():
+                        raise CloudSyncError("Account operation cancelled.")
+                    result = client.configure(connection, parameters, state=result["State"], answer="true")
+                else:
+                    raise CloudSyncError("Account setup repeated an unexpected step. Cancel and sign in again.")
                 if result.get("State") or result.get("Option"):
                     question = {"State": result.get("State", ""), "Option": result.get("Option"),
                                 "Error": "The provider rejected that answer. Check it and retry." if result.get("Error") else ""}
                     return {"connection": connection, "question": question}
                 if result.get("Error"):
                     raise CloudSyncError("The provider could not finish account authorization. Check the requested values and retry.")
-                try:
-                    client.test(connection)
-                except CloudNotFound:
-                    if not create_root or connection.provider not in {"onedrive", "drive", "dropbox", "webdav"}:
-                        raise
-                    client.operation("operations/mkdir", {"fs": f"es_{connection.id}:", "remote": connection.root})
-                    client.test(connection)
+                if self._choose_root:
+                    return {"connection": connection, "choose_root": True}
+                self._verify_root(client, connection, create_root)
                 return {"connection": connection, "question": None}
         self._submit("configure", configure)
+
+    @staticmethod
+    def _verify_root(client, connection, create_root):
+        try:
+            client.test(connection)
+        except CloudNotFound:
+            if not create_root or connection.provider not in {"onedrive", "drive", "dropbox", "webdav"}:
+                raise
+            client.operation("operations/mkdir", {"fs": f"es_{connection.id}:", "remote": connection.root})
+            client.test(connection)
+
+    def list_account_folders(self, path=""):
+        self.ensure_idle()
+        if not self._authorized or self._pending_connection is None:
+            raise ValueError("Sign in before choosing a cloud folder.")
+        path = validate_relative_path(path, allow_empty=True)
+        connection = self._pending_connection
+        def folders(cancel_event):
+            with self.transport_factory(self.config_service.cloud_root, cancel_event=cancel_event) as client:
+                return {"path": path, "folders": client.folders(connection, path)}
+        self._submit("folders", folders)
+
+    def choose_connection_root(self, root, *, create_root=False):
+        self.ensure_idle()
+        if not self._authorized or self._pending_connection is None:
+            raise ValueError("Sign in before choosing a cloud folder.")
+        connection = replace(self._pending_connection, root=root)
+        def save_root(cancel_event):
+            with self.transport_factory(self.config_service.cloud_root, cancel_event=cancel_event) as client:
+                self._verify_root(client, connection, create_root)
+            return {"connection": connection}
+        self._submit("save_root", save_root)
 
     def test_connection(self, connection):
         def test(cancel_event):
@@ -185,7 +248,7 @@ class CloudService(QObject):
                      self.config_service.cloud_root, self.transport_factory).restore(job_id, run_id, target))
 
     def cancel(self):
-        if self._task is not None and self.action in {"configure", "test", "snapshots"}:
+        if self._task is not None and self.action in {"configure", "test", "snapshots", "folders", "save_root"}:
             self._task.cancel_event.set()
         elif self._task is None and self._pending_connection is not None:
             self._discard_pending("Account operation cancelled.")

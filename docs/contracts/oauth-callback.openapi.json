@@ -1,0 +1,26 @@
+{
+  "openapi": "3.0.3",
+  "info": {"title": "EverySync native OAuth callback", "version": "1.0.0"},
+  "servers": [{"url": "http://127.0.0.1:{port}", "variables": {"port": {"default": "49152", "description": "OS-assigned ephemeral port, listener active only during login"}}}],
+  "paths": {
+    "/oauth/callback": {
+      "get": {
+        "summary": "Receive the Google native authorization response",
+        "description": "Loopback only. An unpredictable per-attempt state authenticates the response; authorization codes are single-use and exchanged with S256 PKCE. No CORS or public service. Reject duplicate parameters, wrong or missing state, and code/error combinations. Invalid state does not consume a pending login. Close after one valid success/denial, cancel or timeout. Do not log URLs or response values.",
+        "security": [],
+        "parameters": [
+          {"name": "state", "in": "query", "required": true, "schema": {"type": "string", "minLength": 32, "maxLength": 256}},
+          {"name": "code", "in": "query", "required": false, "schema": {"type": "string", "minLength": 1, "maxLength": 8192}},
+          {"name": "error", "in": "query", "required": false, "schema": {"type": "string", "minLength": 1, "maxLength": 256}}
+        ],
+        "responses": {
+          "200": {"description": "Matching state and one authorization code accepted; static return-to-app plain text"},
+          "400": {"description": "Malformed, duplicate or ambiguous parameters; static plain text"},
+          "403": {"description": "Missing/incorrect state, or matching-state consent denial; static plain text"},
+          "404": {"description": "Unexpected path"},
+          "405": {"description": "Only GET is supported"}
+        }
+      }
+    }
+  }
+}

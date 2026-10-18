@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Added integrated Microsoft, Google and Dropbox browser sign-in, automatic technical browser setup and cloud folder selection after authorization.
+- Custom OAuth applications are available under Advanced settings. Google native sign-in uses PKCE and requires maintainer-owned desktop app metadata in the release; registration is pending.
+- Accounts are saved only after folder verification. Cancelling an unfinished login removes its credentials while preserving existing connections.
+
 ## 1.5.0 — 2026-10-18
 
 - Added Connections and Cloud Sync pages with guided account setup for direct OneDrive, Google Drive, Amazon S3, SFTP, WebDAV, Dropbox, Azure Blob and Backblaze B2, plus local/network storage.

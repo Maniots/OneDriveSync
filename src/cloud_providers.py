@@ -20,9 +20,9 @@ class Provider:
 
 PROVIDER_SETUP = {
     "local": Provider("Local folder / NAS", "Choose an existing folder. No cloud account is needed."),
-    "onedrive": Provider("OneDrive online", "Sign in with Microsoft in your browser. Optional OAuth app credentials can be supplied below.", (
+    "onedrive": Provider("OneDrive online", "Sign in with Microsoft in your browser, then choose a cloud folder.", (
         SetupField("client_id", "Application client ID (optional)"), SetupField("client_secret", "Client secret (optional)", True))),
-    "drive": Provider("Google Drive", "Create a Desktop OAuth client in Google Cloud with Drive API enabled, then sign in in your browser.", (
+    "drive": Provider("Google Drive", "Sign in with Google in your browser, then choose a cloud folder.", (
         SetupField("client_id", "OAuth client ID", required=True), SetupField("client_secret", "OAuth client secret", True, True))),
     "s3": Provider("Amazon S3 / compatible", "Root is bucket-name/prefix. Use an AWS profile or an access-key pair. A custom endpoint selects S3-compatible storage.", (
         SetupField("profile", "AWS profile (optional)"), SetupField("access_key_id", "Access key ID (optional)"),
@@ -35,12 +35,16 @@ PROVIDER_SETUP = {
     "webdav": Provider("WebDAV / Nextcloud", "Enter the HTTPS WebDAV endpoint and an account or app password.", (
         SetupField("url", "HTTPS WebDAV URL", required=True), SetupField("user", "User", required=True),
         SetupField("pass", "App password", True, True))),
-    "dropbox": Provider("Dropbox", "Authorize access to Dropbox in your browser."),
+    "dropbox": Provider("Dropbox", "Sign in with Dropbox in your browser, then choose a cloud folder.", (
+        SetupField("client_id", "Application client ID (optional)"), SetupField("client_secret", "Client secret (optional)", True))),
     "azureblob": Provider("Azure Blob Storage", "Root is container-name/prefix.", (
         SetupField("account", "Storage account", required=True), SetupField("key", "Account key", True, True))),
     "b2": Provider("Backblaze B2", "Root is bucket-name/prefix. Use a scoped application key.", (
         SetupField("account", "Application key ID", required=True), SetupField("key", "Application key", True, True))),
 }
+
+OAUTH_PROVIDERS = frozenset({"onedrive", "drive", "dropbox"})
+SIGN_IN_LABELS = {"onedrive": "Sign in with Microsoft", "drive": "Sign in with Google", "dropbox": "Sign in with Dropbox"}
 
 
 def setup_parameters(provider, values):
@@ -48,6 +52,15 @@ def setup_parameters(provider, values):
     allowed = {field.key for field in spec.fields}
     if not isinstance(values, dict) or values.keys() - allowed:
         raise ValueError("Unsupported connection option.")
+    if provider in OAUTH_PROVIDERS:
+        from .cloud_oauth import load_oauth_apps
+        defaults = load_oauth_apps().get(provider, {})
+        # A custom application is a separate identity; never mix its fields
+        # with an unrelated bundled application's credentials.
+        if not any(values.get(key) for key in ("client_id", "client_secret")):
+            values = {**defaults, **values}
+        if provider == "drive" and not all(values.get(key, "").strip() for key in ("client_id", "client_secret")):
+            raise ValueError("Google sign-in is not available in this build yet. Install a release with Google sign-in enabled, or use your own desktop app in Advanced settings.")
     result = {}
     for field in spec.fields:
         value = values.get(field.key, "")

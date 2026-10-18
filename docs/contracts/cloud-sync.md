@@ -19,6 +19,19 @@ This Python-internal contract is reviewed before implementation. It does not def
 - `snapshot(connection, job, run_id) -> snapshot_ref | None`: copy the full pre-upload live destination to a unique reserved backup directory; failure blocks subsequent overwrite. Initial empty destination returns None. Never prune unrelated data.
 - `restore(snapshot_ref, local_target)`: validated snapshot under the owning connection/job to a validated local target, under the same sync lock. No automatic overwrite without explicit user intent.
 - `configure(connection, parameters, state=None, answer=None) -> setup_question | ready`: use existing rclone config state protocol; secrets are allowed only in memory/secure transport and encrypted config. Only registered provider options are accepted.
+- Integrated sign-in (2026-10-18): the service can defer publishing an OAuth
+  connection until the user chooses its root. Authorization completion returns
+  `choose_root: true`; folder listing and root selection use only that service's
+  authorized pending connection. List immediate safe directory names at an
+  account-relative path; verify/create the explicitly selected root before save.
+  Listing/selection errors retain the authorized pending connection for retry.
+  Cancel/exit removes only pending credentials, including after authorization.
+- `configure_google(connection, parameters, token)` is an internal transport
+  operation: validated desktop client identity plus a native PKCE token are
+  written together to the encrypted remote. Normal setup never accepts tokens,
+  auth URLs, scopes or arbitrary engine flags from user fields.
+- Auto-answer only a valid, error-free OAuth `config_is_local` browser choice;
+  all account/drive/shared-drive and unknown questions remain user choices.
 - `test(connection) -> success`: authenticated read of the configured root; does not write a sentinel into user data.
 - `close()`: release owned subprocesses and socket resources, including failure/cancel paths.
 

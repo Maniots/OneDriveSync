@@ -178,6 +178,11 @@ class RcloneTransport:
         deadline = time.monotonic() + self.timeout
         while time.monotonic() < deadline:
             if self.cancel_event.is_set():
+                if method in {"config/create", "config/update"}:
+                    try:
+                        self.call("config/oauthstop", {})
+                    except CloudSyncError:
+                        pass  # A completed OAuth listener reports no active login.
                 self.call("job/stop", {"jobid": result["jobid"]})
                 raise CloudSyncError("Cloud operation cancelled.")
             status = self.call("job/status", {"jobid": result["jobid"]})
@@ -186,6 +191,11 @@ class RcloneTransport:
                     raise CloudSyncError("Cloud operation failed. Check account access, available space and network, then retry.")
                 return status.get("output", {})
             time.sleep(.05)
+        if method in {"config/create", "config/update"}:
+            try:
+                self.call("config/oauthstop", {})
+            except CloudSyncError:
+                pass
         self.call("job/stop", {"jobid": result["jobid"]})
         raise CloudSyncError("Cloud operation timed out; unfinished work can be retried.")
 
@@ -292,6 +302,46 @@ class RcloneTransport:
         if state is None:
             payload["type"] = connection.provider
         return self.operation(method, payload)
+
+    def configure_google(self, connection, parameters, token):
+        """Import only a native login result; user setup cannot supply tokens."""
+        if connection.provider != "drive":
+            raise CloudSyncError("Google authorization requires a Google Drive connection.")
+        parameters = setup_parameters("drive", parameters)
+        if (not isinstance(token, dict) or not token.get("access_token") or not token.get("refresh_token")
+                or not token.get("expiry") or token.get("token_type") != "Bearer"):
+            raise CloudSyncError("Google authorization did not return a usable account token. Sign in again.")
+        return self.operation("config/create", {"name": "es_" + connection.id, "type": "drive",
+            "parameters": dict(parameters, token=json.dumps(token), scope="drive", config_refresh_token="false"),
+            "opt": {"nonInteractive": True, "obscure": True}})
+
+    def folders(self, connection, path=""):
+        path = validate_relative_path(path, allow_empty=True)
+        if connection.provider not in {"onedrive", "drive", "dropbox"}:
+            raise CloudSyncError("Folder selection requires an authorized cloud account.")
+        response = self.operation("operations/list", {"fs": f"es_{connection.id}:{path}",
+            "remote": "", "opt": {"recurse": False, "dirsOnly": True}})
+        entries = response.get("list")
+        if not isinstance(entries, list):
+            raise CloudSyncError("Could not read the cloud folder list. Retry or choose a folder path.")
+        names = []
+        for item in entries:
+            if not isinstance(item, dict) or item.get("IsDir") is not True:
+                raise CloudSyncError("The cloud returned an invalid folder list.")
+            name = item.get("Path")
+            if isinstance(name, str) and name.casefold() == ".everysync":
+                continue
+            try:
+                validate_relative_path(name)
+                if "/" in name:
+                    raise ValueError()
+            except ValueError:
+                # Such names cannot be synchronized safely on Windows.
+                continue
+            names.append(name)
+        if len(set(name.casefold() for name in names)) != len(names):
+            raise CloudSyncError("Cloud folders have ambiguous names on Windows. Choose another parent folder.")
+        return sorted(names, key=str.casefold)
 
     def test(self, connection):
         response = self.call("operations/stat", {"fs": scoped_fs(connection), "remote": ""})

@@ -64,7 +64,8 @@ def test_provider_fields_mask_secrets_and_guide_oauth(qapp, tmp_path):
     assert "client_id" in page.option_inputs
     from PySide6.QtWidgets import QLineEdit
     assert page.option_inputs["client_secret"].echoMode() == QLineEdit.EchoMode.Password
-    assert "OAuth" in page.provider_hint.text()
+    assert "sign-in" in page.provider_hint.text()
+    assert page.options_widget.isHidden()
     assert page.provider_combo.findData("onedrive") >= 0
     assert page.provider_combo.findData("s3") >= 0
 
@@ -118,6 +119,8 @@ class SetupClient:
             raise response
         return response(self) if callable(response) else response
     def test(self, connection): pass
+    def folders(self, connection, path=""):
+        return ["Games", "Settings"] if not path else ["Saves"]
     def call(self, method, payload):
         assert method == "config/delete"
         if self.owner.delete_failures:
@@ -166,6 +169,10 @@ def test_guided_oauth_questions_keep_secrets_masked_and_save_only_after_completi
     assert "private-provider-token" not in page.question_label.text()
     page.answer_edit.setText("private-answer")
     page.continue_button.click()
+    spin(qapp, lambda: not service.busy)
+    assert not config.get_app_config().connections
+    assert not page.folder_group.isHidden()
+    page.save_root_button.click()
     spin(qapp, lambda: not service.busy)
     assert len(config.get_app_config().connections) == 1
     assert factory.calls[-1] == {"state": "secret", "answer": "private-answer"}
@@ -250,6 +257,8 @@ def test_failed_setup_cleans_credentials_and_allows_fresh_retry(qapp, tmp_path):
     assert page.setup_group.isEnabled()
     page.connect_button.click()
     spin(qapp, lambda: not service.busy)
+    page.save_root_button.click()
+    spin(qapp, lambda: not service.busy)
     assert len(config.get_app_config().connections) == 1
 
 
@@ -277,6 +286,8 @@ def test_provider_guide_uses_fixed_official_oauth_walkthrough(qapp, tmp_path, mo
     monkeypatch.setattr(QDesktopServices, "openUrl", lambda url: urls.append(url.toString()))
     page.provider_combo.setCurrentIndex(page.provider_combo.findData("drive"))
     page.root_edit.setText("https://untrusted.invalid/")
+    assert page.guide_button.isHidden()
+    # The legacy guide remains fixed even when invoked programmatically.
     page.guide_button.click()
     assert urls == ["https://rclone.org/drive/#making-your-own-client-id"]
 
