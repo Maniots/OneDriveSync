@@ -243,10 +243,15 @@ class ConnectionsPage(QWidget):
         if not self.pending or not self.question:
             return
         option = self.question.get("Option") or {}
-        answer = self.answer_combo.currentData() if option.get("Exclusive") else self.answer_edit.text()
+        answer = self.answer_edit.text()
+        if not option.get("IsPassword") and (option.get("Examples") or option.get("Exclusive")):
+            index = self.answer_combo.currentIndex()
+            answer = (self.answer_combo.itemData(index)
+                      if index >= 0 and self.answer_combo.currentText() == self.answer_combo.itemText(index)
+                      else self.answer_combo.currentText())
         try:
             self.service.configure_connection(self.pending, self.pending_parameters,
-                state=self.question["State"], answer=str(answer or ""), create_root=self.create_root.isChecked())
+                state=self.question["State"], answer="" if answer is None else str(answer), create_root=self.create_root.isChecked())
             self.status_label.setText("Continuing account setup. Complete sign-in in your browser when requested.")
         except (ValueError, RuntimeError) as error:
             self.show_error(str(error))
@@ -274,13 +279,27 @@ class ConnectionsPage(QWidget):
                 self.question_label.setText((self.question.get("Error") or "") +
                     ("" if retry_only else "\n" + str(option.get("Help", "Choose an account setup option."))))
                 self.answer_combo.clear()
-                for item in option.get("Examples") or []:
-                    self.answer_combo.addItem(str(item.get("Help") or item.get("Value")), item.get("Value"))
-                self.answer_combo.setVisible(not retry_only and bool(option.get("Exclusive")))
-                self.answer_edit.setVisible(not retry_only and not option.get("Exclusive"))
-                self.answer_edit.setEchoMode(QLineEdit.EchoMode.Password if option.get("IsPassword") else QLineEdit.EchoMode.Normal)
+                password = bool(option.get("IsPassword"))
+                choices = not retry_only and not password and bool(option.get("Examples") or option.get("Exclusive"))
+                self.answer_combo.setEditable(choices and not option.get("Exclusive"))
+                self.answer_combo.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
                 default = option.get("Default", "")
-                self.answer_edit.setText("" if retry_only or option.get("IsPassword") else str(default).lower() if isinstance(default, bool) else str(default or ""))
+                default = str(default).lower() if isinstance(default, bool) else "" if default is None else str(default)
+                if choices:
+                    for item in option.get("Examples") or []:
+                        value = item.get("Value")
+                        value = str(value).lower() if isinstance(value, bool) else "" if value is None else str(value)
+                        self.answer_combo.addItem(str(item.get("Help") or value), value)
+                    index = self.answer_combo.findData(default)
+                    if index >= 0:
+                        self.answer_combo.setCurrentIndex(index)
+                    elif self.answer_combo.isEditable():
+                        self.answer_combo.setCurrentIndex(-1)
+                        self.answer_combo.setEditText(default)
+                self.answer_combo.setVisible(choices)
+                self.answer_edit.setVisible(not retry_only and not choices)
+                self.answer_edit.setEchoMode(QLineEdit.EchoMode.Password if option.get("IsPassword") else QLineEdit.EchoMode.Normal)
+                self.answer_edit.setText("" if retry_only or password or choices else default)
                 self.question_group.show()
                 self.status_label.setText("Account setup paused. Retry or cancel to sign in again." if retry_only else
                                           "One more step is required to authorize this account.")

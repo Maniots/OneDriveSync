@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- OneDrive drive selection now displays readable drive names, honors the provider's default selection and submits the matching drive identifier. Non-exclusive questions still allow a manual answer.
+
 - Fixed OneDrive setup displaying a blank question after a recoverable drive-discovery error. Retry now reloads available drives and keeps the authorized account pending until folder selection.
 
 - Added integrated Microsoft, Google and Dropbox browser sign-in, automatic technical browser setup and cloud folder selection after authorization.
