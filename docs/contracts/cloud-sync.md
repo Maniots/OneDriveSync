@@ -19,6 +19,20 @@ This Python-internal contract is reviewed before implementation. It does not def
 - `snapshot(connection, job, run_id) -> snapshot_ref | None`: copy the full pre-upload live destination to a unique reserved backup directory; failure blocks subsequent overwrite. Initial empty destination returns None. Never prune unrelated data.
 - `restore(snapshot_ref, local_target)`: validated snapshot under the owning connection/job to a validated local target, under the same sync lock. No automatic overwrite without explicit user intent.
 - `configure(connection, parameters, state=None, answer=None) -> setup_question | ready`: use existing rclone config state protocol; secrets are allowed only in memory/secure transport and encrypted config. Only registered provider options are accepted.
+- Account policy: new connections permit one saved account per non-local provider.
+  Enforce before authorization and before save. Existing duplicate accounts remain
+  usable/removable; no migration or automatic deletion. Local/NAS connections are
+  exempt. Pending setup remains exclusive to its service.
+- OneDrive `config_driveid` questions are filtered before presentation: probe each
+  distinct offered ID using that returned setup state, require successful
+  `config_drive_ok` plus stored `drive_type` personal/business/documentLibrary.
+  `config/get` is allowed solely for this pending remote's metadata; credentials
+  in the response stay internal and never reach UI, errors or logs. Probe errors
+  returned by the provider omit that candidate; transport exceptions/cancellation
+  abort the check. No remote files are created or changed. Return exclusive
+  choices and preserve an eligible default, otherwise select the first eligible
+  ID. If none qualify, return a retry-only `choose_type` step with a static safe
+  message. The service rejects answers outside the offered IDs before transport.
 - Integrated sign-in (2026-10-18): the service can defer publishing an OAuth
   connection until the user chooses its root. Authorization completion returns
   `choose_root: true`; folder listing and root selection use only that service's

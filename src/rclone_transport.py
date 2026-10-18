@@ -77,7 +77,7 @@ def scoped_fs(connection, relative_path="", *, metadata=False):
 
 class RcloneTransport:
     _METHODS = frozenset({"core/version", "core/quit", "config/create", "config/update",
-                         "config/delete", "config/oauthstatus", "config/oauthstop",
+                         "config/delete", "config/get", "config/oauthstatus", "config/oauthstop",
                          "operations/stat", "operations/list", "operations/hashsumfile",
                          "operations/copyfile", "operations/mkdir", "sync/copy", "job/status", "job/stop"})
 
@@ -301,7 +301,46 @@ class RcloneTransport:
         method = "config/update" if state is not None else "config/create"
         if state is None:
             payload["type"] = connection.provider
-        return self.operation(method, payload)
+        result = self.operation(method, payload)
+        if connection.provider == "onedrive" and (result.get("Option") or {}).get("Name") == "config_driveid":
+            result = self._eligible_onedrive_drives(connection, result)
+        return result
+
+    def _eligible_onedrive_drives(self, connection, question):
+        """Read each candidate root through the engine, using only this pending remote."""
+        option = question["Option"]
+        eligible, seen = [], set()
+        deadline = time.monotonic() + self.timeout
+        for item in option.get("Examples") or []:
+            if self.cancel_event.is_set():
+                raise CloudSyncError("Account operation cancelled.")
+            if time.monotonic() >= deadline:
+                raise CloudSyncError("Checking OneDrive storage timed out. Cancel and sign in again.")
+            identifier = item.get("Value")
+            if not isinstance(identifier, str) or not re.fullmatch(r"[A-Za-z0-9!_-]+", identifier):
+                continue
+            if identifier in seen:
+                continue
+            seen.add(identifier)
+            # A successful driveid_final reads /drives/{id}/root and stores
+            # drive_id/type locally. Reapply the user's eventual choice later.
+            probe = self.operation("config/update", {"name": "es_" + connection.id, "parameters": {},
+                "opt": {"nonInteractive": True, "obscure": True, "continue": True,
+                        "state": question["State"], "result": identifier}})
+            if probe.get("Error") or (probe.get("Option") or {}).get("Name") != "config_drive_ok":
+                continue
+            # config/get may contain credentials: retain only the type and
+            # never attach its response to a setup question or error.
+            drive_type = self.call("config/get", {"name": "es_" + connection.id}).get("drive_type")
+            if drive_type in {"personal", "business", "documentLibrary"}:
+                eligible.append({"Value": identifier, "Help": item.get("Help") or identifier})
+        if not eligible:
+            return {"State": "choose_type", "Option": None,
+                    "Error": "No accessible compatible drives found. Retry to check OneDrive access again."}
+        default = option.get("Default")
+        if default not in {item["Value"] for item in eligible}:
+            default = eligible[0]["Value"]
+        return dict(question, Option=dict(option, Examples=eligible, Exclusive=True, Default=default))
 
     def configure_google(self, connection, parameters, token):
         """Import only a native login result; user setup cannot supply tokens."""

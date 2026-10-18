@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Each cloud service now permits one connected account. Connected providers explain how to add Cloud Sync activities or disconnect before changing accounts. Existing connections remain usable; local/NAS connections are exempt.
+- OneDrive drive selection now checks access before offering a drive and includes supported Personal, Business and SharePoint storage only. Unavailable drives are omitted; an empty result offers retry.
+
 - OneDrive drive selection now displays readable drive names, honors the provider's default selection and submits the matching drive identifier. Non-exclusive questions still allow a manual answer.
 
 - Fixed OneDrive setup displaying a blank question after a recoverable drive-discovery error. Retry now reloads available drives and keeps the authorized account pending until folder selection.

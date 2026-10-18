@@ -28,7 +28,7 @@ def test_browser_question_is_automatic_but_drive_choice_is_explicit(qapp, tmp_pa
 
 def test_authorized_account_waits_for_root_choice_and_cancel_preserves_existing(qapp, tmp_path):
     config = configuration(tmp_path)
-    existing = ConnectionConfig("existing", "Existing", "onedrive", "EverySync")
+    existing = ConnectionConfig("existing", "Existing", "dropbox", "EverySync")
     config.save(replace(config.get_app_config(), connections=[existing]))
     factory = SetupFactory([{}])
     service = CloudService(config, transport_factory=factory, parent=qapp)

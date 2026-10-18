@@ -2,7 +2,31 @@ This architecture ensures the UI remains independent from the core synchronizati
 
 The main window features a modern header with page title and optional subtitle, a navigation sidebar with application logo, grouped navigation items, and a bottom section for Settings and About. The design follows Windows 11-inspired Fluent Design principles with proper spacing, rounded corners, and subtle hover effects.
 
-Last updated: 2026-10-17
+Last updated: 2026-10-18
+
+## Cloud account and eligible drive policy (2026-10-18)
+
+- `CloudService` permits one new saved connection per non-local provider,
+  checking before authorization and before publication. The Connections page
+  disables sign-in and explains how to use Cloud Sync or disconnect first.
+  Existing duplicate configurations remain loadable and individually removable;
+  no accounts or activities are automatically deleted. Local/NAS connections
+  remain multiple. Conflicts before publication discard only pending credentials.
+- Before exposing OneDrive `config_driveid`, `RcloneTransport` reads each
+  candidate root through the pinned engine setup state. Successful candidates
+  must have a stored type of personal, business or documentLibrary; SharePoint
+  libraries are included. `config/get` reads only the pending remote internally;
+  its credential-bearing response never reaches UI or logs. The selector is
+  exclusive, deduplicated and has an eligible default. The service rejects
+  unlisted IDs or a substituted continuation state. Empty lists offer retry.
+- Probes update only the encrypted pending configuration. The user's eventual
+  selection is reapplied before confirmation; probes never create remote files.
+  Root-read eligibility does not certify write permissions; folder verification
+  and normal transfer error handling continue to apply.
+- Tests cover duplicate guards, disconnect recovery, legacy/local compatibility,
+  late-save conflicts, supported/denied drive selection and protected metadata.
+  An isolated Graph fixture exercises the actual pinned rclone engine, including
+  rejecting a drive and selecting a different one after the eligibility probes.
 
 ## Remove configured folders (2026-10-17)
 

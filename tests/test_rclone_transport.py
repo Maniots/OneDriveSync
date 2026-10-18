@@ -132,10 +132,21 @@ def test_native_onedrive_error_only_state_can_rediscover_drives(transport):
         def do_GET(self):
             if self.server.fail:
                 status, value = 403, {"error": {"code": "accessDenied", "message": "Isolated fixture"}}
+            elif self.path.endswith("/denied/root"):
+                status, value = 403, {"error": {"code": "accessDenied", "message": "No access to this drive"}}
+            elif self.path.endswith("/root"):
+                drive_id = self.path.split("/")[-2]
+                drive_type = {"fixture": "personal", "shared": "documentLibrary"}.get(drive_id, "unsupported")
+                status, value = 200, {"id": "root", "name": "Root", "folder": {},
+                    "parentReference": {"driveId": drive_id, "driveType": drive_type}}
             else:
                 drive = {"id": "fixture", "name": "Test drive", "driveType": "personal"}
                 status = 200
-                value = {"value": [drive]} if self.path.endswith("/drives") else drive
+                value = {"value": [
+                    {"id": "denied", "name": "Unavailable", "driveType": "business"}, drive,
+                    {"id": "unknown", "name": "Unknown", "driveType": "unsupported"},
+                    {"id": "shared", "name": "Shared documents", "driveType": "documentLibrary"},
+                ]} if self.path.endswith("/drives") else drive
             body = json.dumps(value).encode()
             self.send_response(status)
             self.send_header("Content-Type", "application/json")
@@ -161,6 +172,15 @@ def test_native_onedrive_error_only_state_can_rediscover_drives(transport):
                                      {}, state="onedrive", answer="")
         assert not result.get("Error")
         assert result["Option"]["Name"] == "config_driveid"
+        assert result["Option"]["Exclusive"] is True
+        assert [item["Value"] for item in result["Option"]["Examples"]] == ["fixture", "shared"]
+        assert result["Option"]["Default"] == "fixture"
+        # Probes leave the last candidate in the pending local config. The
+        # actual choice must reapply the selected ID before confirmation.
+        result = transport.configure(ConnectionConfig("onedrive", "OneDrive", "onedrive", "EverySync"),
+                                     {}, state=result["State"], answer="fixture")
+        assert result["Option"]["Name"] == "config_drive_ok"
+        assert transport.call("config/get", {"name": "es_onedrive"})["drive_id"] == "fixture"
     finally:
         server.shutdown()
         server.server_close()

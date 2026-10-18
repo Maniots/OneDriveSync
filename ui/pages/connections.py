@@ -337,8 +337,12 @@ class ConnectionsPage(QWidget):
         self.test_button.setEnabled(not busy and self.pending is None)
         self.remove_button.setEnabled(not busy and self.pending is None)
         self.cancel_button.setEnabled(self.pending is not None)
+        provider = self.provider_combo.currentData()
+        config = self.config_service.get_app_config()
+        connected = provider != "local" and any(item.provider == provider for item in (config.connections if config else []))
+        self.provider_hint.setText(PROVIDER_SETUP[provider].hint)
         google_ready = True
-        if self.provider_combo.currentData() == "drive":
+        if provider == "drive":
             try:
                 apps = load_oauth_apps()
                 custom = any(edit.text().strip() for edit in self.option_inputs.values())
@@ -349,7 +353,10 @@ class ConnectionsPage(QWidget):
             except ValueError as error:
                 google_ready = False
                 self.provider_hint.setText(str(error))
-        self.connect_button.setEnabled(not busy and self.pending is None and google_ready)
+        if connected:
+            self.provider_hint.setText("An account for this service is already connected. Add activities in Cloud Sync, or disconnect it to connect another account.")
+        self.connect_button.setText("Account connected" if connected else SIGN_IN_LABELS.get(provider, "Connect account"))
+        self.connect_button.setEnabled(not busy and self.pending is None and google_ready and not connected)
 
     def load_cloud_folders(self, path):
         try:

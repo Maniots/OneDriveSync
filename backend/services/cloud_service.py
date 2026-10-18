@@ -49,6 +49,7 @@ class CloudService(QObject):
         self._pending_connection = None
         self._choose_root = False
         self._authorized = False
+        self._drive_choices = None
         self.action = ""
 
     @property
@@ -92,6 +93,7 @@ class CloudService(QObject):
                 else:
                     self._pending_connection = None
                     self._authorized = False
+                    self._drive_choices = None
                     self.failed.emit(task.value)
             elif task.error:
                 self.failed.emit(task.error)
@@ -104,11 +106,20 @@ class CloudService(QObject):
                     self._authorized = True
                 elif task.action in {"configure", "save_root"} and not value.get("question"):
                     connection = value["connection"]
+                    if self._provider_connected(connection):
+                        self._discard_pending("An account for this service is already connected. Disconnect it before connecting another.")
+                        return
                     self.config_service.save(replace(config, connections=[*config.connections, connection]))
                     self._pending_connection = None
                     self._authorized = False
+                    self._drive_choices = None
                 elif task.action == "remove":
                     self.config_service.save(replace(config, connections=[c for c in config.connections if c.id != value]))
+                if task.action == "configure":
+                    question = value.get("question") or {}
+                    option = question.get("Option") or {}
+                    self._drive_choices = ((question["State"], {item["Value"] for item in option.get("Examples", [])})
+                        if value["connection"].provider == "onedrive" and option.get("Name") == "config_driveid" else None)
                 self.completed.emit(task.action, value)
         except Exception as error:
             message = str(error) if isinstance(error, (ValueError, CloudSyncError)) else "Could not save the connection. Check the configuration and retry."
@@ -141,13 +152,20 @@ class CloudService(QObject):
         self.ensure_idle()
         if any(item.id == connection.id for item in self.config_service.get_app_config().connections):
             raise ValueError("This connection is already configured.")
+        if self._provider_connected(connection):
+            raise ValueError("An account for this service is already connected. Disconnect it before connecting another.")
         if state is None and self._pending_connection is not None:
             raise ValueError("Finish or cancel the pending account setup first.")
         if state is not None and self._pending_connection != connection:
             raise ValueError("Start account setup again before continuing authorization.")
         if self._authorized:
             raise ValueError("Choose a cloud folder to finish connecting this account.")
+        if state is not None and self._drive_choices is not None:
+            expected_state, allowed = self._drive_choices
+            if state != expected_state or answer not in allowed:
+                raise ValueError("Choose one of the available OneDrive drives.")
         if state is None:
+            self._drive_choices = None
             self._choose_root = choose_root and connection.provider in OAUTH_PROVIDERS
             if connection.provider == "drive":
                 # Fail before starting a worker or creating an unfinished remote
@@ -195,13 +213,19 @@ class CloudService(QObject):
                 return {"connection": connection, "question": None}
         self._submit("configure", configure)
 
+    def _provider_connected(self, connection):
+        return connection.provider != "local" and any(
+            item.provider == connection.provider for item in self.config_service.get_app_config().connections)
+
     @staticmethod
     def _setup_retry(connection, result):
         state = result["State"]
         message = "Account setup could not continue. Retry to return to the setup choices, or cancel and sign in again."
         if connection.provider == "onedrive":
             error = str(result["Error"]).casefold()
-            if "failed to query available drives" in error:
+            if "no accessible compatible drives" in error:
+                message = "No accessible, compatible OneDrive storage was found. Check access in your browser, then retry or sign in with another account."
+            elif "failed to query available drives" in error:
                 message = ("Microsoft could not list your OneDrive storage. Retry to load your drives again. "
                            "If this continues, open OneDrive in your browser with the same account and check access.")
                 if state == "driveid":

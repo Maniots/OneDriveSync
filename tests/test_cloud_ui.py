@@ -184,7 +184,7 @@ def test_guided_oauth_questions_keep_secrets_masked_and_save_only_after_completi
 def test_cancel_pending_question_removes_only_pending_credentials(qapp, tmp_path):
     config, factory, service, page = setup_page(tmp_path, [
         {"State": "browser", "Option": {"Help": "Continue sign-in"}}])
-    established = ConnectionConfig("existing", "Existing", "onedrive", "EverySync")
+    established = ConnectionConfig("existing", "Existing", "dropbox", "EverySync")
     config.save(replace(config.get_app_config(), connections=[established]))
     factory.remotes.add("existing")
     page.connect_button.click()
