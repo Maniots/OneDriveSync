@@ -21,6 +21,8 @@
 
 ## 1.5.0 — 2026-10-18
 
+- Publish only `EverySync-Setup-<version>.exe`; the update manifest and updater use that name. Versions through 1.5.0.21 require one manual installer upgrade before automatic updates can resume.
+
 - Added Connections and Cloud Sync pages with guided account setup for direct OneDrive, Google Drive, Amazon S3, SFTP, WebDAV, Dropbox, Azure Blob and Backblaze B2, plus local/network storage.
 - Cloud jobs support additive uploads/downloads, content verification, full remote snapshots and restore into an empty folder.
 - Optional bidirectional jobs preserve conflicting changes for explicit resolution; interrupted work resumes before the next requested direction. Deletes are never propagated.

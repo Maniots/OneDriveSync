@@ -113,7 +113,7 @@ Run the EverySync installer over the existing installation. No separate data mig
 
 The executable remains `OneDrivePCSync.exe`, and the installation/data directories, task names and other technical identifiers retain their original names to preserve compatibility. Windows product metadata, the app and shortcuts display **EverySync**.
 
-Each release contains `EverySync-Setup-<version>.exe` and a byte-identical `OneDrivePCSync-Setup-<version>.exe` alias. The update manifest uses the legacy alias so older clients can discover and install EverySync. The repository remains `Maniots/OneDriveSync`.
+Each new release contains a single installer, `EverySync-Setup-<version>.exe`, also referenced by the update manifest. Versions through 1.5.0.21 expect the old installer name: download and run the EverySync installer manually once to migrate; subsequent updates use the new name. The repository remains `Maniots/OneDriveSync`.
 
 </details>
 

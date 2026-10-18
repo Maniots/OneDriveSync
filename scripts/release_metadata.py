@@ -2,7 +2,6 @@
 import argparse
 import hashlib
 import json
-import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -53,10 +52,7 @@ def main():
         print(info["version"])
     else:
         info = json.loads((ROOT / "src/build-info.json").read_text(encoding="utf-8"))
-        installer = ROOT / "dist/installer" / f'OneDrivePCSync-Setup-{info["version"]}.exe'
-        canonical = installer.with_name(f'EverySync-Setup-{info["version"]}.exe')
-        # Installed 1.3 clients strictly require this legacy asset name.
-        shutil.copyfile(canonical, installer)
+        installer = ROOT / "dist/installer" / f'EverySync-Setup-{info["version"]}.exe'
         with installer.open("rb") as handle:
             digest = hashlib.file_digest(handle, "sha256").hexdigest()
         manifest = {**info, "schema": 1, "channel": "master",
