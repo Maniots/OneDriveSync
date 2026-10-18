@@ -8,6 +8,38 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 _application = None
 
 
+def dispose_sync_services(app, services):
+    """Stop test-owned controllers even when Python reference cycles survive."""
+    from PySide6.QtCore import QCoreApplication, QEvent, QTimer
+    from shiboken6 import isValid
+
+    for service in services:
+        if not isValid(service):
+            continue
+        for timer in service.findChildren(QTimer):
+            if isValid(timer):
+                timer.stop()
+        service.wait_for_finished()
+        service.deleteLater()
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    app.processEvents()
+
+
+@pytest.fixture
+def sync_service_factory(qapp):
+    from backend.services.sync_service import SyncService
+
+    services = []
+
+    def create(config_service):
+        service = SyncService(config_service)
+        services.append(service)
+        return service
+
+    yield create
+    dispose_sync_services(qapp, services)
+
+
 def dispose_qt_widgets(app, widgets):
     from PySide6.QtCore import QCoreApplication, QEvent, QTimer
     from shiboken6 import isValid

@@ -485,4 +485,3 @@ def test_cross_endpoint_aliases_stop_before_any_write(setup, bidirectional, left
     assert (local / left).read_text() == "local version"
     assert (remote / right).read_text() == "remote version"
     assert not (state / "state.json").exists()
-

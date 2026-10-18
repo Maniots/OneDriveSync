@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Stop and dispose standalone Qt monitor services after their tests, preventing delayed callbacks from leaking into subsequent CI tests.
+
 - Pin PySide6 to the verified 6.11.1 Windows stack so CI and new builds do not silently upgrade to an unvalidated Qt minor release.
 
 - Windows taskbar grouping now uses the stable EverySync application identity before Qt starts. Start menu and desktop shortcuts use the same identity and explicitly select the EverySync icon embedded in the executable.

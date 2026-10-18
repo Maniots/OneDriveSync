@@ -4,15 +4,18 @@ The main window features a modern header with page title and optional subtitle, 
 
 Last updated: 2026-10-18
 
-## Windows CI dependency compatibility (2026-10-18)
+## Windows CI Qt lifecycle and dependency compatibility (2026-10-18)
 
 - `requirements.txt` pins PySide6 to 6.11.1, matching the locally verified
   desktop/frozen stack. The previously unconstrained dependency installed
   6.12.0 on GitHub and crashed natively during `test_server` event processing.
-  The same full-suite crash was reproduced in an isolated local 6.12 environment;
-  isolated server tests still pass, so no specific socket-lifetime defect or
-  upstream Qt root cause is asserted. Future Qt upgrades require full-suite and
-  frozen acceptance validation, not only isolated tests.
+  Pinning alone did not resolve CI: the same failure occurred with 6.11.1.
+  Monitor tests left parentless SyncService retry/poll timers alive after test
+  teardown, including a 30-second retry retained by a bound-method cycle.
+  A managed service factory now stops timers, joins workers and explicitly
+  destroys those test-owned QObjects. A regression proves callbacks do not run
+  after cleanup. No application socket workaround or test skip was added.
+  Future Qt upgrades require full-suite and frozen acceptance validation.
 
 ## Windows taskbar identity (2026-10-18)
 
