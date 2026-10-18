@@ -2,8 +2,14 @@
 
 This setup is performed once by the release maintainer. End users of a
 configured release use the sign-in buttons; they do not register applications.
-No Google application has been registered for this repository yet. The shipped
-`src/oauth-apps.json` is `{}`, so Google sign-in is unavailable by default.
+The maintainer's local `src/oauth-apps.json` and installed EverySync copy are
+configured for Google sign-in. The client identity was checked against the
+downloaded Desktop credentials on 2026-10-18. Application credentials stay on
+the maintainer's PC; the versioned template remains `{}`. Source runs and builds
+enable Google only when the maintainer supplies that local metadata.
+API enablement, consent publication, test-user access and Google verification
+status must still be checked in the project console; they cannot be established
+from the credentials file alone.
 
 ## Google desktop application
 
@@ -14,7 +20,9 @@ No Google application has been registered for this repository yet. The shipped
 3. Create OAuth credentials with application type **Desktop app**. EverySync
    uses Google's supported loopback callback on `127.0.0.1` with an ephemeral
    port and S256 PKCE. Do not register this as a web or confidential application.
-4. Put the desktop application metadata in `src/oauth-apps.json` before building:
+4. Put the desktop application metadata in your local `src/oauth-apps.json`
+   before building. Keep the populated file out of commits; the repository
+   retains the empty template:
 
    ```json
    {

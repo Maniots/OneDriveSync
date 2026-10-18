@@ -17,7 +17,7 @@ Cloud folders can be created during setup with the explicit checkbox. Buckets an
 | --- | --- |
 | **Local folder / NAS** | Browse an existing local or accessible network folder. No account is needed. Use this to try the complete workflow first. |
 | **OneDrive online** | Sign in with Microsoft, choose a drive if requested, then choose a folder. No application registration is required from the user. |
-| **Google Drive** | Sign in with Google, then choose a folder. Available after the maintainer configures the EverySync Google desktop application for the release. |
+| **Google Drive** | Sign in with Google, then choose a folder. Requires a build containing the maintainer's application metadata; the maintainer's installed build is configured. |
 | **Amazon S3 / compatible** | Supply an existing AWS profile or access key ID and secret; optionally session token, region and HTTPS endpoint. Root: `bucket-name/prefix`. Custom endpoints use the generic S3 provider. [Provider setup](https://rclone.org/s3/). |
 | **SFTP** | Enter host/user and a password or private-key file, plus a trusted `known_hosts` file. Verify the server fingerprint through your server administrator before using that file. [Provider setup](https://rclone.org/sftp/). |
 | **WebDAV / Nextcloud** | Enter the HTTPS WebDAV URL, user and app password. |
@@ -27,7 +27,7 @@ Cloud folders can be created during setup with the explicit checkbox. Buckets an
 
 ### Google availability and advanced applications
 
-The shared rclone Google client is being retired during 2026. EverySync uses a maintainer-owned desktop OAuth application instead. The source repository currently ships empty application metadata because registration is pending; Google sign-in is disabled until that metadata is supplied. The maintainer completes registration once for the release, following [maintainer setup](oauth-maintainer.md). End users of an enabled release only sign in and consent in their browser.
+The shared rclone Google client is being retired during 2026. EverySync uses a maintainer-owned desktop OAuth application instead. Google sign-in is configured in the maintainer's local sources and installed build; application credentials are kept locally and the repository retains an empty metadata template. Builds containing the configured metadata enable Google automatically; older releases need an update. End users only sign in and consent in their browser. The maintainer manages consent publication, test users and provider verification following [maintainer setup](oauth-maintainer.md).
 
 Advanced users with an existing desktop OAuth application can supply its client ID and client secret under **Advanced settings**. Do not paste user tokens into `config.json` or send them in issue reports. Organization-managed accounts can require administrator approval. Native Google login uses PKCE; token storage and renewal remain managed by the encrypted rclone configuration.
 
@@ -73,4 +73,4 @@ Existing folder pairs remain unchanged. To return to a version without cloud sup
 
 The adapter, encrypted configuration, transfer, dry run, snapshots, restore, pending recovery and conflicts are exercised with isolated Windows local storage through the real pinned engine. The frozen executable receives a separate acceptance check. Integrated sign-in, explicit account choices and post-login folder selection are tested with controlled responses. Native Google PKCE tests use real local callbacks and controlled token exchanges.
 
-**Live account certification is pending for every remote provider.** No test Microsoft/Google OAuth apps, S3 buckets or other service accounts were available for this implementation. Provider availability is an integration capability, not a claim that each account type, policy or server has been certified. Begin with a disposable folder/account before using important application data.
+**Live account certification is pending for every remote provider.** A Google Desktop application is now configured and its client metadata has been checked, but successful live consent, API access and token renewal have not yet been certified. Provider availability is an integration capability, not a claim that each account type, policy or server has been certified. Begin with a disposable folder/account before using important application data.

@@ -109,6 +109,7 @@ def test_oauth_page_signs_in_then_browses_and_saves_folder(qapp, tmp_path):
 
 def test_google_without_app_does_not_start_remote_setup(qapp, tmp_path, monkeypatch):
     monkeypatch.setattr("src.cloud_oauth.load_oauth_apps", lambda: {})
+    monkeypatch.setattr("ui.pages.connections.load_oauth_apps", lambda: {})
     config = configuration(tmp_path)
     factory = SetupFactory([])
     service = CloudService(config, transport_factory=factory)
@@ -122,6 +123,44 @@ def test_google_without_app_does_not_start_remote_setup(qapp, tmp_path, monkeypa
     page.option_inputs["client_secret"].setText("desktop")
     assert page.connect_button.isEnabled()
     assert not factory.calls
+
+
+def test_google_bundled_app_signs_in_without_manual_credentials(qapp, tmp_path, monkeypatch):
+    from tests.test_cloud_ui import SetupClient
+    apps = {"drive": {"client_id": "desktop.apps.googleusercontent.com", "client_secret": "public-desktop"}}
+    monkeypatch.setattr("src.cloud_oauth.load_oauth_apps", lambda: apps)
+    monkeypatch.setattr("ui.pages.connections.load_oauth_apps", lambda: apps)
+    token = {"access_token": "private-access", "refresh_token": "private-refresh", "token_type": "Bearer", "expiry": "2099-01-01T00:00:00Z"}
+    observed = []
+    def login(parameters, cancel_event):
+        assert not cancel_event.is_set()
+        observed.append(parameters)
+        return token
+    monkeypatch.setattr("src.cloud_oauth.google_login", login)
+    class Client(SetupClient):
+        def configure_google(self, connection, parameters, received_token):
+            assert parameters == apps["drive"] and received_token == token
+            self.owner.remotes.add(connection.id)
+            return {}
+    config = configuration(tmp_path)
+    factory = SetupFactory([])
+    service = CloudService(config, transport_factory=lambda *args, cancel_event=None, **kwargs: Client(factory, cancel_event))
+    page = ConnectionsPage(config, service)
+    service.setParent(page)
+    page.provider_combo.setCurrentIndex(page.provider_combo.findData("drive"))
+    assert page.connect_button.text() == "Sign in with Google"
+    assert page.connect_button.isEnabled() and page.options_widget.isHidden()
+    assert all(not edit.text() for edit in page.option_inputs.values())
+    page.connect_button.click()
+    spin(qapp, lambda: not service.busy)
+    assert observed == [apps["drive"]]
+    assert not config.get_app_config().connections
+    assert not page.folder_group.isHidden()
+    page.save_root_button.click()
+    spin(qapp, lambda: not service.busy)
+    assert config.get_app_config().connections[0].provider == "drive"
+    assert "private-access" not in (tmp_path / "config.json").read_text()
+    assert "private-refresh" not in (tmp_path / "config.json").read_text()
 
 
 def test_root_verification_failure_keeps_authorized_account_for_retry(qapp, tmp_path):

@@ -64,7 +64,8 @@ def test_provider_fields_mask_secrets_and_guide_oauth(qapp, tmp_path):
     assert "client_id" in page.option_inputs
     from PySide6.QtWidgets import QLineEdit
     assert page.option_inputs["client_secret"].echoMode() == QLineEdit.EchoMode.Password
-    assert "sign-in" in page.provider_hint.text()
+    assert "Google" in page.provider_hint.text()
+    assert page.connect_button.text() == "Sign in with Google"
     assert page.options_widget.isHidden()
     assert page.provider_combo.findData("onedrive") >= 0
     assert page.provider_combo.findData("s3") >= 0
