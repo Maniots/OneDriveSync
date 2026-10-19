@@ -28,12 +28,15 @@ to refresh its token, then uses its authenticated local config/get operation.
 Provider APIs use fixed HTTPS URLs, reject redirects, have bounded response size
 and timeout, and return only normalized display fields. Tokens remain in memory;
 no new OAuth scopes, sign-in, credentials export, shell command or config migration.
-Google uses Drive About.user; Dropbox uses get_current_account. Microsoft lists
-the signed-in user's /me/drives and accepts owner.user only for a unique
-personal/business drive without pagination; ambiguous results remain unavailable.
-It never reads the owner of the selected SharePoint/shared drive, calls the
-auto-provisioning /me/drive endpoint, or requests User.Read. Missing email remains
-missing. An unavailable profile does not invalidate the saved connection.
+Google uses Drive About.user; Dropbox uses get_current_account. Microsoft reads
+only /me (displayName, mail), which identifies the authenticated
+caller. It is best-effort with the existing grant; if User.Read is not already
+granted, the profile remains unavailable. Never request new consent or User.Read.
+Drive owners, even a single apparently unambiguous personal/business owner, do not
+prove the caller's identity and are never used. Do not list drives or call the
+auto-provisioning /me/drive endpoint. Missing email remains missing. An unavailable
+profile does not invalidate the saved connection. Do not infer an email from
+userPrincipalName; a display name alone is sufficient.
 
 `CloudService.refresh_account_identities(force=False)` asynchronously populates
 `account_identities[id]` with `{name?, email?, status}`; status is `available`,

@@ -32,10 +32,9 @@ def request_fixture(monkeypatch, value):
     ("dropbox", {"name": {"display_name": "Zoë"}, "email": "zoe@example.test", "account_id": "unused"},
      {"name": "Zoë", "email": "zoe@example.test"},
      "https://api.dropboxapi.com/2/users/get_current_account", "POST", b"null"),
-    ("onedrive", {"value": [{"driveType": "business", "owner": {"user": {
-        "displayName": "Éva", "email": "eva@example.test"}}}]},
-     {"name": "Éva", "email": "eva@example.test"},
-     "https://graph.microsoft.com/v1.0/me/drives?$select=owner,driveType&$top=2", "GET", None),
+    ("onedrive", {"displayName": "Example User", "mail": "user@example.test"},
+     {"name": "Example User", "email": "user@example.test"},
+     "https://graph.microsoft.com/v1.0/me?$select=displayName,mail", "GET", None),
 ])
 def test_identity_uses_only_fixed_profile_endpoint(monkeypatch, provider, body, expected, url, method, data):
     opener, _ = request_fixture(monkeypatch, body)
@@ -72,11 +71,18 @@ def test_microsoft_ambiguous_or_shared_identity_is_unavailable(monkeypatch, body
     assert opener.open.call_count == 1
 
 
-def test_microsoft_unique_primary_ignores_shared_drive_owner_and_missing_email(monkeypatch):
+def test_microsoft_drive_owner_is_not_the_signed_in_account(monkeypatch):
     request_fixture(monkeypatch, {"value": [
         {"driveType": "documentLibrary", "owner": {"user": {"email": "shared@example.test"}}},
         {"driveType": "personal", "owner": {"user": {"displayName": "Signed in"}}}]})
-    assert cloud_identity.fetch_account_identity("onedrive", "fixture", threading.Event()) == {"name": "Signed in"}
+    assert cloud_identity.fetch_account_identity("onedrive", "fixture", threading.Event()) == {}
+
+
+def test_microsoft_signed_in_profile_does_not_infer_email_from_login_name(monkeypatch):
+    request_fixture(monkeypatch, {"displayName": "Signed in", "mail": None,
+                                 "userPrincipalName": "login@example.test"})
+    assert cloud_identity.fetch_account_identity("onedrive", "fixture", threading.Event()) == {
+        "name": "Signed in"}
 
 
 @pytest.mark.parametrize("token", ["", None, "fixture\r\nInjected: value", "nonascii-é", "two words"])
@@ -171,8 +177,6 @@ def test_unsupported_provider_never_opens_network(monkeypatch):
 
 
 @pytest.mark.parametrize("provider,body", [
-    ("onedrive", {"value": [{"driveType": [], "owner": {}}]}),
-    ("onedrive", {"value": [{"driveType": "business", "owner": {"user": []}}]}),
     ("dropbox", {"name": []}),
 ])
 def test_malformed_nested_fields_never_escape_raw_exceptions(monkeypatch, provider, body):

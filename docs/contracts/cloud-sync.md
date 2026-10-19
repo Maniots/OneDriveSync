@@ -60,11 +60,12 @@ This Python-internal contract is reviewed before implementation. It does not def
   rclone refresh authorization; `config/get` may then read only that remote's
   matching provider and access token internally. Tokens and raw config never
   reach UI, cache, errors, logs or another config file. The token is used only
-  against fixed HTTPS Google Drive About, Microsoft /me/drives, or Dropbox
+  against fixed HTTPS Google Drive About, Microsoft /me, or Dropbox
   get_current_account endpoints, with redirects rejected, bounded reads/timeouts
-  and cancellation. No new scopes or browser login. Microsoft accepts only an
-  unambiguous personal/business owner from the authenticated user's drive list,
-  never a selected shared-drive owner or the auto-provisioning /me/drive endpoint.
+  and cancellation. No new scopes or browser login. Microsoft uses only the
+  authenticated caller's profile if the existing grant permits it; otherwise
+  identity is unavailable. Never infer the caller from a drive owner or call
+  the auto-provisioning /me/drive endpoint. No User.Read consent is requested.
   Return only normalized bounded name/email fields; missing or unsupported
   identity remains explicit. Details and reviewed service/cache semantics:
   [identity contract](../specs/2026-10-19-connection-identity-design.md).

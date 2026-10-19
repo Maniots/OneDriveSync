@@ -14,7 +14,7 @@ _UNAVAILABLE = "Account details are unavailable. Verify access and retry."
 _ENDPOINTS = {
     "drive": ("https://www.googleapis.com/drive/v3/about?fields=user(displayName,emailAddress)", None),
     "dropbox": ("https://api.dropboxapi.com/2/users/get_current_account", b"null"),
-    "onedrive": ("https://graph.microsoft.com/v1.0/me/drives?$select=owner,driveType&$top=2", None),
+    "onedrive": ("https://graph.microsoft.com/v1.0/me?$select=displayName,mail", None),
 }
 
 
@@ -65,25 +65,9 @@ def _profile_fields(provider, value):
         if not isinstance(name, dict):
             raise AccountIdentityError(_UNAVAILABLE)
         return {"name": name.get("display_name"), "email": value.get("email")}
-    drives = value.get("value")
-    if not isinstance(drives, list):
-        raise AccountIdentityError(_UNAVAILABLE)
-    if "@odata.nextLink" in value:
-        return {}
-    eligible = []
-    for drive in drives:
-        if not isinstance(drive, dict):
-            raise AccountIdentityError(_UNAVAILABLE)
-        if drive.get("driveType") not in ("personal", "business"):
-            continue
-        owner = drive.get("owner", {})
-        user = owner.get("user", {}) if isinstance(owner, dict) else {}
-        # Count eligible drives even when their owner has no display fields:
-        # a second drive must not make an ambiguous identity appear unique.
-        eligible.append(user if isinstance(user, dict) else {})
-    if len(eligible) != 1:
-        return {}
-    return {"name": eligible[0].get("displayName"), "email": eligible[0].get("email")}
+    # A drive's owner can be another person. Only /me identifies the caller.
+    # userPrincipalName is a login identifier, not necessarily an email address.
+    return {"name": value.get("displayName"), "email": value.get("mail")}
 
 
 def fetch_account_identity(provider, access_token, cancel_event):
