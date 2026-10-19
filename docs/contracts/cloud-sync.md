@@ -1,6 +1,6 @@
 # Internal cloud transport contract — v1
 
-This Python-internal contract is reviewed before implementation. It does not define a new network service. Its implementation talks only to an app-owned rclone daemon authenticated on a loopback address.
+This Python-internal contract is reviewed before implementation. It does not define a new network service. File operations use an app-owned rclone daemon authenticated on a loopback address. Account display metadata may also use the narrowly defined fixed provider endpoints below.
 
 ## Inputs and errors
 
@@ -26,7 +26,7 @@ This Python-internal contract is reviewed before implementation. It does not def
 - OneDrive `config_driveid` questions are filtered before presentation: probe each
   distinct offered ID using that returned setup state, require successful
   `config_drive_ok` plus stored `drive_type` personal/business/documentLibrary.
-  `config/get` is allowed solely for this pending remote's metadata; credentials
+  For these setup probes, `config/get` is limited to this pending remote's metadata; credentials
   in the response stay internal and never reach UI, errors or logs. Probe errors
   returned by the provider omit that candidate; transport exceptions/cancellation
   abort the check. No remote files are created or changed. Return exclusive
@@ -55,6 +55,20 @@ This Python-internal contract is reviewed before implementation. It does not def
   error continuations keep the provider's returned state. Error-free states
   without options may advance automatically, bounded by the existing step cap.
 - `test(connection) -> success`: authenticated read of the configured root; does not write a sentinel into user data.
+- `account_info(connection) -> {name?, email?}`: optional display-only identity for
+  an existing app-owned OAuth remote, under the same locks. A root read lets
+  rclone refresh authorization; `config/get` may then read only that remote's
+  matching provider and access token internally. Tokens and raw config never
+  reach UI, cache, errors, logs or another config file. The token is used only
+  against fixed HTTPS Google Drive About, Microsoft /me, or Dropbox
+  get_current_account endpoints, with redirects rejected, bounded reads/timeouts
+  and cancellation. No new scopes or browser login. Microsoft uses only the
+  authenticated caller's profile if the existing grant permits it; otherwise
+  identity is unavailable. Never infer the caller from a drive owner or call
+  the auto-provisioning /me/drive endpoint. No User.Read consent is requested.
+  Return only normalized bounded name/email fields; missing or unsupported
+  identity remains explicit. Details and reviewed service/cache semantics:
+  [identity contract](../specs/2026-10-19-connection-identity-design.md).
 - `close()`: release owned subprocesses and socket resources, including failure/cancel paths.
 
 ## Coordinator semantics

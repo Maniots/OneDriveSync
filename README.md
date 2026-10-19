@@ -22,6 +22,13 @@ Windows 10+ · x64 · No Python required to install
 
 EverySync copies your selected application folders to local OneDrive folders or directly to cloud storage. **Connections** and **Cloud Sync** add direct OneDrive, Google Drive, Amazon S3 / compatible storage, SFTP, WebDAV, Dropbox, Azure Blob and Backblaze B2. See the [guided cloud setup](docs/cloud-sync.md) for account requirements, snapshots and validation status. Live account certification is pending; real-engine Windows checks use isolated local storage.
 
+**Connections** separates the service, connected account and cloud folder. Google,
+Microsoft and Dropbox account details load in the background using the saved
+sign-in. A provider may return only a display name; unavailable details are stated
+explicitly. Select a row and choose **Verify access** to check its folder and retry
+account details, or **Disconnect account** to remove the connection. The cloud
+folder is the parent folder used by activities you add in **Cloud Sync**.
+
 | Mode | Default direction | Purpose |
 | --- | --- | --- |
 | **Startup** | OneDrive → this PC | Bring your saved data onto this machine. |

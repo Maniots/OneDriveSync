@@ -10,6 +10,7 @@ from src.single_instance import acquire_single_instance_lock
 from src.runtime_paths import sync_lock_path
 from src.cloud_providers import OAUTH_PROVIDERS, setup_parameters
 from src.cloud_models import validate_relative_path
+from src.cloud_identity import normalize_account_identity
 
 
 class _Task(QThread):
@@ -51,6 +52,8 @@ class CloudService(QObject):
         self._authorized = False
         self._drive_choices = None
         self.action = ""
+        self.account_identities = {}
+        self._identity_shutdown = False
 
     @property
     def busy(self):
@@ -95,7 +98,13 @@ class CloudService(QObject):
                     self._authorized = False
                     self._drive_choices = None
                     self.failed.emit(task.value)
+            elif task.action == "accounts" and task.cancel_event.is_set():
+                self.failed.emit("Account operation cancelled.")
             elif task.error:
+                if task.action == "accounts":
+                    current = {c.id for c in self.config_service.get_app_config().connections}
+                    self.account_identities.update({identifier: {"status": "unavailable"}
+                        for identifier in task.identity_ids if identifier in current})
                 self.failed.emit(task.error)
             elif task.cancel_event.is_set():
                 self.failed.emit("Account operation cancelled.")
@@ -115,6 +124,14 @@ class CloudService(QObject):
                     self._drive_choices = None
                 elif task.action == "remove":
                     self.config_service.save(replace(config, connections=[c for c in config.connections if c.id != value]))
+                    self.account_identities.pop(value, None)
+                elif task.action == "accounts":
+                    current = {c.id for c in config.connections}
+                    self.account_identities.update({key: item for key, item in value.items() if key in current})
+                elif task.action == "test":
+                    if any(c.id == value["connection_id"] for c in config.connections):
+                        self.account_identities[value["connection_id"]] = value["identity"]
+                    value = value["connection_id"]
                 if task.action == "configure":
                     question = value.get("question") or {}
                     option = question.get("Option") or {}
@@ -273,8 +290,44 @@ class CloudService(QObject):
         def test(cancel_event):
             with self.transport_factory(self.config_service.cloud_root, cancel_event=cancel_event) as client:
                 client.test(connection)
-            return connection.id
+                identity = self._read_account_identity(client, connection)
+            return {"connection_id": connection.id, "identity": identity}
         self._submit("test", test)
+
+    @staticmethod
+    def _read_account_identity(client, connection):
+        if connection.provider not in OAUTH_PROVIDERS:
+            return {"status": "unsupported"}
+        try:
+            details = normalize_account_identity(client.account_info(connection))
+        except CloudSyncError:
+            details = {}
+        return dict(details, status="available" if details else "unavailable")
+
+    def refresh_account_identities(self, *, force=False):
+        if self._identity_shutdown:
+            return False
+        config = self.config_service.get_app_config()
+        current = {c.id for c in config.connections}
+        self.account_identities = {key: value for key, value in self.account_identities.items() if key in current}
+        connections = [c for c in config.connections if c.provider in OAUTH_PROVIDERS
+                       and (force or c.id not in self.account_identities)]
+        if not connections:
+            return False
+        def accounts(cancel_event):
+            result = {}
+            for connection in connections:
+                if cancel_event.is_set():
+                    break
+                try:
+                    with self.transport_factory(self.config_service.cloud_root, cancel_event=cancel_event) as client:
+                        result[connection.id] = self._read_account_identity(client, connection)
+                except CloudSyncError:
+                    result[connection.id] = {"status": "unavailable"}
+            return result
+        self._submit("accounts", accounts)
+        self._task.identity_ids = [c.id for c in connections]
+        return True
 
     def remove_connection(self, connection_id):
         self.ensure_idle()
@@ -300,12 +353,13 @@ class CloudService(QObject):
                      self.config_service.cloud_root, self.transport_factory).restore(job_id, run_id, target))
 
     def cancel(self):
-        if self._task is not None and self.action in {"configure", "test", "snapshots", "folders", "save_root"}:
+        if self._task is not None and self.action in {"configure", "test", "snapshots", "folders", "save_root", "accounts"}:
             self._task.cancel_event.set()
         elif self._task is None and self._pending_connection is not None:
             self._discard_pending("Account operation cancelled.")
 
     def wait_for_finished(self):
+        self._identity_shutdown = True
         if (self._pending_connection is not None and self.sync_service is not None
                 and self.sync_service.is_syncing):
             self.sync_service.wait_for_finished()

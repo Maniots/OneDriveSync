@@ -41,7 +41,7 @@ def test_legacy_duplicates_remain_loadable_and_removable(qapp, tmp_path):
     first = ConnectionConfig("first", "First", "onedrive", "EverySync")
     second = replace(first, id="second", name="Second")
     config.save(replace(config.get_app_config(), connections=[first, second]))
-    assert page.connection_list.count() == 2
+    assert page.connection_table.rowCount() == 2
     assert not page.connect_button.isEnabled()
     service.remove_connection(first.id)
     spin(qapp, lambda: not service.busy)

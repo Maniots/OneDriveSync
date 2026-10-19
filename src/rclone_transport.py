@@ -18,7 +18,8 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, ProxyHandler, build_opener
 
 from .cloud_credentials import CredentialStore
-from .cloud_models import validate_relative_path, validate_local_path
+from .cloud_identity import AccountIdentityError, fetch_account_identity
+from .cloud_models import validate_relative_path, validate_local_path, validate_id
 from .exceptions import OneDrivePCSyncError
 from .single_instance import acquire_single_instance_lock
 from .cloud_providers import setup_parameters
@@ -389,6 +390,42 @@ class RcloneTransport:
         if not isinstance(response.get("item"), dict) or response["item"].get("IsDir") is not True:
             raise CloudSyncError("The connection root does not exist or cannot be read.")
         return response
+
+    def account_info(self, connection):
+        """Read optional account labels without exporting credentials."""
+        if connection.provider not in {"drive", "onedrive", "dropbox"}:
+            return {}
+        unavailable = "Account details are unavailable. Verify access and retry."
+
+        def check_cancel():
+            if self.cancel_event.is_set():
+                raise CloudSyncError("Account operation cancelled.")
+
+        try:
+            validate_id(connection.id)
+            check_cancel()
+            response = self.call("operations/stat", {"fs": scoped_fs(connection), "remote": ""}, timeout=3)
+            check_cancel()
+            if not isinstance(response.get("item"), dict) or response["item"].get("IsDir") is not True:
+                raise CloudSyncError(unavailable)
+            config = self.call("config/get", {"name": "es_" + connection.id}, timeout=3)
+            check_cancel()
+            if config.get("type") != connection.provider:
+                raise CloudSyncError(unavailable)
+            raw_token = config.get("token")
+            if not isinstance(raw_token, str) or len(raw_token) > 65536:
+                raise CloudSyncError(unavailable)
+            token = json.loads(raw_token)
+            if not isinstance(token, dict) or not isinstance(token.get("access_token"), str) or not token["access_token"]:
+                raise CloudSyncError(unavailable)
+            result = fetch_account_identity(connection.provider, token["access_token"], self.cancel_event)
+            check_cancel()
+            return result
+        except AccountIdentityError:
+            check_cancel()
+            raise CloudSyncError(unavailable) from None
+        except (ValueError, TypeError, RecursionError):
+            raise CloudSyncError(unavailable) from None
 
     def close(self):
         if self._process is not None:

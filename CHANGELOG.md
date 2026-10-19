@@ -21,6 +21,8 @@
 
 ## 1.5.0 — 2026-10-18
 
+- Connections now separates service, signed-in account and cloud folder. Account names/emails load in the background from saved authorization, with clear unavailable states and Verify access / Disconnect account actions.
+
 - Publish only `EverySync-Setup-<version>.exe`; the update manifest and updater use that name. Versions through 1.5.0.21 require one manual installer upgrade before automatic updates can resume.
 
 - Added Connections and Cloud Sync pages with guided account setup for direct OneDrive, Google Drive, Amazon S3, SFTP, WebDAV, Dropbox, Azure Blob and Backblaze B2, plus local/network storage.
