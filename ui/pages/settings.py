@@ -339,7 +339,7 @@ class SettingsPage(QWidget):
             backup_layout = QVBoxLayout()
             backup_group.setLayout(backup_layout)
 
-            backup_note = QLabel("Backup settings are configured per folder in the Folders page.")
+            backup_note = QLabel("Backup settings are configured per destination in Synchronizations.")
             backup_note.setWordWrap(True)
             backup_note.setProperty("description", "true")
             backup_layout.addWidget(backup_note)

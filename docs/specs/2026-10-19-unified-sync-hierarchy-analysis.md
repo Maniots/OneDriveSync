@@ -5,16 +5,17 @@ Branch di preparazione: `feat/unified-sync-hierarchy`.
 
 ## Stato e autorizzazione
 
-Questo documento salva l'analisi richiesta dall'utente per una futura
-implementazione. Il lavoro attuale comprende soltanto branch e documentazione:
-nessuna modifica a interfaccia, motore, configurazione o installazione.
+Questo documento conserva l'analisi preparatoria. Il 19 ottobre 2026 l'utente ha
+chiesto di implementarla sul branch dedicato. Le decisioni operative consolidate
+sono nel [contratto di implementazione](../contracts/unified-sync.md) e nel
+[piano di migrazione](2026-10-19-unified-sync-hierarchy-migration.md).
 
 L'utente ha proposto una gerarchia scelta da lui, senza dividere locale e cloud:
 upload su tutte le destinazioni selezionate e download in ordine di priorità,
 per esempio Google Drive e, se la copia non esiste, OneDrive online.
-Ha chiesto di conservare l'analisi e rimandare l'implementazione a una richiesta
-successiva. Le raccomandazioni e le questioni aperte sotto non costituiscono
-ancora un contratto eseguibile approvato.
+La preparazione iniziale comprendeva soltanto branch e documentazione. La
+richiesta successiva autorizza ora implementazione e verifiche, mantenendo
+configurazioni private e installazione esistente fuori dalle prove.
 
 ## Problema attuale e riferimenti
 

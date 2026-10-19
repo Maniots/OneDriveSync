@@ -153,7 +153,7 @@ def test_table_separates_account_from_service_and_folder_and_keeps_selection(acc
     page.refresh()
     assert page.selected() == google
     assert table.item(0, 0).data(Qt.ItemDataRole.UserRole) == google.id
-    assert "cloud sync" in page.folder_explanation.text().lower()
+    assert "synchronizations" in page.folder_explanation.text().lower()
     assert page.test_button.text() == "Verify access"
     assert page.remove_button.text() == "Disconnect account"
     table.clearSelection()

@@ -89,18 +89,19 @@ def test_delete_connection_in_use_preserves_configuration(qapp, tmp_path):
     assert config.get_app_config().connections == [connection]
 
 
-def test_main_window_appends_cloud_pages_preserving_existing_navigation(qapp, tmp_path):
+def test_main_window_has_one_synchronization_workspace(qapp, tmp_path):
     from ui.main_window import MainWindow
+    from ui.pages.synchronizations import SynchronizationsPage
     window = MainWindow(configuration_service=configuration(tmp_path))
     try:
         assert [window.nav_list.item(i).text() for i in range(7)] == [
-            "Dashboard", "Folders", "Backups", "Scheduler", "Logs", "Settings", "About"]
+            "Dashboard", "Synchronizations", "Backups", "Scheduler", "Logs", "Settings", "About"]
         assert window.nav_list.item(7).text() == "Connections"
-        assert window.nav_list.item(8).text() == "Cloud Sync"
+        assert window.nav_list.count() == 8
         window.nav_list.setCurrentRow(7)
         assert isinstance(window.content_stack.currentWidget(), ConnectionsPage)
-        window.nav_list.setCurrentRow(8)
-        assert isinstance(window.content_stack.currentWidget(), CloudSyncPage)
+        window.nav_list.setCurrentRow(1)
+        assert isinstance(window.content_stack.currentWidget(), SynchronizationsPage)
     finally:
         window.prepare_for_exit()
         window.tray_icon.hide()

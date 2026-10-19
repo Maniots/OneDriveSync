@@ -18,14 +18,13 @@ from PySide6.QtWidgets import (
 from PySide6.QtGui import QAction
 from PySide6.QtCore import Qt, QSize, QTimer, QObject, QEvent
 from .pages.dashboard import DashboardPage
-from .pages.folders import FoldersPage
+from .pages.synchronizations import SynchronizationsPage
 from .pages.backups import BackupsPage
 from .pages.scheduler import SchedulerPage
 from .pages.logs import LogsPage
 from .pages.settings import SettingsPage
 from .pages.about import AboutPage
 from .pages.connections import ConnectionsPage
-from .pages.cloud_sync import CloudSyncPage
 from .themes.theme import get_dark_theme, get_sidebar_stylesheet
 from .themes import spacing
 from .resources.icons import get_icon, get_app_icon
@@ -336,10 +335,7 @@ class MainWindow(QMainWindow):
                 monitor_service=self.monitor_service,
                 log_service=self.log_service
             ),
-            "Folders": lambda: FoldersPage(
-                config_service=self.configuration_service,
-                sync_service=self.sync_service
-            ),
+            "Synchronizations": lambda: self.create_synchronizations_page(),
             "Backups": lambda: BackupsPage(
                 config_service=self.configuration_service,
                 backup_service=self.backup_service
@@ -357,25 +353,35 @@ class MainWindow(QMainWindow):
             ),
             "About": lambda: AboutPage(config_service=self.configuration_service, update_service=self.update_service),
             "Connections": lambda: ConnectionsPage(self.configuration_service, self.cloud_service),
-            "Cloud Sync": lambda: CloudSyncPage(self.configuration_service, self.cloud_service),
         }
 
         page_names = [
             "Dashboard",
-            "Folders",
+            "Synchronizations",
             "Backups",
             "Scheduler",
             "Logs",
             "Settings",
             "About",
             "Connections",
-            "Cloud Sync",
         ]
 
         for name in page_names:
             page_factory = page_factories[name]
             page = page_factory()
             self.content_stack.addWidget(page)
+
+    def create_synchronizations_page(self):
+        page = SynchronizationsPage(self.configuration_service, self.cloud_service)
+        page.connections_requested.connect(lambda: self.navigate_to("Connections"))
+        page.backups_requested.connect(lambda: self.navigate_to("Backups"))
+        return page
+
+    def navigate_to(self, name):
+        for index in range(self.nav_list.count()):
+            if self.nav_list.item(index).text() == name:
+                self.nav_list.setCurrentRow(index)
+                return
 
     def add_error_page(self):
         """Add an error page to show configuration issues."""
@@ -468,7 +474,7 @@ class MainWindow(QMainWindow):
         # Add sidebar entries (top section)
         nav_entries = [
             ("Dashboard", "dashboard"),
-            ("Folders", "folders"),
+            ("Synchronizations", "folders"),
             ("Backups", "backups"),
             ("Scheduler", "scheduler"),
             ("Logs", "logs"),
@@ -491,7 +497,6 @@ class MainWindow(QMainWindow):
             ("Settings", "settings"),
             ("About", "about"),
             ("Connections", "settings"),
-            ("Cloud Sync", "folders"),
         ]
 
         for text, icon_name in bottom_entries:
@@ -505,7 +510,7 @@ class MainWindow(QMainWindow):
 
         sidebar_layout.addWidget(self.nav_list, 1)
         sidebar_layout.addWidget(separator)
-        footer = QLabel("Local folders  /  Connected storage")
+        footer = QLabel("One folder. Your destinations.")
         footer.setObjectName("sidebarCaption")
         sidebar_layout.addWidget(footer)
         detail = QLabel("Only the folders you choose.")
@@ -528,14 +533,13 @@ class MainWindow(QMainWindow):
             # Update header based on page
             page_titles = {
                 "Dashboard": ("Dashboard", "Overview of sync status"),
-                "Folders": ("Folders", "Manage synchronized folders"),
+                "Synchronizations": ("Synchronizations", "Your folders, destinations and download priorities"),
                 "Backups": ("Backups", "View and manage backups"),
                 "Scheduler": ("Scheduler", "View scheduled tasks"),
                 "Logs": ("Logs", "View application logs"),
                 "Settings": ("Settings", "Configure application settings"),
                 "About": ("About", "About EverySync"),
                 "Connections": ("Connections", "Connect cloud accounts and network storage"),
-                "Cloud Sync": ("Cloud Sync", "Synchronize activities and recover verified snapshots"),
             }
             title, subtitle = page_titles.get(current.text(), ("", ""))
             self.update_header(title, subtitle)

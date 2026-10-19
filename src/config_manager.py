@@ -32,6 +32,7 @@ from .config import (
 )
 from .exceptions import ConfigurationError, PathValidationError
 from .cloud_models import ConnectionConfig, RemoteJobConfig, validate_local_path
+from .sync_groups import SyncGroupConfig, SyncDestinationConfig, validate_groups, validate_pending_edits
 from .logger import get_logger
 from .utils import expand_env_vars, is_dangerous_root_path, is_under_onedrive_root
 
@@ -68,6 +69,17 @@ class ConfigManager:
             folders = self._parse_folders(raw.get("folders", []))
             connections = self._parse_cloud_entries(raw.get("connections", []), ConnectionConfig)
             remote_jobs = self._parse_cloud_entries(raw.get("remote_jobs", []), RemoteJobConfig)
+            groups_raw = raw.get("sync_groups", [])
+            if not isinstance(groups_raw, list) or any(not isinstance(item, dict) for item in groups_raw):
+                raise ValueError("sync_groups must be an array of objects")
+            groups = []
+            for entry in groups_raw:
+                entry = dict(entry)
+                destinations = entry.get("destinations")
+                if not isinstance(destinations, list) or any(not isinstance(item, dict) for item in destinations):
+                    raise ValueError("destinations must be an array of objects")
+                entry["destinations"] = [SyncDestinationConfig(**item) for item in destinations]
+                groups.append(SyncGroupConfig(**entry))
         except (KeyError, TypeError, ValueError) as exc:
             raise ConfigurationError(f"Invalid configuration structure: {exc}") from exc
 
@@ -78,10 +90,12 @@ class ConfigManager:
             folders=folders,
             connections=connections,
             remote_jobs=remote_jobs,
+            sync_groups=groups,
         )
 
         self._validate_folder_uniqueness(config.folders)
         self._validate_cloud_references(config)
+        validate_groups(config)
 
         logger.info(
             "Configuration loaded successfully: %d folder(s) defined, %d enabled.",
@@ -358,6 +372,8 @@ class ConfigManager:
             raw["connections"] = [asdict(connection) for connection in app_config.connections]
         if app_config.remote_jobs:
             raw["remote_jobs"] = [asdict(job) for job in app_config.remote_jobs]
+        if app_config.sync_groups:
+            raw["sync_groups"] = [asdict(group) for group in app_config.sync_groups]
 
         return raw
 
@@ -384,7 +400,14 @@ class ConfigManager:
                 f.flush()
                 os.fsync(f.fileno())
             # Validate with the same rules as loading before touching the original.
-            ConfigManager(temporary_path).load()
+            candidate = ConfigManager(temporary_path).load()
+            try:
+                self._config_path.stat()
+            except FileNotFoundError:
+                previous = None
+            else:
+                previous = self.load()
+            validate_pending_edits(previous, candidate, self._config_path.with_suffix(".cloud"))
             os.replace(temporary_path, self._config_path)
         except (OSError, TypeError, ValueError) as exc:
             raise ConfigurationError(

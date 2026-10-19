@@ -1,6 +1,22 @@
 # Direct cloud synchronization
 
-EverySync can connect directly to storage through its bundled rclone engine. The **Folders** page continues to support local OneDrive folder pairs. Use **Connections** and **Cloud Sync** for the providers below, without a locally installed OneDrive or Google Drive client.
+EverySync can connect directly to storage through its bundled rclone engine. **Synchronizations** manages every activity, including existing local OneDrive pairs and direct-provider destinations. **Connections** manages storage accounts. Direct providers work without a locally installed OneDrive or Google Drive client.
+
+## One folder, ordered destinations
+
+Open **Synchronizations → Add synchronization**. Choose a PC folder, add the destinations to receive it, and arrange download priority using **Move up / Move down**. Each destination can participate in upload, download or both. Cloud accounts and folders on this PC/network share the same editor. Local ZIP backups and cloud snapshots remain separate recovery mechanisms, accessible from **Backups and restore**.
+
+**Send to destinations** attempts all enabled upload destinations and reports each result. A partial upload is not reported as a complete success. **Download to this PC** chooses one whole-folder source in saved order; it never assembles individual files from different services. Manual direction buttons do not alter scheduled startup/shutdown directions or require a scheduled trigger to be enabled.
+
+The default download fallback is a confirmed missing activity folder. An existing empty folder is reported as empty and leaves PC data unchanged. Access errors, malformed listings, incomplete copies and known prior copies stop download. The advanced **Try the next source when a service is unavailable** option permits fallback only for recognized transport unavailability, not authentication or arbitrary provider errors. Once downloading starts, an error stops that operation; it never continues with another source in the same PC folder.
+
+Explicit activities record verified copy evidence in `config.cloud/groups.json`, under the application's shared synchronization lock. A new explicit activity needs a verified upload before its first download. To use preexisting copies, explicitly enable **Allow existing copies whose freshness is unknown**. That option never bypasses known incomplete/prior data or pending work. The UI distinguishes **Freshness unknown**, **Verified on this PC**, **Incomplete** and **Prior copy**. Evidence belongs to this configuration on this PC; it does not certify global freshness across computers or coordinate remote writers. Existing implicit activities retain their previous ability to use existing copies.
+
+Use **Stop after current destination** for running groups: the current destination finishes safely and remaining work stays pending for a retry. It does not interrupt an in-progress file copy. Dry run reads/plans without transferring files or changing generation evidence. Session-end deferral queues the group without starting network transfers.
+
+Loading an older configuration never combines activities automatically. Existing IDs, paths, history, backups, credentials and bidirectional singletons remain intact. Editing an ordinary singleton without adding destinations preserves its legacy routing. Explicit groups are directional and cannot contain bidirectional activities. Pending membership/endpoint changes are rejected until the earlier work is completed; do not discard state files to bypass recovery. See the [contract](contracts/unified-sync.md) and [migration/rollback notes](specs/2026-10-19-unified-sync-hierarchy-migration.md).
+
+Groups that include ordinary PC/network folder destinations require **Copy subdirectories** in Settings. EverySync rejects an incompatible setting before saving or copying, so a partial folder cannot be certified as a complete copy. Existing independent folder pairs keep their nonrecursive setting.
 
 ## Connect storage
 
@@ -8,7 +24,7 @@ EverySync can connect directly to storage through its bundled rclone engine. The
 2. For **OneDrive**, **Google Drive** or **Dropbox**, choose **Sign in with Microsoft / Google / Dropbox** and authorize access in your browser. If the account has multiple drives, choose the one you want in the app. Technical browser questions are handled automatically. Google sign-in requires a release configured with the EverySync Google application; unavailable builds explain this before setup starts.
 3. After sign-in, open folders in **Choose your cloud folder**, or enter a relative folder path such as `EverySync`. Choose **Use this folder**. The app verifies the folder before saving the account; the checkbox allows creation if missing. You can cancel before saving. Personal OAuth application credentials are optional under **Advanced settings**.
 4. For other providers, choose the root folder or existing bucket/container, fill in the provider fields and choose **Connect account**. Object-storage roots use `bucket-name/prefix`. Passwords are masked. Select a saved account and choose **Test connection** to read its root without writing a test file. Jobs stay below the chosen root.
-5. Open **Cloud Sync**, choose the connection, local application folder and folder below the root, such as `ExampleGame/Saves`. Save the activity.
+5. Open **Synchronizations**, choose the PC application folder, add this connection as a destination and enter its folder below the root, such as `ExampleGame/Saves`. Add other destinations and arrange their download priority, then save.
 6. Close the application that owns the files. Enable **Settings → Dry Run**, apply it and preview a run. Turn dry run off for actual transfers.
 
 Cloud folders can be created during setup with the explicit checkbox. Buckets and containers must already exist. Local/network roots must be existing directories.

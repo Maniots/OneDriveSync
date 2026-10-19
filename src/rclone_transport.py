@@ -33,6 +33,14 @@ class CloudNotFound(CloudSyncError):
     pass
 
 
+class CloudUnavailable(CloudSyncError):
+    """Bounded transport connectivity failure, never an account rejection."""
+
+
+class CloudCancelled(CloudSyncError):
+    """An explicit cancellation; it must never cause fallback."""
+
+
 @dataclass(frozen=True)
 class FileEntry:
     size: int
@@ -171,8 +179,10 @@ class RcloneTransport:
                 if detail in {"directory not found", "object not found"}:
                     raise CloudNotFound("The synchronization folder does not exist.") from None
             raise CloudSyncError(f"Cloud operation failed (HTTP {error.code}). Check access, network and connection settings.") from None
-        except (URLError, TimeoutError, OSError, ValueError):
-            raise CloudSyncError("Cloud engine is unavailable or timed out. Check the connection and retry.") from None
+        except (URLError, TimeoutError, OSError):
+            raise CloudUnavailable("Cloud engine is unavailable or timed out. Check the connection and retry.") from None
+        except ValueError:
+            raise CloudSyncError("Cloud engine returned malformed metadata. Check the connection and retry.") from None
 
     def operation(self, method, payload):
         result = self.call(method, dict(payload, _async=True))
@@ -185,7 +195,7 @@ class RcloneTransport:
                     except CloudSyncError:
                         pass  # A completed OAuth listener reports no active login.
                 self.call("job/stop", {"jobid": result["jobid"]})
-                raise CloudSyncError("Cloud operation cancelled.")
+                raise CloudCancelled("Cloud operation cancelled.")
             status = self.call("job/status", {"jobid": result["jobid"]})
             if status.get("finished"):
                 if not status.get("success"):
@@ -198,7 +208,7 @@ class RcloneTransport:
             except CloudSyncError:
                 pass
         self.call("job/stop", {"jobid": result["jobid"]})
-        raise CloudSyncError("Cloud operation timed out; unfinished work can be retried.")
+        raise CloudUnavailable("Cloud operation timed out; unfinished work can be retried.")
 
     def inventory(self, fs, *, allow_missing=False):
         # Stat returns null for a confirmed missing directory; failures raise.
@@ -214,7 +224,7 @@ class RcloneTransport:
         if item is None:
             if allow_missing:
                 return {}
-            raise CloudSyncError("The synchronization folder does not exist.")
+            raise CloudNotFound("The synchronization folder does not exist.")
         if item.get("IsDir") is not True:
             raise CloudSyncError("The synchronization path must be a folder.")
         response = self.operation("operations/list", {"fs": fs, "remote": "", "opt": {

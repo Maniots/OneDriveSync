@@ -22,6 +22,7 @@ from datetime import datetime
 import shutil
 from ..themes import spacing
 from ..resources.icons import get_icon
+from ..models.synchronization_results import activity_results
 
 
 class DashboardPage(QWidget):
@@ -214,7 +215,10 @@ class DashboardPage(QWidget):
         # Get direction from config
         app_config = self.config_service.get_app_config()
         if app_config:
-            if operation == "startup":
+            active_direction = getattr(self.sync_service, "active_direction", None)
+            if active_direction is not None:
+                direction = active_direction.value
+            elif operation == "startup":
                 direction = app_config.sync.startup.direction.value
             else:
                 direction = app_config.sync.shutdown.direction.value
@@ -229,6 +233,7 @@ class DashboardPage(QWidget):
 
     def on_sync_completed(self, outcomes):
         """Handle the sync completed signal."""
+        outcomes = activity_results(outcomes, self.config_service.get_app_config())
         failed_count = sum(1 for o in outcomes if not o.succeeded)
         self.status_label.setText("Sync completed with errors" if failed_count else "Sync completed successfully")
         self.last_sync_label.setText(datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
@@ -300,10 +305,10 @@ class DashboardPage(QWidget):
                 if history:
                     latest = history[0]
                     self.last_sync_label.setText(datetime.fromisoformat(latest["timestamp"]).astimezone().strftime("%Y-%m-%d %H:%M:%S"))
-                    self.chart_data = [sum(o["succeeded"] for o in run["outcomes"]) for run in reversed(history)]
+                    self.chart_data = [sum(o["succeeded"] for o in activity_results(run["outcomes"], app_config)) for run in reversed(history)]
                     self.chart_widget.set_data(list(range(len(self.chart_data))), self.chart_data)
                     if not self.sync_service.is_syncing:
-                        outcomes = latest["outcomes"]
+                        outcomes = activity_results(latest["outcomes"], app_config)
                         successes = [o["folder_name"] for o in outcomes if o["succeeded"]]
                         failures = [o["folder_name"] for o in outcomes if not o["succeeded"]]
                         self.result_label.setText(f"Succeeded: {len(successes)}, Failed: {len(failures)}" + (" (dry run)" if latest["dry_run"] else ""))
