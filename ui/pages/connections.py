@@ -1,11 +1,12 @@
 """Guided account setup with asynchronous browser authentication."""
 from uuid import uuid4
 
-from PySide6.QtCore import Qt, QUrl
+from PySide6.QtCore import Qt, QUrl, QTimer
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, QLabel,
-    QLineEdit, QComboBox, QPushButton, QListWidget, QListWidgetItem, QCheckBox,
-    QGroupBox, QScrollArea, QFileDialog, QMessageBox)
+    QLineEdit, QComboBox, QPushButton, QListWidget, QCheckBox,
+    QGroupBox, QScrollArea, QFileDialog, QMessageBox, QTableWidget, QTableWidgetItem,
+    QHeaderView, QAbstractItemView)
 
 from src.cloud_models import ConnectionConfig
 from src.cloud_providers import PROVIDER_SETUP, OAUTH_PROVIDERS, SIGN_IN_LABELS
@@ -33,9 +34,13 @@ class ConnectionsPage(QWidget):
         self.question = None
         self.option_inputs = {}
         self.folder_path = ""
+        self._identity_attempted = set()
+        self._identity_timer = QTimer(self)
+        self._identity_timer.setSingleShot(True)
+        self._identity_timer.timeout.connect(self.load_account_details)
         outer = QVBoxLayout(self)
         outer.setContentsMargins(spacing.LARGE, spacing.MEDIUM, spacing.LARGE, spacing.MEDIUM)
-        self.status_label = QLabel("Connect an account, then add an activity in Cloud Sync.")
+        self.status_label = QLabel("Connect your accounts here. Choose local folders and start synchronization in Cloud Sync.")
         self.status_label.setWordWrap(True)
         self.status_label.setTextFormat(Qt.TextFormat.PlainText)
         outer.addWidget(self.status_label)
@@ -43,13 +48,36 @@ class ConnectionsPage(QWidget):
         scroll.setWidgetResizable(True)
         body = QWidget()
         layout = QVBoxLayout(body)
-        self.connection_list = QListWidget()
-        self.connection_list.setAccessibleName("Connected accounts")
-        self.connection_list.setMaximumHeight(150)
-        layout.addWidget(self.connection_list)
+        self.accounts_heading = QLabel("Connected accounts")
+        layout.addWidget(self.accounts_heading)
+        self.connection_table = QTableWidget(0, 3)
+        self.connection_table.setHorizontalHeaderLabels(["Service", "Connected account", "Cloud folder"])
+        self.connection_table.setAccessibleName("Connected accounts, services and cloud folders")
+        self.connection_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.connection_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.connection_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.connection_table.setAlternatingRowColors(True)
+        self.connection_table.setShowGrid(False)
+        self.connection_table.setWordWrap(False)
+        self.connection_table.verticalHeader().hide()
+        self.connection_table.verticalHeader().setMinimumSectionSize(44)
+        header = self.connection_table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Interactive)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        self.connection_table.setColumnWidth(0, 190)
+        self.connection_table.itemSelectionChanged.connect(self.update_actions)
+        layout.addWidget(self.connection_table)
+        self.empty_accounts_label = QLabel("No accounts connected yet. Choose a service below to sign in.")
+        self.empty_accounts_label.setWordWrap(True)
+        layout.addWidget(self.empty_accounts_label)
+        self.folder_explanation = QLabel("Cloud folder is the parent folder EverySync uses for this account. In Cloud Sync, choose which local folders to synchronize inside it.")
+        self.folder_explanation.setWordWrap(True)
+        layout.addWidget(self.folder_explanation)
         actions = QHBoxLayout()
-        self.test_button = QPushButton("Test connection")
-        self.remove_button = QPushButton("Disconnect")
+        self.test_button = QPushButton("Verify access")
+        self.test_button.setToolTip("Check that the cloud folder is readable and refresh the selected account's details")
+        self.remove_button = QPushButton("Disconnect account")
         self.test_button.clicked.connect(self.test_selected)
         self.remove_button.clicked.connect(self.remove_selected)
         actions.addWidget(self.test_button)
@@ -211,18 +239,86 @@ class ConnectionsPage(QWidget):
             QDesktopServices.openUrl(QUrl(url))
 
     def refresh(self, *args):
-        self.connection_list.clear()
+        identifier = self.selected_id()
         config = self.config_service.get_app_config()
-        for connection in config.connections if config else []:
-            item = QListWidgetItem(f"{connection.name}  ·  {PROVIDER_SETUP[connection.provider].label}  ·  {connection.root}")
-            item.setData(Qt.ItemDataRole.UserRole, connection.id)
-            self.connection_list.addItem(item)
+        connections = config.connections if config else []
+        self._identity_attempted.intersection_update(c.id for c in connections)
+        table = self.connection_table
+        table.blockSignals(True)
+        table.clearSelection()
+        table.setCurrentCell(-1, -1)
+        table.setRowCount(len(connections))
+        for row, connection in enumerate(connections):
+            provider = PROVIDER_SETUP[connection.provider].label
+            label = provider if connection.name.casefold() == provider.casefold() else f"{provider}\n{connection.name}"
+            account, hint = self.account_text(connection)
+            for column, text in enumerate((label, account, connection.root)):
+                item = QTableWidgetItem(text)
+                item.setToolTip(hint if column == 1 else text)
+                if column == 0:
+                    item.setData(Qt.ItemDataRole.UserRole, connection.id)
+                table.setItem(row, column, item)
+            if connection.id == identifier:
+                table.setCurrentCell(row, 0)
+                table.selectRow(row)
+        table.resizeRowsToContents()
+        height = table.horizontalHeader().height() + sum(table.rowHeight(r) for r in range(table.rowCount())) + 4
+        table.setFixedHeight(min(320, max(120, height)))
+        table.blockSignals(False)
+        table.setVisible(bool(connections))
+        self.empty_accounts_label.setVisible(not connections)
+        self.folder_explanation.setVisible(bool(connections))
+        self.accounts_heading.setText(f"Connected accounts ({len(connections)})")
         self.update_actions()
+        self._identity_timer.start(0)
+
+    def selected_id(self):
+        row = self.connection_table.currentRow()
+        if row < 0 or not self.connection_table.selectionModel().isRowSelected(row):
+            return None
+        item = self.connection_table.item(row, 0) if row >= 0 else None
+        return item.data(Qt.ItemDataRole.UserRole) if item else None
 
     def selected(self):
-        item = self.connection_list.currentItem()
-        identifier = item.data(Qt.ItemDataRole.UserRole) if item else None
-        return next((c for c in self.config_service.get_app_config().connections if c.id == identifier), None)
+        identifier = self.selected_id()
+        config = self.config_service.get_app_config()
+        return next((c for c in config.connections if c.id == identifier), None) if config else None
+
+    def account_text(self, connection):
+        if connection.provider == "local":
+            return "Local storage — no cloud account", "This connection uses a local or network folder."
+        if connection.provider not in OAUTH_PROVIDERS:
+            return "Account details not provided by this service", "Use the service and cloud folder to identify this storage connection."
+        identity = self.service.account_identities.get(connection.id)
+        if identity is None:
+            text = "Loading account…" if self.service.busy and self.service.action == "accounts" else "Account details not loaded"
+            return text, "Account details are retrieved using your saved sign-in."
+        if identity.get("status") == "available":
+            parts = [identity[key] for key in ("email", "name") if identity.get(key)]
+            text = "\n".join(dict.fromkeys(parts))
+            return text, text
+        return "Account details unavailable", "Your connection is still saved. Select this row and choose Verify access to retry."
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self._identity_timer.start(0)
+
+    def load_account_details(self):
+        if not self.isVisible() or self.pending is not None or self.service.pending_connection is not None:
+            return
+        if self.service.busy or (self.service.sync_service is not None and self.service.sync_service.is_syncing):
+            return
+        config = self.config_service.get_app_config()
+        missing = {c.id for c in config.connections if c.provider in OAUTH_PROVIDERS
+                   and c.id not in self.service.account_identities and c.id not in self._identity_attempted}
+        if not missing:
+            return
+        self._identity_attempted.update(missing)
+        try:
+            self.service.refresh_account_identities()
+        except ValueError:
+            self._identity_attempted.difference_update(missing)
+        self.refresh()
 
     def connect_account(self):
         try:
@@ -317,7 +413,9 @@ class ConnectionsPage(QWidget):
             self.clear_setup()
             self.status_label.setText("Connected. Add a folder activity in Cloud Sync.")
         elif action == "test":
-            self.status_label.setText("Connection verified: the configured root is readable.")
+            self.status_label.setText("Access verified: the cloud folder can be read.")
+        elif action == "accounts":
+            self.status_label.setText("Account details updated. Use Verify access to retry any unavailable details.")
         elif action == "remove":
             self.status_label.setText("Disconnected. Remote files were kept.")
         self.refresh()
@@ -326,7 +424,7 @@ class ConnectionsPage(QWidget):
         if self.pending is not None and self.service.pending_connection is None:
             self.clear_setup()
         self.status_label.setText(message)
-        self.update_actions()
+        self.refresh()
 
     def update_actions(self, *args):
         busy = self.service.busy or (self.service.sync_service is not None and self.service.sync_service.is_syncing)
@@ -334,8 +432,9 @@ class ConnectionsPage(QWidget):
         self.question_group.setEnabled(not busy)
         self.folder_group.setEnabled(not busy)
         self.parent_folder_button.setEnabled(not busy and bool(self.folder_path))
-        self.test_button.setEnabled(not busy and self.pending is None)
-        self.remove_button.setEnabled(not busy and self.pending is None)
+        selected = self.selected() is not None
+        self.test_button.setEnabled(not busy and self.pending is None and selected)
+        self.remove_button.setEnabled(not busy and self.pending is None and selected)
         self.cancel_button.setEnabled(self.pending is not None)
         provider = self.provider_combo.currentData()
         config = self.config_service.get_app_config()
@@ -357,6 +456,8 @@ class ConnectionsPage(QWidget):
             self.provider_hint.setText("An account for this service is already connected. Add activities in Cloud Sync, or disconnect it to connect another account.")
         self.connect_button.setText("Account connected" if connected else SIGN_IN_LABELS.get(provider, "Connect account"))
         self.connect_button.setEnabled(not busy and self.pending is None and google_ready and not connected)
+        if not busy:
+            self._identity_timer.start(0)
 
     def load_cloud_folders(self, path):
         try:
@@ -422,6 +523,7 @@ class ConnectionsPage(QWidget):
         if connection:
             try:
                 self.service.test_connection(connection)
+                self.status_label.setText("Verifying access and refreshing account details…")
             except ValueError as error:
                 self.show_error(str(error))
 
