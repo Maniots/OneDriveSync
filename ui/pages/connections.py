@@ -40,7 +40,7 @@ class ConnectionsPage(QWidget):
         self._identity_timer.timeout.connect(self.load_account_details)
         outer = QVBoxLayout(self)
         outer.setContentsMargins(spacing.LARGE, spacing.MEDIUM, spacing.LARGE, spacing.MEDIUM)
-        self.status_label = QLabel("Connect your accounts here. Choose local folders and start synchronization in Cloud Sync.")
+        self.status_label = QLabel("Connect your accounts here. Choose folders, destinations and download priority in Synchronizations.")
         self.status_label.setWordWrap(True)
         self.status_label.setTextFormat(Qt.TextFormat.PlainText)
         outer.addWidget(self.status_label)
@@ -71,7 +71,7 @@ class ConnectionsPage(QWidget):
         self.empty_accounts_label = QLabel("No accounts connected yet. Choose a service below to sign in.")
         self.empty_accounts_label.setWordWrap(True)
         layout.addWidget(self.empty_accounts_label)
-        self.folder_explanation = QLabel("Cloud folder is the parent folder EverySync uses for this account. In Cloud Sync, choose which local folders to synchronize inside it.")
+        self.folder_explanation = QLabel("Cloud folder is the parent folder EverySync uses for this account. In Synchronizations, choose the PC folders and destinations to use inside it.")
         self.folder_explanation.setWordWrap(True)
         layout.addWidget(self.folder_explanation)
         actions = QHBoxLayout()
@@ -401,7 +401,7 @@ class ConnectionsPage(QWidget):
                                           "One more step is required to authorize this account.")
             else:
                 self.clear_setup()
-                self.status_label.setText("Connected. Add a folder activity in Cloud Sync.")
+                self.status_label.setText("Connected. Add this destination to an activity in Synchronizations.")
         elif action == "folders":
             self.folder_path = value["path"]
             self.folder_location.setText(self.folder_path or "Your cloud storage")
@@ -411,7 +411,7 @@ class ConnectionsPage(QWidget):
                                      "This folder has no subfolders. Enter a folder path or use the current folder.")
         elif action == "save_root":
             self.clear_setup()
-            self.status_label.setText("Connected. Add a folder activity in Cloud Sync.")
+            self.status_label.setText("Connected. Add this destination to an activity in Synchronizations.")
         elif action == "test":
             self.status_label.setText("Access verified: the cloud folder can be read.")
         elif action == "accounts":
@@ -453,7 +453,7 @@ class ConnectionsPage(QWidget):
                 google_ready = False
                 self.provider_hint.setText(str(error))
         if connected:
-            self.provider_hint.setText("An account for this service is already connected. Add activities in Cloud Sync, or disconnect it to connect another account.")
+            self.provider_hint.setText("An account for this service is already connected. Add it to your Synchronizations, or disconnect it to connect another account.")
         self.connect_button.setText("Account connected" if connected else SIGN_IN_LABELS.get(provider, "Connect account"))
         self.connect_button.setEnabled(not busy and self.pending is None and google_ready and not connected)
         if not busy:

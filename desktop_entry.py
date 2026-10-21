@@ -122,7 +122,6 @@ def exercise_force_sync(app, window, path, report):
     from PySide6.QtCore import QTimer, Qt
     from PySide6.QtTest import QTest
     from PySide6.QtWidgets import QMessageBox
-    from ui.widgets.folder_card import FolderCard
 
     folder, = window.configuration_service.get_app_config().folders
     assert folder.id == "__acceptance_force__"
@@ -131,8 +130,13 @@ def exercise_force_sync(app, window, path, report):
     window.nav_list.setCurrentRow(1)
     page = window.content_stack.widget(1)
     sync = window.sync_service
-    def card():
-        return page.findChildren(FolderCard)[-1]
+    for index in range(page.activity_list.topLevelItemCount()):
+        item = page.activity_list.topLevelItem(index)
+        if item.data(0, Qt.ItemDataRole.UserRole) == folder.id:
+            page.activity_list.setCurrentItem(item)
+            break
+    assert page.selected_id() == folder.id
+    app.processEvents()
     def finish():
         deadline = time.monotonic() + 10
         while sync.is_syncing and time.monotonic() < deadline:
@@ -140,7 +144,7 @@ def exercise_force_sync(app, window, path, report):
             time.sleep(.001)
         assert not sync.is_syncing
         app.processEvents()
-    QTest.mouseClick(card().sync_now_button, Qt.MouseButton.LeftButton)
+    QTest.mouseClick(page.upload_button, Qt.MouseButton.LeftButton)
     finish()
     assert not sync.get_history()[0]["outcomes"][0]["succeeded"]
     target = folder.onedrive_path_resolved / "save.txt"
@@ -153,13 +157,13 @@ def exercise_force_sync(app, window, path, report):
         dialogs.append(dialog.text())
         QTest.mouseClick(dialog.button(choice), Qt.MouseButton.LeftButton)
     QTimer.singleShot(0, lambda: answer(QMessageBox.StandardButton.No))
-    QTest.mouseClick(card().force_sync_button, Qt.MouseButton.LeftButton)
+    page.force_selected()
     assert not sync.is_syncing and target.read_text() == "old"
     QTimer.singleShot(0, lambda: answer(QMessageBox.StandardButton.Yes))
-    QTest.mouseClick(card().force_sync_button, Qt.MouseButton.LeftButton)
+    page.force_selected()
     finish()
     assert target.read_text() == "new"
-    assert len(dialogs) == 2 and "80%" in dialogs[0]
+    assert len(dialogs) == 2 and "file-count threshold" in dialogs[0]
     assert sync.get_history()[0]["outcomes"][0]["threshold_bypassed"]
     archives = list((folder.backup.backup_path_resolved / folder.id).glob("*.zip"))
     assert len(archives) == 1

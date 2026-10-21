@@ -20,19 +20,19 @@ Windows 10+ · x64 · No Python required to install
 
 [Get started](#get-started) · [Daily use](#daily-use) · [Automation](#automation) · [Updates](#updates) · [Configuration](#configuration) · [Troubleshooting](#troubleshooting) · [Development](#development)
 
-EverySync copies your selected application folders to local OneDrive folders or directly to cloud storage. **Connections** and **Cloud Sync** add direct OneDrive, Google Drive, Amazon S3 / compatible storage, SFTP, WebDAV, Dropbox, Azure Blob and Backblaze B2. See the [guided cloud setup](docs/cloud-sync.md) for account requirements, snapshots and validation status. Live account certification is pending; real-engine Windows checks use isolated local storage.
+EverySync copies a selected PC folder to destinations you choose: folders on this PC, network storage or connected cloud accounts. **Synchronizations** is the single workspace for adding folders, selecting destinations and arranging download priority. Upload sends to every enabled destination; download uses one whole source in the chosen order. **Connections** manages direct OneDrive, Google Drive, Amazon S3 / compatible storage, SFTP, WebDAV, Dropbox, Azure Blob and Backblaze B2. See the [guided setup](docs/cloud-sync.md) for account requirements, snapshots and validation status. Live account certification is pending; real-engine Windows checks use isolated local storage.
 
 **Connections** separates the service, connected account and cloud folder. Google,
 Microsoft and Dropbox account details load in the background using the saved
 sign-in. A provider may return only a display name; unavailable details are stated
 explicitly. Select a row and choose **Verify access** to check its folder and retry
 account details, or **Disconnect account** to remove the connection. The cloud
-folder is the parent folder used by activities you add in **Cloud Sync**.
+folder is the parent folder used by destinations you add in **Synchronizations**.
 
 | Mode | Default direction | Purpose |
 | --- | --- | --- |
-| **Startup** | OneDrive → this PC | Bring your saved data onto this machine. |
-| **Shutdown** | This PC → OneDrive | Send your latest local changes back to OneDrive. |
+| **Startup** | Ordered source → this PC | Bring a selected copy onto this machine. |
+| **Shutdown** | This PC → enabled destinations | Send local changes to the destinations you chose. |
 
 Directions are configurable. Copies create missing files and update changed files, keeping destination-only files in place. Path validation, file-count thresholds, optional backups and a shared synchronization lock protect each run.
 
@@ -40,8 +40,8 @@ Directions are configurable. Copies create missing files and update changed file
 
 1. Open the [latest release](https://github.com/Maniots/OneDriveSync/releases/latest) and download **`EverySync-Setup-<version>.exe`** from **Assets**.
 2. Run the installer. Choose the installation folder and, optionally, a desktop shortcut and automatic synchronization.
-3. Open **EverySync → Folders** and add a pair: your application's local data folder and its corresponding OneDrive folder. Fresh installations start with an empty folder list.
-4. Let OneDrive finish making the selected files available on this PC. Close the application that owns the files, then enable **Dry Run** in **Settings**, apply the change and preview the correct sync direction from **Dashboard**. Turn dry run off when you are ready for a real copy.
+3. Connect any required account in **Connections**, then open **Synchronizations → Add synchronization**. Choose the PC folder, add destinations and arrange their download order with **Move up / Move down**. You can mix cloud accounts and folders without choosing a separate page.
+4. Close the application that owns the files. Enable **Dry Run** in **Settings** and preview **Send to destinations** or **Download to this PC**. Turn dry run off for real transfers. New explicit activities require a verified upload before downloading; to use preexisting copies, explicitly enable **Allow existing copies whose freshness is unknown** in the activity's advanced options. Local OneDrive files must be available on the PC.
 
 Choose specific folders, such as `%APPDATA%\ExampleApp\Saves`. Whole `AppData`, `AppData\Local` and `AppData\Roaming` roots are rejected.
 
@@ -52,11 +52,12 @@ The setup installs for the current Windows user and includes an uninstaller. Dow
 | Where | What you can do |
 | --- | --- |
 | **Dashboard** | Start a download or upload and follow background progress. |
-| **Folders** | Add, edit, enable, disable, search and filter folder pairs. |
+| **Synchronizations** | Add, edit, enable, disable, search and filter activities, including existing single-destination folders. |
 | **Connections** | Connect storage with guided provider fields/browser sign-in, test access and disconnect. |
-| **Cloud Sync** | Manage cloud activities, run transfers, enable conservative bidirectional sync and restore remote snapshots. |
-| **Folders → Delete** | Remove a pair from the configuration after confirmation. Local files, OneDrive files and backups stay in place. |
-| **Folders → Force sync** | Bypass the selected folder's percentage threshold for one confirmed run. Other safety checks and backups still apply. |
+| **Synchronizations → Send / Download** | Upload to enabled destinations or download from one source in priority order. Manual buttons use their stated direction, independently of scheduled trigger settings. Existing bidirectional singletons retain **Synchronize both folders**. |
+| **Synchronizations → Remove** | Confirm removal while keeping files, history and stored backups. Group destinations remain as disabled activities for backup access; remove those separately to forget them and allow account disconnection. |
+| **Synchronizations → More** | Refresh results or bypass an existing single-destination activity's file-count threshold for one confirmed configured run. Other checks and backups still apply; explicit groups cannot bypass generation guards. |
+| **Synchronizations → Backups and restore** | Access local ZIP archives or a selected destination's verified cloud snapshots. |
 | **Backups** | Browse, open, restore or delete backup archives. |
 | **Scheduler** | Review tasks and shutdown monitor status; enable or disable existing sync tasks. |
 | **Logs** | Inspect synchronization results and errors. |
@@ -126,7 +127,7 @@ Each new release contains a single installer, `EverySync-Setup-<version>.exe`, a
 
 ## Configuration
 
-Use **Folders** and **Settings** for day-to-day changes. The installed app stores `config.json`, logs, history and runtime state in:
+Use **Synchronizations** and **Settings** for day-to-day changes. The installed app stores `config.json`, logs, history and runtime state in:
 
 ```text
 %LOCALAPPDATA%\OneDrivePCSync

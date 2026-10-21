@@ -19,6 +19,7 @@ from typing import List, Optional
 
 from .utils import expand_env_vars
 from .cloud_models import ConnectionConfig, RemoteJobConfig
+from .sync_groups import SyncGroupConfig
 
 
 class SyncDirection(str, Enum):
@@ -165,6 +166,7 @@ class AppConfig:
     folders: List[FolderSyncConfig] = field(default_factory=list)
     connections: List[ConnectionConfig] = field(default_factory=list)
     remote_jobs: List[RemoteJobConfig] = field(default_factory=list)
+    sync_groups: List[SyncGroupConfig] = field(default_factory=list)
 
     def enabled_folders(self) -> List[FolderSyncConfig]:
         """Return only the folders that are enabled for synchronization."""

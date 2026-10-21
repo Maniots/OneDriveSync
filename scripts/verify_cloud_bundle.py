@@ -17,6 +17,83 @@ PROJECT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT))
 
 
+def verify_group_bundle(executable: Path, root: Path, engine: Path) -> dict:
+    """Exercise the frozen group coordinator with disposable mixed endpoints."""
+    from src.sync_history import SyncHistory
+
+    assert engine.is_file()
+    fixture = root / "grouped"
+    fixture.mkdir()
+    local, provider, folder = [fixture / name for name in ("source", "provider", "folder")]
+    for path in (local, provider, folder):
+        path.mkdir()
+    provider_copy, folder_copy = provider / "Game", folder / "Game"
+    config_path = fixture / "config.json"
+    config = json.loads((PROJECT / "packaging/default-config.json").read_text())
+    config["general"]["dry_run"] = False
+    config.setdefault("copy_engine", {})["copy_subdirectories"] = True
+    config["folders"] = [{"id": "foldercopy", "name": "Second folder copy", "enabled": True,
+                           "local_path": str(local), "onedrive_path": str(folder_copy),
+                           "minimum_sync_percentage": 0, "verify_after_sync": True,
+                           "create_destination": True}]
+    config["connections"] = [{"id": "groupfixture", "name": "Isolated group provider",
+                               "provider": "local", "root": str(provider)}]
+    config["remote_jobs"] = [{"id": "providercopy", "name": "First provider copy",
+                               "connection_id": "groupfixture", "local_path": str(local),
+                               "remote_path": "Game", "minimum_sync_percentage": 0,
+                               "backup_enabled": True}]
+    config["sync_groups"] = [{"id": "groupfixture", "name": "Frozen mixed activity",
+                               "local_path": str(local), "destinations": [
+                                   {"job_id": "providercopy"}, {"job_id": "foldercopy"}]}]
+    config_path.write_text(json.dumps(config), encoding="utf-8")
+
+    def run(mode, *args):
+        result = subprocess.run([str(executable), "--config", str(config_path), "--mode", mode, *args],
+                                cwd=fixture, env=dict(os.environ, LOCALAPPDATA=str(fixture / "user")),
+                                timeout=120, creationflags=subprocess.CREATE_NO_WINDOW)
+        assert result.returncode == 0, f"Frozen grouped {mode} failed; fixture={fixture}"
+
+    def summary():
+        latest = SyncHistory(config_path.with_suffix(".history.sqlite3")).recent(1)[0]
+        return next(item for item in latest["outcomes"] if item["folder_id"] == "groupfixture")
+
+    (local / "save.txt").write_text("verified mixed generation", encoding="utf-8")
+    run("shutdown")
+    for target in (provider_copy, folder_copy):
+        assert (target / "save.txt").read_text() == "verified mixed generation"
+    state_root = config_path.with_suffix(".cloud")
+    ledger_path, state_path = state_root / "groups.json", state_root / "state.json"
+    ledger = json.loads(ledger_path.read_text(encoding="utf-8"))["groups"]["groupfixture"]
+    assert ledger["pending"] is None and len(ledger["destinations"]) == 2
+    assert all(item["status"] == "complete" and item["generation"] == ledger["generation"]
+               for item in ledger["destinations"].values())
+    assert summary()["succeeded"]
+
+    (local / "save.txt").unlink()
+    run("startup")
+    assert (local / "save.txt").read_text() == "verified mixed generation"
+    assert "Downloaded from First provider copy" in summary()["message"]
+
+    # Remove only the activity, preserving its accessible account/volume root.
+    assert provider_copy.resolve().parent == provider.resolve() and provider.resolve().is_relative_to(root.resolve())
+    shutil.rmtree(provider_copy)
+    (local / "save.txt").unlink()
+    run("startup")
+    assert (local / "save.txt").read_text() == "verified mixed generation"
+    message = summary()["message"]
+    assert "Downloaded from Second folder copy" in message and "absent" in message
+
+    before_ledger, before_state = ledger_path.read_bytes(), state_path.read_bytes()
+    before_destination = (folder_copy / "save.txt").read_bytes()
+    (local / "save.txt").write_text("preview only; never transfer", encoding="utf-8")
+    run("shutdown", "--dry-run")
+    assert ledger_path.read_bytes() == before_ledger and state_path.read_bytes() == before_state
+    assert not provider_copy.exists() and (folder_copy / "save.txt").read_bytes() == before_destination
+    assert (local / "save.txt").read_text() == "preview only; never transfer"
+    return {"frozen_group_upload_all": True, "frozen_group_priority_download": True,
+            "frozen_group_absence_fallback": True, "frozen_group_dry_run": True}
+
+
 def verify(executable: Path, root: Path) -> dict:
     from src.cloud_sync import CloudSyncRunner
     from src.config_manager import ConfigManager
@@ -93,10 +170,11 @@ def verify(executable: Path, root: Path) -> dict:
     run("shutdown", expected=1)
     assert (local / "save.txt").read_text() == "local conflict"
     assert (remote / "Game/save.txt").read_text() == "remote conflict"
+    grouped = verify_group_bundle(executable, root, engine)
     return {"frozen_cloud_transfer": True, "newer_destination_preserved": True, "destination_extras_preserved": True,
             "dpapi_and_encrypted_config": True, "snapshot_restore": True, "dry_run_preserved": True,
             "pending_upload_recovered_before_download": True, "bidirectional_conflict_preserved": True,
-            "real_cloud_accounts_tested": False}
+            "real_cloud_accounts_tested": False, **grouped}
 
 
 if __name__ == "__main__":

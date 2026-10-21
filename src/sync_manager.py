@@ -13,9 +13,10 @@ or not to invoke.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+import threading
 from typing import Callable, List, Optional
 
 from .backup_manager import BackupManager
@@ -31,6 +32,7 @@ from .exceptions import (
 from .logger import get_logger
 from .robocopy_manager import CopyEngine
 from .utils import calculate_sync_percentage, count_files_recursive, is_dangerous_root_path
+from .sync_groups import grouped_job_ids
 
 logger = get_logger(__name__)
 
@@ -51,7 +53,7 @@ class SyncManager:
     """Coordinates safe synchronization of all configured folders."""
 
     def __init__(self, config: AppConfig, history_path: Optional[Path] = None, *,
-                 cloud_root: Optional[Path] = None, defer_remote: bool = False) -> None:
+                 cloud_root: Optional[Path] = None, defer_remote: bool = False, cancel_event=None) -> None:
         self._config = config
         self._copy_engine = CopyEngine(
             settings=config.copy_engine,
@@ -63,6 +65,7 @@ class SyncManager:
         self._history_path = history_path
         self._cloud_root = cloud_root
         self._defer_remote = defer_remote
+        self._cancel_event = cancel_event or threading.Event()
 
     def run_startup_sync(self, progress_callback: Optional[Callable[[int, str], None]] = None, *, ignore_threshold_for: Optional[str] = None) -> List[FolderSyncOutcome]:
         """Run the configured startup synchronization (typically download)."""
@@ -87,7 +90,8 @@ class SyncManager:
     def _run_all_folders(self, direction: SyncDirection, progress_callback: Optional[Callable[[int, str], None]] = None, ignore_threshold_for: Optional[str] = None) -> List[FolderSyncOutcome]:
         outcomes: List[FolderSyncOutcome] = []
 
-        folders = self._config.enabled_folders()
+        owned = grouped_job_ids(self._config)
+        folders = [folder for folder in self._config.enabled_folders() if folder.id not in owned]
         def sync_folder(folder):
             # Each folder is fully independent: an error in one must never
             # prevent the others from being processed.
@@ -143,16 +147,32 @@ class SyncManager:
                 if progress_callback is not None:
                     progress_callback(int((index + 1) / len(folders) * 100), f"Processed folder {outcome.folder_name} ({index + 1}/{len(folders)})")
 
-        if any(job.enabled for job in self._config.remote_jobs):
+        for group in self._config.sync_groups:
+            if not group.enabled:
+                continue
+            if self._cloud_root is None:
+                outcomes.append(FolderSyncOutcome(group.id, group.name, direction, False,
+                    "Group state location is unavailable. Run this configuration through EverySync."))
+                continue
+            from .group_sync import GroupSyncRunner
+            if progress_callback:
+                progress_callback(0, f"Processing synchronization {group.name}")
+            outcomes.extend(GroupSyncRunner(self._config, self._cloud_root,
+                local_runner=self._sync_single_folder, cancel_event=self._cancel_event).run(group, direction, defer=self._defer_remote))
+            if progress_callback:
+                progress_callback(100, f"Processed synchronization {group.name}")
+
+        ungrouped_jobs = [job for job in self._config.remote_jobs if job.id not in owned]
+        if any(job.enabled for job in ungrouped_jobs):
             if self._cloud_root is None:
                 outcomes.extend(FolderSyncOutcome(job.id, job.name, direction, False,
                     "Cloud state location is unavailable. Run this configuration through EverySync.")
-                    for job in self._config.remote_jobs if job.enabled)
+                    for job in ungrouped_jobs if job.enabled)
             else:
                 from .cloud_sync import CloudSyncRunner
                 if progress_callback:
                     progress_callback(0, "Processing cloud jobs")
-                outcomes.extend(CloudSyncRunner(self._config, self._cloud_root).run(
+                outcomes.extend(CloudSyncRunner(replace(self._config, remote_jobs=ungrouped_jobs), self._cloud_root).run(
                     direction, ignore_threshold_for=ignore_threshold_for, defer=self._defer_remote))
                 if progress_callback:
                     progress_callback(100, "Cloud jobs processed")

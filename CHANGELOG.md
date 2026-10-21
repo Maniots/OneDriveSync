@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Replace separate Folders and Cloud Sync navigation with one Synchronizations workspace and a guided editor for PC folders and ordered destinations.
+- Explicit synchronization groups upload to all enabled destinations and download from one whole source in user-defined priority order. Results distinguish partial uploads, missing copies and per-destination failures.
+- Add verified per-PC copy evidence, conservative fallback and pending-work guards. Unknown-copy downloads and fallback on typed service unavailability require explicit advanced options; incomplete and known prior copies stay blocked.
+- Preserve existing folder/job IDs, backup settings, history and implicit bidirectional activities. Loading older configurations creates no groups; group adoption is an explicit, validated configuration edit. Manual direction buttons do not change scheduled trigger settings.
+
 - Stop and dispose standalone Qt monitor services after their tests, preventing delayed callbacks from leaking into subsequent CI tests.
 
 - Pin PySide6 to the verified 6.11.1 Windows stack so CI and new builds do not silently upgrade to an unvalidated Qt minor release.

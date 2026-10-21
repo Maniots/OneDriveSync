@@ -3,10 +3,12 @@
 from typing import List, Optional
 from dataclasses import replace
 from pathlib import Path
+import threading
 
 from PySide6.QtCore import QObject, QThread, Qt, Signal, Slot, QFileSystemWatcher, QTimer
 
-from src.config import AppConfig
+from src.config import AppConfig, SyncDirection
+from src.sync_groups import grouped_job_ids
 from src.sync_manager import FolderSyncOutcome
 from ui.workers.sync_worker import SyncWorker
 from .configuration_service import ConfigurationService
@@ -25,6 +27,8 @@ class SyncService(QObject):
         self._config_service = config_service
         self._is_syncing = False
         self._is_paused = False
+        self.cancellation_event = threading.Event()
+        self.active_direction: Optional[SyncDirection] = None
         self._thread: Optional[QThread] = None
         self._worker: Optional[SyncWorker] = None
         self._monitor_dirty = False
@@ -92,10 +96,15 @@ class SyncService(QObject):
             return
         from src.robocopy_manager import _walk_source, _collect_files
         watched = set()
+        owned = grouped_job_ids(config)
+        active = {destination.job_id for group in config.sync_groups if group.enabled
+                  for destination in group.destinations
+                  if getattr(destination, f"{config.sync.shutdown.direction.value}_enabled")}
         sources = [folder.local_path_resolved if config.sync.shutdown.direction.value == "upload" else folder.onedrive_path_resolved
-                   for folder in config.enabled_folders()]
+                   for folder in config.enabled_folders() if folder.id not in owned or folder.id in active]
         sources.extend(job.local_path_resolved for job in config.remote_jobs
-                       if job.enabled and (job.bidirectional or config.sync.shutdown.direction.value == "upload"))
+                       if job.enabled and (job.id not in owned or job.id in active)
+                       and (job.bidirectional or config.sync.shutdown.direction.value == "upload"))
         for source in sources:
             parent = source
             while not parent.exists() and parent != parent.parent:
@@ -176,14 +185,20 @@ class SyncService(QObject):
             if not paused and self._monitor_dirty:
                 self._monitor_timer.start()
 
-    def _prepare_sync(self, operation: str, folder_id: Optional[str] = None) -> Optional[AppConfig]:
+    def cancel_after_current_destination(self) -> None:
+        """Ask a group run to stop safely between destinations."""
+        if self._is_syncing:
+            self.cancellation_event.set()
+
+    def _prepare_sync(self, operation: str, folder_id: Optional[str] = None,
+                      config_override: Optional[AppConfig] = None) -> Optional[AppConfig]:
         # A duplicate click must not alter the active run's result/signals.
         if self._is_syncing:
             return None
         if self._is_paused:
             self.failed.emit("UI synchronization is paused")
             return None
-        config = self.get_app_config()
+        config = config_override if config_override is not None else self.get_app_config()
         if config is None:
             self.failed.emit("Configuration not available")
             return None
@@ -194,13 +209,29 @@ class SyncService(QObject):
             self.failed.emit(f"{operation.capitalize()} sync is disabled in configuration")
             return None
         if folder_id is not None:
+            if folder_id in grouped_job_ids(config):
+                self.failed.emit("This destination belongs to a synchronization. Select its parent activity.")
+                return None
+            groups = [group for group in config.sync_groups if group.id == folder_id and group.enabled]
+            if groups:
+                references = {item.job_id for item in groups[0].destinations}
+                config = replace(config, sync_groups=groups,
+                    folders=[folder for folder in config.folders if folder.id in references],
+                    remote_jobs=[job for job in config.remote_jobs if job.id in references])
+                self._is_syncing = True
+                self.cancellation_event.clear()
+                self.active_direction = getattr(config.sync, operation).direction
+                self.state_changed.emit()
+                return config
             folders = [folder for folder in config.enabled_folders() if folder.id == folder_id]
             jobs = [job for job in config.remote_jobs if job.enabled and job.id == folder_id]
             if len(folders) + len(jobs) != 1:
                 self.failed.emit("Folder not found or disabled")
                 return None
-            config = replace(config, folders=folders, remote_jobs=jobs)
+            config = replace(config, folders=folders, remote_jobs=jobs, sync_groups=[])
         self._is_syncing = True
+        self.cancellation_event.clear()
+        self.active_direction = getattr(config.sync, operation).direction
         self.state_changed.emit()
         return config
 
@@ -213,10 +244,36 @@ class SyncService(QObject):
     def request_sync(self, operation: str, folder_id: Optional[str] = None,
                      ignore_threshold: bool = False) -> bool:
         """Start one background operation from the GUI thread, if allowed."""
+        return self._start_request(operation, folder_id, ignore_threshold)
+
+    def request_direction_sync(self, direction: SyncDirection | str, item_id: str) -> bool:
+        """Run one manual direction without changing persisted scheduled triggers."""
+        if not isinstance(item_id, str) or not item_id.strip():
+            self.failed.emit("Select one synchronization for a manual direction")
+            return False
+        try:
+            direction = SyncDirection(direction)
+        except ValueError:
+            self.failed.emit("Invalid synchronization direction")
+            return False
+        config = self.get_app_config()
+        if config is None:
+            self.failed.emit("Configuration not available")
+            return False
+        operation = "startup" if direction == SyncDirection.DOWNLOAD else "shutdown"
+        trigger = replace(getattr(config.sync, operation), enabled=True, direction=direction)
+        config = replace(config, sync=replace(config.sync, **{operation: trigger}))
+        return self._start_request(operation, item_id, False, config_override=config)
+
+    def _start_request(self, operation, folder_id=None, ignore_threshold=False, *, config_override=None):
         if ignore_threshold and folder_id is None:
             self.failed.emit("A threshold override requires a single selected folder")
             return False
-        config = self._prepare_sync(operation, folder_id)
+        current = config_override if config_override is not None else self.get_app_config()
+        if ignore_threshold and current and any(group.id == folder_id for group in current.sync_groups):
+            self.failed.emit("Threshold overrides apply only to independent single destinations")
+            return False
+        config = self._prepare_sync(operation, folder_id, config_override)
         if config is None:
             return False
         self._thread = QThread(self)
@@ -243,6 +300,7 @@ class SyncService(QObject):
         self._worker = None
         self._thread = None
         self._is_syncing = False
+        self.active_direction = None
         self._monitor_running = False
         self.state_changed.emit()
         self.finished.emit()
@@ -268,6 +326,7 @@ class SyncService(QObject):
             return worker._run_sync(operation)
         finally:
             self._is_syncing = False
+            self.active_direction = None
             self.state_changed.emit()
             self.finished.emit()
 

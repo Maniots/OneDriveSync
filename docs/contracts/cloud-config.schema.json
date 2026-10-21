@@ -4,10 +4,32 @@
   "type": "object",
   "properties": {
     "connections": {"type": "array", "items": {"$ref": "#/$defs/connection"}},
-    "remote_jobs": {"type": "array", "items": {"$ref": "#/$defs/job"}}
+    "remote_jobs": {"type": "array", "items": {"$ref": "#/$defs/job"}},
+    "sync_groups": {"type": "array", "items": {"$ref": "#/$defs/group"}}
   },
   "$defs": {
     "id": {"type": "string", "pattern": "^[a-z][a-z0-9_]{0,47}$"},
+    "destination": {
+      "type": "object", "additionalProperties": false, "required": ["job_id"],
+      "properties": {
+        "job_id": {"type": "string", "minLength": 1},
+        "upload_enabled": {"type": "boolean", "default": true},
+        "download_enabled": {"type": "boolean", "default": true}
+      },
+      "not": {"properties": {"upload_enabled": {"const": false}, "download_enabled": {"const": false}}, "required": ["upload_enabled", "download_enabled"]}
+    },
+    "group": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "name", "local_path", "destinations"],
+      "properties": {
+        "id": {"$ref": "#/$defs/id"}, "name": {"type": "string", "minLength": 1},
+        "local_path": {"type": "string", "minLength": 1},
+        "destinations": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/destination"}},
+        "enabled": {"type": "boolean", "default": true},
+        "fallback_on_unavailable": {"type": "boolean", "default": false},
+        "allow_untracked_download": {"type": "boolean", "default": false}
+      }
+    },
     "connection": {
       "type": "object", "additionalProperties": false,
       "required": ["id", "name", "provider", "root"],

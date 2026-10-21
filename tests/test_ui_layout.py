@@ -6,13 +6,12 @@ import pytest
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QFontDatabase
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QLabel, QScrollArea, QSystemTrayIcon
+from PySide6.QtWidgets import QScrollArea, QSystemTrayIcon
 
 from backend.services.configuration_service import ConfigurationService
 from backend.services.log_service import LogService
 from ui.main_window import MainWindow
 from ui.themes.theme import get_dark_theme
-from ui.widgets.folder_card import FolderCard
 from ui.widgets.sync_chart import SyncChartWidget
 from tests.conftest import dispose_qt_widgets
 
@@ -60,7 +59,7 @@ def test_header_navigation_and_log_controls_fit_minimum_window(qapp, rendered_wi
     QTest.keyClick(window.nav_list, Qt.Key.Key_Down)
     qapp.processEvents()
     assert window.content_stack.currentIndex() == 1
-    assert window.header_title.text() == 'Folders'
+    assert window.header_title.text() == 'Synchronizations'
 
     window.nav_list.setCurrentRow(4)
     qapp.processEvents()
@@ -73,22 +72,31 @@ def test_header_navigation_and_log_controls_fit_minimum_window(qapp, rendered_wi
     assert window.size().width() == 1100
 
 
-def test_folder_paths_wrap_without_horizontal_overflow(qapp, rendered_window):
+def test_synchronization_paths_and_actions_fit_minimum_window(qapp, rendered_window):
     window = rendered_window
     window.nav_list.setCurrentRow(1)
     page = window.content_stack.currentWidget()
-    card = page.findChild(FolderCard)
-    for label in card.findChildren(QLabel):
-        if label.toolTip() and label.wordWrap():
-            label.setText('C:\\' + 'a-long-directory-name\\' * 24 + 'settings.json')
+    long_path = 'C:\\' + 'a-long-directory-name\\' * 24 + 'Saves'
+    page.folder_label.setText('Folder on this PC: ' + long_path)
+    path_item = page.destination_table.item(0, 1)
+    path_item.setText(long_path)
+    path_item.setToolTip(long_path)
     qapp.processEvents()
+    assert page.folder_label.wordWrap()
+    assert page.folder_label.height() >= page.folder_label.heightForWidth(page.folder_label.width())
+    assert page.destination_table.item(0, 1).toolTip() == long_path
+    assert page.width() <= window.content_stack.width()
     scroll = page.findChild(QScrollArea)
     assert scroll.horizontalScrollBar().maximum() == 0
-    assert card.width() <= scroll.viewport().width()
-    assert card.sync_now_button.isVisible()
-    assert card.delete_button.isVisible()
-    assert card.delete_button.width() >= card.delete_button.minimumSizeHint().width()
-    assert card.rect().contains(card.delete_button.geometry())
+    for control in (page.upload_button, page.download_button, page.edit_button,
+                    page.backup_button, page.remove_button):
+        assert control.isVisible()
+        assert control.width() >= control.minimumSizeHint().width()
+        assert control.parentWidget().rect().contains(control.geometry())
+        scroll.ensureWidgetVisible(control)
+        qapp.processEvents()
+        point = control.mapTo(scroll.viewport(), control.rect().center())
+        assert scroll.viewport().rect().contains(point)
 
 
 def test_scheduler_bottom_controls_remain_reachable(qapp, rendered_window):

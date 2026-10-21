@@ -8,7 +8,7 @@ from pathlib import Path
 import zipfile
 
 import pytest
-from PySide6.QtCore import QCoreApplication, QEvent, QTimer
+from PySide6.QtCore import QCoreApplication, QEvent, QTimer, Qt
 from PySide6.QtWidgets import QMessageBox
 
 from backend.services.configuration_service import ConfigurationService
@@ -297,42 +297,73 @@ def test_log_viewer_reads_padded_standard_log_levels(qapp, tmp_path):
     assert entries[0][1:] == ("INFO", "[onedrive_pcsync] Copied save")
 
 
-def test_folder_actions_persist_filter_and_sync_only_selected_folder(qapp, configuration, monkeypatch):
+def test_synchronization_actions_persist_filter_and_copy_only_selected_activity(qapp, configuration):
     service, local, cloud, path = configuration
     window = MainWindow(configuration_service=service)
     page = window.content_stack.widget(1)
     sync = window.sync_service
-    warnings = []
-    monkeypatch.setattr(QMessageBox, "warning", lambda *args: warnings.append(args[2]))
     other_local = local.parent / "other"
     other_local.mkdir()
     (local / "selected.txt").write_text("selected")
     (other_local / "other.txt").write_text("other")
-    data = {"id": "other", "name": "Other App", "enabled": True,
-            "local_path": str(other_local), "onedrive_path": "%OneDrive%/other",
-            "minimum_sync_percentage": 80, "verify_after_sync": True, "create_destination": True}
+    def select(identifier):
+        for index in range(page.activity_list.topLevelItemCount()):
+            item = page.activity_list.topLevelItem(index)
+            if item.data(0, Qt.ItemDataRole.UserRole) == identifier:
+                assert not item.isHidden()
+                page.activity_list.setCurrentItem(item)
+                return
+        pytest.fail(f"Synchronization {identifier} was not listed")
+
+    def visible_count():
+        return sum(not page.activity_list.topLevelItem(index).isHidden()
+                   for index in range(page.activity_list.topLevelItemCount()))
+
     try:
-        page.save_folder_data(data)
-        assert not warnings
+        page.open_editor()
+        editor = page.editor
+        editor.name_edit.setText("Other App")
+        editor.local_edit.setText(str(other_local))
+        from ui.widgets.synchronization_editor import LOCAL_STORAGE
+        editor.add_destination(LOCAL_STORAGE, "%OneDrive%/other")
+        assert editor.save_activity(), editor.error_label.text()
+        editor.reject()
+        other_group, = service.get_app_config().sync_groups
         assert len(ConfigManager(path).load().folders) == 2
-        page.on_folder_toggle_requested("other", False)
-        assert not service.get_app_config().folders[1].enabled
+        select(other_group.id)
+        page.enabled_button.click()
+        assert not service.get_app_config().sync_groups[0].enabled
         page.filter_combo.setCurrentText("Disabled")
-        assert page.folders_layout.count() == 1
-        page.search_input.setText("not found")
-        assert page.folders_layout.count() == 0
-        page.search_input.clear()
-        data["name"] = "Renamed App"
-        page.save_folder_data(data, original_id="other")
+        assert visible_count() == 1
+        page.search_edit.setText("not found")
+        assert visible_count() == 0
+        page.search_edit.clear()
+        select(other_group.id)
+        page.edit_button.click()
+        editor = page.editor
+        editor.name_edit.setText("Renamed App")
+        assert editor.save_activity(), editor.error_label.text()
+        editor.reject()
+        assert service.get_app_config().sync_groups[0].id == other_group.id
+        assert service.get_app_config().sync_groups[0].name == "Renamed App"
         assert service.get_app_config().folders[1].name == "Renamed App"
         assert len(service.get_app_config().folders) == 2
-        page.on_folder_sync_requested("app")
+        page.filter_combo.setCurrentText("All")
+        select(other_group.id)
+        page.enabled_button.click()
+        assert service.get_app_config().sync_groups[0].enabled
+        select("app")
+        page.upload_button.click()
         spin_until(qapp, lambda: not sync.is_syncing)
         assert (cloud / "selected.txt").read_text() == "selected"
         assert not (cloud.parent / "other" / "other.txt").exists()
         before = path.read_bytes()
-        page.save_folder_data(data)  # duplicate ID must not alter the saved config
-        assert warnings and path.read_bytes() == before
+        page.open_editor(other_group.id)
+        editor = page.editor
+        editor.add_destination(LOCAL_STORAGE, "%OneDrive%/other")
+        assert not editor.save_activity()  # Duplicate destinations must preserve the saved config.
+        assert editor.error_label.text() and path.read_bytes() == before
+        editor.reject()
     finally:
         sync.wait_for_finished()
         window.tray_icon.hide()
@@ -393,11 +424,42 @@ def test_launcher_accepts_temporary_configuration(qapp, configuration, monkeypat
 
     def check_window():
         windows = [w for w in qapp.topLevelWidgets() if isinstance(w, MainWindow) and w.isVisible()]
-        assert any(w.config_error is None and w.content_stack.count() == 9 for w in windows)
+        assert any(w.config_error is None and w.content_stack.count() == 8
+                   and w.nav_list.item(1).text() == "Synchronizations"
+                   and all(w.nav_list.item(i).text() not in {"Folders", "Cloud Sync"}
+                           for i in range(w.nav_list.count())) for w in windows)
         return 0
 
     monkeypatch.setattr(qapp, "exec", check_window)
     assert main(["--config", str(path)]) == 0
+
+
+def test_frozen_force_diagnostic_uses_unified_activity_actions(qapp, configuration):
+    from desktop_entry import exercise_force_sync
+    from src.config import BackupSettings
+    service, local, cloud, path = configuration
+    (local / "save.txt").write_text("new")
+    (cloud / "save.txt").write_text("old")
+    os.utime(cloud / "save.txt", (time.time() - 10, time.time() - 10))
+    for number in range(9):
+        (cloud / f"retained-{number}.txt").write_text("keep")
+    config = service.get_app_config()
+    folder = replace(config.folders[0], id="__acceptance_force__",
+                     backup=BackupSettings(True, "%OneDrive%/Backups", 7))
+    service.save(replace(config, folders=[folder]))
+    window = MainWindow(configuration_service=service)
+    report = {}
+    try:
+        window.show()
+        qapp.processEvents()
+        exercise_force_sync(qapp, window, path.with_name("force-report.json"), report)
+        assert report["native_force_sync_verified"]
+        assert service.get_app_config().folders[0].minimum_sync_percentage == 80
+        assert len(list(cloud.glob("retained-*.txt"))) == 9
+    finally:
+        window.sync_service.wait_for_finished()
+        window.tray_icon.hide()
+        window.close()
 
 
 def test_synchronous_service_api_keeps_existing_copy_behavior(qapp, configuration):
