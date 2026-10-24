@@ -11,11 +11,12 @@ import subprocess
 import sys
 import time
 import threading
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, ProxyHandler, build_opener
+from uuid import uuid4
 
 from .cloud_credentials import CredentialStore
 from .cloud_identity import AccountIdentityError, fetch_account_identity
@@ -23,6 +24,9 @@ from .cloud_models import validate_relative_path, validate_local_path, validate_
 from .exceptions import OneDrivePCSyncError
 from .single_instance import acquire_single_instance_lock
 from .cloud_providers import setup_parameters
+
+
+_ONEDRIVE_ACCESS_SCOPES = "Files.Read Files.ReadWrite Files.Read.All Files.ReadWrite.All Sites.Read.All offline_access User.Read"
 
 
 class CloudSyncError(OneDrivePCSyncError):
@@ -305,6 +309,8 @@ class RcloneTransport:
             parameters = setup_parameters(connection.provider, parameters)
         except ValueError as error:
             raise CloudSyncError(str(error)) from None
+        if connection.provider == "onedrive" and state is None:
+            parameters["access_scopes"] = _ONEDRIVE_ACCESS_SCOPES
         options = {"nonInteractive": True, "obscure": True}
         if state is not None:
             options.update({"continue": True, "state": state, "result": answer or ""})
@@ -400,6 +406,74 @@ class RcloneTransport:
         if not isinstance(response.get("item"), dict) or response["item"].get("IsDir") is not True:
             raise CloudSyncError("The connection root does not exist or cannot be read.")
         return response
+
+    def authorize_account_identity(self, connection):
+        """Explicit Microsoft consent; preserve saved credentials until verified."""
+        unavailable = "Could not show the Microsoft account. Retry sign-in and allow profile access."
+
+        def check_cancel():
+            if self.cancel_event.is_set():
+                raise CloudCancelled("Account operation cancelled.")
+
+        try:
+            validate_id(connection.id)
+        except ValueError:
+            raise CloudSyncError(unavailable) from None
+        if connection.provider != "onedrive":
+            raise CloudSyncError("Profile authorization is available for Microsoft accounts only.")
+        check_cancel()
+        name = "es_" + connection.id
+        config = self.call("config/get", {"name": name})
+        if (config.get("type") != "onedrive" or not config.get("drive_id")
+                or config.get("drive_type") not in {"personal", "business", "documentLibrary"}
+                or config.get("region", "global") != "global"
+                or config.get("client_credentials", "false") == "true"):
+            raise CloudSyncError(unavailable)
+        scopes = (config.get("access_scopes") or _ONEDRIVE_ACCESS_SCOPES).split()
+        # rclone's disable_site_permission replaces the entire scope list,
+        # dropping User.Read. Preserve its effective storage scopes explicitly.
+        if config.get("disable_site_permission") == "true":
+            scopes = [scope for scope in _ONEDRIVE_ACCESS_SCOPES.split() if scope != "Sites.Read.All"]
+        scopes = " ".join(dict.fromkeys([*scopes, "User.Read"]))
+        staged = replace(connection, id="profile_" + uuid4().hex)
+        staged_name = "es_" + staged.id
+        parameters = {key: value for key, value in config.items()
+                      if key not in {"type", "token"} and not key.startswith("config_")}
+        parameters.update(access_scopes=scopes, disable_site_permission="false", config_is_local="true")
+        check_cancel()
+        try:
+            result = self.operation("config/create", {"name": staged_name, "type": "onedrive",
+                "parameters": parameters, "opt": {"nonInteractive": True, "noObscure": True}})
+            check_cancel()
+            # OAuth is complete when OneDrive asks for storage type. The
+            # existing drive is already copied; do not discover/select another.
+            if (result.get("Error") or (result.get("Option") or {}).get("Name") != "config_type"):
+                raise CloudSyncError(unavailable)
+            self.test(staged)
+            details = self.account_info(staged)
+            if not details:
+                raise CloudSyncError(unavailable)
+            check_cancel()
+            updated = self.call("config/get", {"name": staged_name})
+            raw_token = updated.get("token")
+            try:
+                token = json.loads(raw_token) if isinstance(raw_token, str) and len(raw_token) <= 65536 else None
+            except (ValueError, RecursionError):
+                token = None
+            if (not isinstance(token, dict) or not isinstance(token.get("access_token"), str)
+                    or not token["access_token"]):
+                raise CloudSyncError(unavailable)
+        finally:
+            # Cleanup must succeed before the saved connection can be changed.
+            self.call("config/delete", {"name": staged_name})
+        check_cancel()
+        result = self.call("config/update", {"name": name,
+            "parameters": {"token": raw_token, "access_scopes": scopes,
+                           "disable_site_permission": "false", "config_refresh_token": "false"},
+            "opt": {"nonInteractive": True, "noObscure": True}})
+        if result.get("Error"):
+            raise CloudSyncError(unavailable)
+        return details
 
     def account_info(self, connection):
         """Read optional account labels without exporting credentials."""

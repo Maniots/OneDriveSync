@@ -34,6 +34,14 @@ discovery without entering a manual drive ID. If it continues, open OneDrive in
 your browser with the same Microsoft account to check that storage is available.
 You can cancel the pending setup and sign in again; existing connections remain.
 
+OneDrive sign-in requests permission to read your Microsoft profile so Connections
+can show the signed-in account. If an older connection shows **Account details
+unavailable**, select it and choose **Show Microsoft account**, then sign in with
+the account that can access its cloud folder and allow profile access. This keeps
+the existing drive, folder and synchronization settings. Cancel Microsoft sign-in
+to stop; denied consent or a failed access check keeps the saved connection.
+**Verify access** retries details without opening the browser.
+
 | Provider | Setup |
 | --- | --- |
 | **Local folder / NAS** | Browse an existing local or accessible network folder. No account is needed. Use this to try the complete workflow first. |

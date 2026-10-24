@@ -78,9 +78,13 @@ class ConnectionsPage(QWidget):
         self.test_button = QPushButton("Verify access")
         self.test_button.setToolTip("Check that the cloud folder is readable and refresh the selected account's details")
         self.remove_button = QPushButton("Disconnect account")
+        self.authorize_button = QPushButton("Show Microsoft account")
+        self.authorize_button.setToolTip("Sign in with Microsoft and allow profile access to show your account. Use the account that can access this cloud folder.")
         self.test_button.clicked.connect(self.test_selected)
         self.remove_button.clicked.connect(self.remove_selected)
+        self.authorize_button.clicked.connect(self.authorize_selected)
         actions.addWidget(self.test_button)
+        actions.addWidget(self.authorize_button)
         actions.addWidget(self.remove_button)
         actions.addStretch()
         layout.addLayout(actions)
@@ -297,6 +301,8 @@ class ConnectionsPage(QWidget):
             parts = [identity[key] for key in ("email", "name") if identity.get(key)]
             text = "\n".join(dict.fromkeys(parts))
             return text, text
+        if connection.provider == "onedrive":
+            return "Account details unavailable", "Select this row and choose Show Microsoft account to sign in and allow profile access."
         return "Account details unavailable", "Your connection is still saved. Select this row and choose Verify access to retry."
 
     def showEvent(self, event):
@@ -414,6 +420,8 @@ class ConnectionsPage(QWidget):
             self.status_label.setText("Connected. Add this destination to an activity in Synchronizations.")
         elif action == "test":
             self.status_label.setText("Access verified: the cloud folder can be read.")
+        elif action == "authorize_account":
+            self.status_label.setText("Microsoft account details updated.")
         elif action == "accounts":
             self.status_label.setText("Account details updated. Use Verify access to retry any unavailable details.")
         elif action == "remove":
@@ -435,7 +443,12 @@ class ConnectionsPage(QWidget):
         selected = self.selected() is not None
         self.test_button.setEnabled(not busy and self.pending is None and selected)
         self.remove_button.setEnabled(not busy and self.pending is None and selected)
-        self.cancel_button.setEnabled(self.pending is not None)
+        microsoft = self.selected() is not None and self.selected().provider == "onedrive"
+        self.authorize_button.setVisible(microsoft)
+        self.authorize_button.setEnabled(not busy and self.pending is None and microsoft)
+        authorizing = self.service.busy and self.service.action == "authorize_account"
+        self.cancel_button.setText("Cancel Microsoft sign-in" if authorizing else "Cancel account setup")
+        self.cancel_button.setEnabled(self.pending is not None or authorizing)
         provider = self.provider_combo.currentData()
         config = self.config_service.get_app_config()
         connected = provider != "local" and any(item.provider == provider for item in (config.connections if config else []))
@@ -489,6 +502,10 @@ class ConnectionsPage(QWidget):
             self.show_error(str(error))
 
     def cancel_setup(self):
+        if self.pending is None and self.service.action == "authorize_account":
+            self.service.cancel()
+            self.status_label.setText("Cancelling Microsoft sign-in…")
+            return
         try:
             self.service.cancel()
         except ValueError as error:
@@ -524,6 +541,15 @@ class ConnectionsPage(QWidget):
             try:
                 self.service.test_connection(connection)
                 self.status_label.setText("Verifying access and refreshing account details…")
+            except ValueError as error:
+                self.show_error(str(error))
+
+    def authorize_selected(self):
+        connection = self.selected()
+        if connection is not None:
+            try:
+                self.service.authorize_account_identity(connection)
+                self.status_label.setText("Complete Microsoft sign-in in your browser and allow profile access to show your account.")
             except ValueError as error:
                 self.show_error(str(error))
 

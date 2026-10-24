@@ -1,5 +1,33 @@
 # Connected account identity verification
 
+## Update: Microsoft profile consent, 2026-10-24
+
+The user requested showing the Microsoft account, authorizing User.Read consent.
+New OneDrive setup now requests that scope. Existing connections have an explicit
+Show Microsoft account action; background reads and Verify access remain passive.
+The original no-new-consent statements below describe the October 19 behavior
+and are superseded by the updated [identity contract](../specs/2026-10-19-connection-identity-design.md).
+
+Fresh verification on Windows, Python 3.14 and pinned rclone 1.75.2:
+
+- Full suite: **591 passed, 2 skipped**, 76.92 seconds.
+- Profile authorization and identity service/page suite: **30 passed**. Covers
+  existing connection/job preservation, profile rendering, selection, cancellation,
+  denied consent, missing profile, inaccessible root, cleanup failure and retry.
+- A real encrypted rclone fixture inspected only the local OAuth redirect:
+  storage scopes were preserved and User.Read was added. No browser or request to
+  Microsoft was needed. Cancellation stopped OAuth, removed the temporary remote
+  and preserved the saved credentials. Synthetic completed authorization also
+  exercised real rclone token/scope persistence without changing the drive.
+- Native Qt previews were inspected at 810 and 1010 pixel widths with the existing
+  theme and Segoe UI. The action fits; unavailable and populated account rows use
+  synthetic identities. Previews remain ignored local build artifacts.
+
+Actual Microsoft consent and profile retrieval with a real account require the
+user's browser interaction and were not executed by this validation.
+
+## Original verification: 2026-10-19
+
 Approved design: [identity and table](../specs/2026-10-19-connection-identity-design.md).
 The internal contract was independently reviewed before implementation. The pinned
 rclone version has no UserInfo implementation for these three OAuth providers;

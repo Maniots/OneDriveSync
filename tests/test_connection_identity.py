@@ -6,7 +6,7 @@ import pytest
 from PySide6.QtCore import Qt
 
 from backend.services.cloud_service import CloudService
-from src.cloud_models import ConnectionConfig
+from src.cloud_models import ConnectionConfig, RemoteJobConfig
 from src.rclone_transport import CloudSyncError
 from tests.test_cloud_ui import configuration, spin
 from ui.pages.connections import ConnectionsPage
@@ -76,6 +76,99 @@ def test_verification_retries_identity_without_changing_its_completed_payload(ac
     spin(qapp, lambda: not service.busy)
     assert service.account_identities["google"]["email"] == "retry@example.test"
     assert calls == ["google", "google"]
+
+
+def test_explicit_microsoft_consent_updates_account_without_rewriting_configuration(accounts, qapp, tmp_path):
+    config, service, _, _, _, microsoft = accounts
+    local = tmp_path / "saves"
+    local.mkdir()
+    job = RemoteJobConfig("saves", "Game saves", str(local), microsoft.id, "Game")
+    config.save(replace(config.get_app_config(), remote_jobs=[job]))
+    client = service.transport_factory()
+    client.authorize_account_identity = lambda connection: {"name": "Microsoft User", "email": "ms@example.test"}
+    service.transport_factory = lambda *a, **k: client
+    before = (tmp_path / "config.json").read_bytes()
+    completed = []
+    service.completed.connect(lambda *args: completed.append(args))
+    service.authorize_account_identity(microsoft)
+    spin(qapp, lambda: not service.busy)
+    assert completed == [("authorize_account", microsoft.id)]
+    assert service.account_identities[microsoft.id] == {
+        "status": "available", "name": "Microsoft User", "email": "ms@example.test"}
+    assert (tmp_path / "config.json").read_bytes() == before
+    assert config.get_app_config().remote_jobs == [job]
+
+
+def test_microsoft_consent_action_is_selected_explicit_and_cancellable(accounts, qapp):
+    config, service, calls, _, google, microsoft = accounts
+    entered = threading.Event()
+    def authorize(connection):
+        entered.set()
+        assert service._task.cancel_event.wait(3)
+        raise CloudSyncError("Account operation cancelled.")
+    client = service.transport_factory()
+    client.authorize_account_identity = authorize
+    service.transport_factory = lambda *a, **k: client
+    page = ConnectionsPage(config, service)
+    assert page.authorize_button.isHidden()
+    page.connection_table.selectRow(0)
+    assert page.authorize_button.isHidden()
+    page.connection_table.selectRow(1)
+    assert not page.authorize_button.isHidden()
+    page.authorize_button.click()
+    assert entered.wait(2)
+    assert "browser" in page.status_label.text().lower()
+    assert not page.authorize_button.isEnabled()
+    assert page.cancel_button.isEnabled()
+    page.cancel_button.click()
+    spin(qapp, lambda: not service.busy)
+    assert config.get_app_config().connections == [google, microsoft]
+    assert "cancel" in page.status_label.text().lower()
+    assert page.authorize_button.isEnabled()
+    assert not calls
+
+
+def test_profile_consent_rejects_foreign_or_unsupported_connection(accounts):
+    _, service, _, _, google, microsoft = accounts
+    for connection in (google, replace(microsoft, root="Other"), replace(microsoft, id="unknown")):
+        with pytest.raises(ValueError):
+            service.authorize_account_identity(connection)
+    assert not service.busy
+
+
+def test_consent_success_is_rendered_in_selected_account_row(accounts, qapp):
+    config, service, _, _, _, microsoft = accounts
+    client = service.transport_factory()
+    client.authorize_account_identity = lambda connection: {"name": "Microsoft User", "email": "ms@example.test"}
+    service.transport_factory = lambda *a, **k: client
+    page = ConnectionsPage(config, service)
+    page.connection_table.selectRow(1)
+    page.authorize_button.click()
+    spin(qapp, lambda: not service.busy)
+    assert page.selected() == microsoft
+    assert page.connection_table.item(1, 1).text() == "ms@example.test\nMicrosoft User"
+    assert "updated" in page.status_label.text().lower()
+    assert not page.cancel_button.isEnabled()
+
+
+def test_consent_failure_retains_cached_account_and_can_retry(accounts, qapp):
+    _, service, _, _, _, microsoft = accounts
+    before = {"status": "available", "name": "Previous account"}
+    service.account_identities[microsoft.id] = dict(before)
+    client = service.transport_factory()
+    def denied(connection):
+        raise CloudSyncError("Microsoft sign-in was denied. Retry to allow profile access.")
+    client.authorize_account_identity = denied
+    service.transport_factory = lambda *a, **k: client
+    errors = []
+    service.failed.connect(errors.append)
+    service.authorize_account_identity(microsoft)
+    spin(qapp, lambda: not service.busy)
+    assert errors and service.account_identities[microsoft.id] == before
+    client.authorize_account_identity = lambda connection: {"name": "Verified account"}
+    service.authorize_account_identity(microsoft)
+    spin(qapp, lambda: not service.busy)
+    assert service.account_identities[microsoft.id]["name"] == "Verified account"
 
 
 def test_removed_connection_does_not_get_a_late_identity(accounts, qapp):

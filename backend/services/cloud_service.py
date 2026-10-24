@@ -128,7 +128,7 @@ class CloudService(QObject):
                 elif task.action == "accounts":
                     current = {c.id for c in config.connections}
                     self.account_identities.update({key: item for key, item in value.items() if key in current})
-                elif task.action == "test":
+                elif task.action in {"test", "authorize_account"}:
                     if any(c.id == value["connection_id"] for c in config.connections):
                         self.account_identities[value["connection_id"]] = value["identity"]
                     value = value["connection_id"]
@@ -294,6 +294,18 @@ class CloudService(QObject):
             return {"connection_id": connection.id, "identity": identity}
         self._submit("test", test)
 
+    def authorize_account_identity(self, connection):
+        if (connection.provider != "onedrive"
+                or connection not in self.config_service.get_app_config().connections):
+            raise ValueError("Select a saved Microsoft connection first.")
+        def authorize(cancel_event):
+            with self.transport_factory(self.config_service.cloud_root, cancel_event=cancel_event) as client:
+                details = normalize_account_identity(client.authorize_account_identity(connection))
+            if not details:
+                raise CloudSyncError("Microsoft account details are unavailable. Retry sign-in and allow profile access.")
+            return {"connection_id": connection.id, "identity": dict(details, status="available")}
+        self._submit("authorize_account", authorize)
+
     @staticmethod
     def _read_account_identity(client, connection):
         if connection.provider not in OAUTH_PROVIDERS:
@@ -353,7 +365,7 @@ class CloudService(QObject):
                      self.config_service.cloud_root, self.transport_factory).restore(job_id, run_id, target))
 
     def cancel(self):
-        if self._task is not None and self.action in {"configure", "test", "snapshots", "folders", "save_root", "accounts"}:
+        if self._task is not None and self.action in {"configure", "test", "snapshots", "folders", "save_root", "accounts", "authorize_account"}:
             self._task.cancel_event.set()
         elif self._task is None and self._pending_connection is not None:
             self._discard_pending("Account operation cancelled.")

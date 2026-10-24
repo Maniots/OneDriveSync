@@ -65,10 +65,18 @@ This Python-internal contract is reviewed before implementation. It does not def
   and cancellation. No new scopes or browser login. Microsoft uses only the
   authenticated caller's profile if the existing grant permits it; otherwise
   identity is unavailable. Never infer the caller from a drive owner or call
-  the auto-provisioning /me/drive endpoint. No User.Read consent is requested.
+  the auto-provisioning /me/drive endpoint. New OneDrive sign-ins request
+  User.Read; existing grants are upgraded only through the explicit Show
+  Microsoft account action. Background reads never request consent.
   Return only normalized bounded name/email fields; missing or unsupported
   identity remains explicit. Details and reviewed service/cache semantics:
   [identity contract](../specs/2026-10-19-connection-identity-design.md).
+- `authorize_account_identity(connection) -> {name?, email?}`: explicit,
+  OneDrive-only browser consent using a temporary encrypted remote. Preserve
+  the existing application, drive, root and jobs; require a readable root and
+  caller profile, delete temporary credentials, then update only the saved
+  token and scope settings. Failure/cancellation before this commit preserves
+  the saved remote. Service completion is `('authorize_account', connection.id)`.
 - `close()`: release owned subprocesses and socket resources, including failure/cancel paths.
 
 ## Coordinator semantics
