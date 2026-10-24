@@ -477,8 +477,6 @@ def test_synchronous_service_api_keeps_existing_copy_behavior(qapp, configuratio
 def test_backup_page_displays_real_archive_and_recovers_from_errors(qapp, configuration, monkeypatch):
     from backend.services.backup_service import BackupService
     from ui.pages.backups import BackupsPage
-    from ui.themes import colors
-    from PySide6.QtGui import QColor
     from shiboken6 import isValid
     service, _, cloud, path = configuration
     data = json.loads(path.read_text())
@@ -495,7 +493,9 @@ def test_backup_page_displays_real_archive_and_recovers_from_errors(qapp, config
     try:
         page.load_configuration_data()
         assert table.rowCount() == 1
-        assert table.item(0, 4).foreground().color() == QColor(colors.SUCCESS)
+        assert table.columnCount() == 3
+        assert page.detail_title.text() == data["folders"][0]["name"]
+        assert page.restore_btn.isEnabled()
         assert page.status_label.text() == "Found 1 backup(s)"
         page.show_error("temporary failure")
         QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)

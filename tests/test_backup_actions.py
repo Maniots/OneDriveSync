@@ -13,7 +13,7 @@ from types import SimpleNamespace
 
 import pytest
 from PySide6.QtCore import QCoreApplication, QEvent
-from PySide6.QtWidgets import QFileDialog, QMessageBox, QPushButton
+from PySide6.QtWidgets import QFileDialog, QMessageBox
 from shiboken6 import isValid
 
 from backend.services.backup_service import BackupService
@@ -325,8 +325,8 @@ def test_action_buttons_bind_each_row_to_its_archive(qapp, backup_setup, monkeyp
     for method in ("restore_backup", "open_backup", "delete_backup"):
         monkeypatch.setattr(page, method, lambda fid, path, method=method: calls.append((method, fid, path)))
     for row, path in enumerate((archive, other)):
-        buttons = page.table.cellWidget(row, 5).findChildren(QPushButton)
-        for button in buttons:
+        page.table.selectRow(row)
+        for button in (page.restore_btn, page.open_btn, page.delete_btn):
             button.click()
         assert calls[-3:] == [("restore_backup", "app", str(path)), ("open_backup", "app", str(path)),
                               ("delete_backup", "app", str(path))]
@@ -339,7 +339,7 @@ def test_open_click_opens_containing_directory(qapp, backup_setup, monkeypatch):
     page.load_configuration_data()
     opened = []
     monkeypatch.setattr(page_module.QDesktopServices, "openUrl", lambda url: opened.append(url.toLocalFile()) or True)
-    page.table.cellWidget(0, 5).findChildren(QPushButton)[1].click()
+    page.open_btn.click()
     assert Path(opened[0]) == archive.parent
 
 
@@ -349,11 +349,11 @@ def test_delete_cancel_preserves_archive_then_confirmed_click_deletes_it(qapp, b
     page = BackupsPage(config, service)
     page.load_configuration_data()
     monkeypatch.setattr(QMessageBox, "question", lambda *args: QMessageBox.StandardButton.No)
-    page.table.cellWidget(0, 5).findChildren(QPushButton)[2].click()
+    page.delete_btn.click()
     assert archive.exists()
     assert page.table.rowCount() == 1
     monkeypatch.setattr(QMessageBox, "question", lambda *args: QMessageBox.StandardButton.Yes)
-    page.table.cellWidget(0, 5).findChildren(QPushButton)[2].click()
+    page.delete_btn.click()
     assert not archive.exists()
     assert page.table.rowCount() == 0
     assert page.status_label.text().startswith("Deleted")
@@ -366,7 +366,7 @@ def test_restore_cancel_uses_no_worker_or_writes(qapp, backup_setup, monkeypatch
     page.load_configuration_data()
     monkeypatch.setattr(QFileDialog, "getExistingDirectory", lambda *args: str(target))
     monkeypatch.setattr(QMessageBox, "question", lambda *args: QMessageBox.StandardButton.No)
-    page.table.cellWidget(0, 5).findChildren(QPushButton)[0].click()
+    page.restore_btn.click()
     assert page._thread is None
     assert list(target.iterdir()) == []
 
@@ -377,7 +377,7 @@ def test_dry_run_buttons_disable_mutations_keep_open_available(qapp, backup_setu
     config._app_config = replace(config.get_app_config(), general=replace(config.get_app_config().general, dry_run=True))
     page = BackupsPage(config, service)
     page.load_configuration_data()
-    restore, open_button, delete = page.table.cellWidget(0, 5).findChildren(QPushButton)
+    restore, open_button, delete = page.restore_btn, page.open_btn, page.delete_btn
     assert not restore.isEnabled() and not delete.isEnabled()
     assert open_button.isEnabled()
     assert "dry-run" in restore.toolTip() and "dry-run" in delete.toolTip()
@@ -403,7 +403,7 @@ def test_restore_runs_off_gui_thread_disables_actions_and_recovers_after_failure
         raise RuntimeError("injected restore failure")
 
     monkeypatch.setattr(service, "restore_backup", fail_first)
-    page.table.cellWidget(0, 5).findChildren(QPushButton)[0].click()
+    page.restore_btn.click()
     spin_until(qapp, started.is_set)
     assert not page.refresh_btn.isEnabled() and not page.table.isEnabled()
     assert worker_threads[0] != gui_thread
@@ -414,7 +414,7 @@ def test_restore_runs_off_gui_thread_disables_actions_and_recovers_after_failure
     assert page.error_label.text().endswith("injected restore failure")
     assert page.refresh_btn.isEnabled() and page.table.isEnabled()
     monkeypatch.setattr(service, "restore_backup", original_restore)
-    page.table.cellWidget(0, 5).findChildren(QPushButton)[0].click()
+    page.restore_btn.click()
     spin_until(qapp, lambda: page._thread is None)
     assert (target / "file").read_text() == "one"
     assert page.status_label.text() == "Restored 1 file(s)"
