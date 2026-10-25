@@ -1,5 +1,6 @@
 """Asynchronous account setup and recovery operations for the desktop."""
 from dataclasses import replace
+from pathlib import Path
 import threading
 
 from PySide6.QtCore import QObject, QThread, Signal
@@ -9,7 +10,7 @@ from src.rclone_transport import RcloneTransport, CloudSyncError, CloudNotFound
 from src.single_instance import acquire_single_instance_lock
 from src.runtime_paths import sync_lock_path
 from src.cloud_providers import OAUTH_PROVIDERS, setup_parameters
-from src.cloud_models import validate_relative_path
+from src.cloud_models import validate_relative_path, validate_local_path
 from src.cloud_identity import normalize_account_identity
 
 
@@ -256,11 +257,22 @@ class CloudService(QObject):
 
     @staticmethod
     def _verify_root(client, connection, create_root):
+        if connection.provider == "local" and create_root:
+            root = validate_local_path(connection.root)
+            # Only the managed child of an existing, user-selected parent.
+            if root.name == "EverySync" and root.parent.is_dir():
+                root.mkdir(exist_ok=True)
         try:
             client.test(connection)
         except CloudNotFound:
-            if not create_root or connection.provider not in {"onedrive", "drive", "dropbox", "webdav"}:
+            parent = connection.root.rpartition("/")[0]
+            managed = connection.root.endswith("/EverySync") or (connection.provider == "sftp" and connection.root == "EverySync")
+            if not create_root or (connection.provider not in {"onedrive", "drive", "dropbox", "webdav"} and not managed):
                 raise
+            if managed and parent:
+                # Test the existing parent first: mkdir must not create a bucket,
+                # container or an unavailable/mistyped storage hierarchy.
+                client.test(replace(connection, root=parent))
             client.operation("operations/mkdir", {"fs": f"es_{connection.id}:", "remote": connection.root})
             client.test(connection)
 

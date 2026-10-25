@@ -4,6 +4,35 @@ The main window features a modern header with page title and optional subtitle, 
 
 Last updated: 2026-10-18
 
+## Managed destination and backup folders (2026-10-25)
+
+- Connections and Synchronizations now compose new destinations as
+  `<selected parent>/EverySync/<sync name>`, with backups in the sibling
+  `EverySync Backups/<sync name>` tree. Existing connection roots that are
+  not named EverySync receive both managed trees inside their root. The
+  synchronization name must be one safe folder component; local selection
+  accepts the parent, EverySync, or the already composed destination.
+- The destination editor previews composed paths and derives cloud paths
+  from the synchronization name. Existing saved paths remain unchanged
+  unless the destination is changed. No user data is moved automatically.
+- Local ZIP settings optionally persist `directory_name`; absent values keep
+  the legacy folder-ID namespace. Creation, pruning, listing, restore and
+  overlap checks use the same directory. ZIP backups remain opt-in and
+  restricted to OneDrive by the existing configuration validation.
+- Cloud snapshots persist their folder name for recovery after display-name
+  changes. Snapshots without that marker keep their original reserved path;
+  legacy names unsuitable for folders continue using the ID-based layout.
+  Group and runtime checks include the new sibling backup destinations.
+  Local/NAS setup can create only the managed EverySync child of an existing
+  selected parent when folder creation is enabled.
+- SFTP and bucket/container providers can create the managed child after
+  checking the existing parent, without creating buckets or containers.
+  Verification: 616 tests passed, 2 skipped in the full Windows suite; 65
+  final connection/storage regressions passed after the SFTP account-root
+  case was added. The actual rclone engine created a named sibling snapshot
+  and restored its original bytes. DPAPI-dependent tests ran outside the
+  restricted sandbox; live cloud accounts were not exercised.
+
 ## Windows CI Qt lifecycle and dependency compatibility (2026-10-18)
 
 - `requirements.txt` pins PySide6 to 6.11.1, matching the locally verified

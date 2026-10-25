@@ -20,6 +20,7 @@ from .config import SyncDirection
 from .rclone_transport import RcloneTransport, FileEntry, CloudSyncError, scoped_fs
 from .sync_manager import FolderSyncOutcome
 from .utils import calculate_sync_percentage
+from .storage_layout import backup_location, snapshot_directory
 
 
 class CloudSyncRunner:
@@ -42,9 +43,12 @@ class CloudSyncRunner:
     def _paths(self, job, connection):
         local, remote = str(job.local_path_resolved), scoped_fs(connection, job.remote_path)
         if connection.provider == "local":
-            # Include the connection root because it also contains snapshots.
             root, source = validate_local_path(connection.root), Path(local)
-            if root.is_relative_to(source) or source.is_relative_to(root):
+            roots = [root]
+            if job.backup_enabled:
+                backup_connection, directory, _ = snapshot_directory(connection, job)
+                roots.append(Path(scoped_fs(backup_connection, directory, metadata=True)))
+            if any(root.is_relative_to(source) or source.is_relative_to(root) for root in roots):
                 raise CloudSyncError("The local source and connection root must not overlap.")
         return local, remote
 
@@ -162,7 +166,8 @@ class CloudSyncRunner:
         if not inventory:
             return
         run_id = "r" + uuid4().hex
-        destination = scoped_fs(connection, f".everysync/backups/{job.id}/{run_id}", metadata=True)
+        backup_connection, directory, named = snapshot_directory(connection, job)
+        destination = scoped_fs(backup_connection, f"{directory}/{run_id}", metadata=True)
         client.copy(remote, destination, paths=sorted(inventory))
         client.check(remote, destination, paths=sorted(inventory))
         snapshot_inventory = self._inventory(client, destination)
@@ -170,7 +175,7 @@ class CloudSyncRunner:
                 not self._same(item, snapshot_inventory[name]) for name, item in inventory.items()):
             raise CloudSyncError("Snapshot verification failed. Upload was stopped.")
         # Publish only after successful verification and a durable atomic save.
-        record["snapshots"].append({"run_id": run_id,
+        record["snapshots"].append({"run_id": run_id, **({"folder_name": directory} if named else {}),
             "created_at": datetime.now(timezone.utc).isoformat(), "files": self._serialize(inventory)})
         state.save()
 
@@ -309,7 +314,11 @@ class CloudSyncRunner:
             raise CloudSyncError("Choose an empty local folder for snapshot recovery.")
         inventory = self._deserialize(selected[0]["files"])
         self._validate_destination(target, inventory)
-        source = scoped_fs(connection, f".everysync/backups/{job.id}/{run_id}", metadata=True)
+        if "folder_name" in selected[0]:
+            backup_connection, folder_name = backup_location(connection, selected[0]["folder_name"])
+            source = scoped_fs(backup_connection, f"{folder_name}/{run_id}")
+        else:
+            source = scoped_fs(connection, f".everysync/backups/{job.id}/{run_id}", metadata=True)
         with self.transport_factory(self.root) as client:
             current = self._inventory(client, source)
             if current.keys() != inventory.keys() or any(not self._same(item, current[name]) for name, item in inventory.items()):

@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 
 from .cloud_models import validate_id, validate_local_path
 from .exceptions import ConfigurationError
+from .storage_layout import snapshot_directory
 
 if TYPE_CHECKING:
     from .config import AppConfig
@@ -105,7 +106,7 @@ def validate_groups(config: AppConfig) -> None:
                 roots.append(("filesystem", validate_local_path(leaf.onedrive_path)))
                 if leaf.backup and leaf.backup.enabled:
                     backup_root = validate_local_path(leaf.backup.backup_path)
-                    backup = (backup_root / leaf.id).resolve()
+                    backup = leaf.backup.directory_for(leaf.id).resolve()
                     if not backup.is_relative_to(backup_root) or backup == backup_root:
                         raise ConfigurationError("The legacy backup ID escapes its configured backup folder")
                     roots.append(("filesystem", backup))
@@ -119,12 +120,14 @@ def validate_groups(config: AppConfig) -> None:
                         raise ConfigurationError("The local connection and group source cannot overlap")
                     roots.append(("filesystem", root.joinpath(*leaf.remote_path.split("/"))))
                     if leaf.backup_enabled:
-                        roots.append(("filesystem", root / ".everysync" / "backups" / leaf.id))
+                        backup_connection, directory, _ = snapshot_directory(connection, leaf)
+                        roots.append(("filesystem", validate_local_path(backup_connection.root).joinpath(*directory.split("/"))))
                 else:
                     scope = f"provider:{connection.provider}:{connection.id}"
                     roots.append((scope, Path(connection.root) / leaf.remote_path))
                     if leaf.backup_enabled:
-                        roots.append((scope, Path(connection.root) / ".everysync" / "backups" / leaf.id))
+                        backup_connection, directory, _ = snapshot_directory(connection, leaf)
+                        roots.append((scope, Path(backup_connection.root).joinpath(*directory.split("/"))))
         for index, (scope, first) in enumerate(roots):
             for other_scope, second in roots[index + 1:]:
                 if scope == other_scope and (first.is_relative_to(second) or second.is_relative_to(first)):

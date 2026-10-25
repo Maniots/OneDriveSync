@@ -293,6 +293,7 @@ class ConfigManager:
             enabled=True,
             backup_path=str(backup_path_raw),
             retention_days=retention_days,
+            directory_name=data.get("directory_name"),
         )
 
     @staticmethod
@@ -363,6 +364,8 @@ class ConfigManager:
                     "backup_path": str(folder.backup.backup_path),
                     "retention_days": folder.backup.retention_days,
                 }
+                if folder.backup.directory_name is not None:
+                    folder_raw["backup"]["directory_name"] = folder.backup.directory_name
             else:
                 folder_raw["backup"] = None
             raw["folders"].append(folder_raw)

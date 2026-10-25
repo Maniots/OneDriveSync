@@ -80,6 +80,9 @@ class CloudState:
         ids = set()
         for snapshot in snapshots:
             validate_id(snapshot["run_id"])
+            if "folder_name" in snapshot:
+                from .storage_layout import sync_folder_name
+                sync_folder_name(snapshot["folder_name"])
             if snapshot["run_id"] in ids:
                 raise ValueError("Duplicate snapshot")
             ids.add(snapshot["run_id"])

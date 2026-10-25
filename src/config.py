@@ -118,6 +118,15 @@ class BackupSettings:
     enabled: bool
     backup_path: str | Path
     retention_days: int
+    directory_name: str | None = None
+
+    def __post_init__(self):
+        if self.directory_name is not None:
+            from .storage_layout import sync_folder_name
+            sync_folder_name(self.directory_name)
+
+    def directory_for(self, folder_id: str) -> Path:
+        return self.backup_path_resolved / (self.directory_name or folder_id)
 
     @property
     def backup_path_resolved(self) -> Path:

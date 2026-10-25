@@ -13,6 +13,7 @@ from src.cloud_models import RemoteJobConfig, validate_local_path, validate_rela
 from src.config import BackupSettings, FolderSyncConfig
 from src.exceptions import OneDrivePCSyncError
 from src.sync_groups import SyncDestinationConfig, SyncGroupConfig
+from src.storage_layout import local_sync_paths, remote_sync_path, backup_location
 
 
 # Cannot collide with a validated connection ID, which starts with a letter.
@@ -34,6 +35,8 @@ class DestinationDialog(QDialog):
         self.setWindowTitle("Destination")
         self.resize(620, 470)
         self.draft = draft or {}
+        self.config = config
+        self.sync_name = parent.name_edit.text().strip() if hasattr(parent, "name_edit") else ""
         original = self.draft.get("original")
         layout = QVBoxLayout(self)
         form = QFormLayout()
@@ -107,6 +110,7 @@ class DestinationDialog(QDialog):
             index = self.storage_combo.count() - 1
         self.storage_combo.setCurrentIndex(index)
         self.storage_combo.currentIndexChanged.connect(self.storage_changed)
+        self.path_edit.textChanged.connect(self.update_path_hint)
         self.storage_changed()
 
     def storage_changed(self):
@@ -114,13 +118,41 @@ class DestinationDialog(QDialog):
         if self.draft.get("original") is None and "backup" not in self.draft:
             self.backup.setChecked(not local)
         self.browse_button.setEnabled(local)
-        self.path_edit.setPlaceholderText("Choose a folder" if local else "Game/Saves")
-        self.hint.setText("Select a complete folder path on this PC or an accessible network share." if local else
-                          "Enter a folder below this connection's root, for example Game/Saves. The full destination is shown in the summary.")
-        self.backup_path.setEnabled(local)
+        managed = self.draft.get("original") is None and bool(self.sync_name)
+        self.path_edit.setReadOnly(managed and not local)
+        self.path_edit.setPlaceholderText("Choose a parent folder" if local else "Synchronization name")
+        if managed and not local:
+            connection = next((c for c in self.config.connections if c.id == self.storage_combo.currentData()), None)
+            if connection:
+                try:
+                    self.path_edit.setText(remote_sync_path(connection, self.sync_name))
+                except ValueError:
+                    self.path_edit.clear()
+        elif managed and local and not Path(self.path_edit.text()).is_absolute():
+            self.path_edit.clear()
+        self.backup_path.setEnabled(local and not managed)
         self.retention.setEnabled(local)
         self.backup_hint.setText("Local backups are ZIP archives inside your OneDrive folder." if local else
                                  "Cloud backups are verified full snapshots. Restore is available from the activity's Backups menu.")
+        self.update_path_hint()
+
+    def update_path_hint(self):
+        local = self.storage_combo.currentData() == LOCAL_STORAGE
+        if self.draft.get("original") is None and self.sync_name:
+            try:
+                if local:
+                    path, backups = local_sync_paths(self.path_edit.text().strip(), self.sync_name)
+                    self.backup_path.setText(str(backups / self.sync_name))
+                    text = f"Destination: {path}\nBackups: {backups / self.sync_name}"
+                else:
+                    connection = next(c for c in self.config.connections if c.id == self.storage_combo.currentData())
+                    backup_connection, name = backup_location(connection, self.sync_name)
+                    text = f"Destination: {connection.root}/{remote_sync_path(connection, self.sync_name)}\nBackups: {backup_connection.root}/{name}"
+            except (ValueError, OSError, StopIteration):
+                text = "Choose a parent folder. EverySync/<sync name> and EverySync Backups/<sync name> are added automatically."
+            self.hint.setText(text)
+        else:
+            self.hint.setText("Existing destination. Its saved folder and backup locations are preserved.")
 
     def browse(self):
         value = QFileDialog.getExistingDirectory(self, "Choose destination folder", self.path_edit.text())
@@ -252,6 +284,7 @@ class SynchronizationEditor(QWizard):
         self.addPage(review)
         self.currentIdChanged.connect(lambda *_: self.update_summary())
         self.load_item()
+        self.name_edit.textChanged.connect(lambda *_: self.refresh_destinations())
 
     def browse_local(self):
         value = QFileDialog.getExistingDirectory(self, "Choose the folder on this PC", self.local_edit.text())
@@ -336,7 +369,11 @@ class SynchronizationEditor(QWizard):
             connection = connections.get(draft["storage"])
             storage = ("Folder on PC / network" if draft["storage"] == LOCAL_STORAGE else
                        connection.name if connection else "Account disconnected — choose another destination")
-            values = [str(priority) if draft["download"] else "—", storage, draft["path"],
+            try:
+                path = self.destination_path(draft, config)
+            except (ValueError, OSError):
+                path = draft["path"]
+            values = [str(priority) if draft["download"] else "—", storage, path,
                       "Yes" if draft["upload"] else "No", "Yes" if draft["download"] else "No"]
             for column, value in enumerate(values):
                 item = QTableWidgetItem(value)
@@ -346,6 +383,21 @@ class SynchronizationEditor(QWizard):
             self.destination_table.selectRow(selected)
         self.update_summary()
 
+    def destination_path(self, draft, config):
+        original = draft.get("original")
+        if original is not None:
+            original_path = original.remote_path if isinstance(original, RemoteJobConfig) else str(original.onedrive_path)
+            original_storage = original.connection_id if isinstance(original, RemoteJobConfig) else LOCAL_STORAGE
+            if draft["storage"] == original_storage and draft["path"] == original_path:
+                return draft["path"]
+        name = self.name_edit.text().strip()
+        if draft["storage"] == LOCAL_STORAGE:
+            return str(local_sync_paths(draft["path"], name)[0])
+        connection = next((c for c in config.connections if c.id == draft["storage"]), None)
+        if connection is None:
+            raise ValueError("The destination account was disconnected. Choose another destination.")
+        return remote_sync_path(connection, name)
+
     def update_summary(self):
         if not hasattr(self, "summary_label"):
             return
@@ -354,8 +406,21 @@ class SynchronizationEditor(QWizard):
         lines = [self.name_edit.text(), f"Folder on this PC: {self.local_edit.text()}", "", "Destinations (download priority):"]
         for position, draft in enumerate(self.drafts, 1):
             connection = connections.get(draft["storage"])
-            destination = f"{connection.name}: {connection.root.rstrip('/')}/{draft['path']}" if connection else draft["path"]
+            try:
+                path = self.destination_path(draft, config)
+            except (ValueError, OSError, StopIteration):
+                path = draft["path"]
+            destination = f"{connection.name}: {connection.root.rstrip('/')}/{path}" if connection else path
             lines.append(f"{position}. {destination} · Upload {'on' if draft['upload'] else 'off'} · Download {'on' if draft['download'] else 'off'}")
+            if draft.get("backup", getattr(draft.get("original"), "backup_enabled", False)):
+                try:
+                    if connection:
+                        backup_connection, folder_name = backup_location(connection, self.name_edit.text().strip())
+                        lines.append(f"   Backups: {backup_connection.root}/{folder_name}")
+                    elif draft.get("original") is None:
+                        lines.append(f"   Backups: {local_sync_paths(draft['path'], self.name_edit.text().strip())[1] / self.name_edit.text().strip()}")
+                except (ValueError, OSError):
+                    pass
         if any(getattr(draft.get("original"), "bidirectional", False) for draft in self.drafts):
             lines.append("\nThis existing activity synchronizes both folders. It can keep only one destination.")
         removed = self.original_ids - {getattr(draft.get("original"), "id", None) for draft in self.drafts}
@@ -380,6 +445,7 @@ class SynchronizationEditor(QWizard):
             folders, jobs = list(config.folders), list(config.remote_jobs)
             targets = []
             for draft in self.drafts:
+                path = self.destination_path(draft, config)
                 original = draft.get("original")
                 same_kind = original is not None and ((draft["storage"] == LOCAL_STORAGE) == isinstance(original, FolderSyncConfig))
                 identifier = original.id if same_kind else ("f_" if draft["storage"] == LOCAL_STORAGE else "j_") + uuid4().hex
@@ -390,12 +456,17 @@ class SynchronizationEditor(QWizard):
                 if draft["storage"] == LOCAL_STORAGE:
                     backup = original.backup if same_kind else None
                     if "backup" in draft:
-                        backup = BackupSettings(True, draft["backup_path"], draft["retention"]) if draft["backup"] else None
-                    leaf = FolderSyncConfig(**common, onedrive_path=draft["path"],
+                        if draft["backup"] and (not same_kind or path != str(original.onedrive_path)):
+                            backup = BackupSettings(True, Path(path).parent.parent / "EverySync Backups", draft["retention"], name)
+                        else:
+                            backup = (BackupSettings(True, draft["backup_path"], draft["retention"],
+                                                     original.backup.directory_name if same_kind and original.backup else None)
+                                      if draft["backup"] else None)
+                    leaf = FolderSyncConfig(**common, onedrive_path=path,
                                             create_destination=original.create_destination if same_kind else True, backup=backup)
                     folders = [item for item in folders if item.id != identifier] + [leaf]
                 else:
-                    leaf = RemoteJobConfig(**common, connection_id=draft["storage"], remote_path=draft["path"],
+                    leaf = RemoteJobConfig(**common, connection_id=draft["storage"], remote_path=path,
                                            backup_enabled=draft.get("backup", getattr(original, "backup_enabled", True)),
                                            bidirectional=getattr(original, "bidirectional", False) if same_kind else False)
                     jobs = [item for item in jobs if item.id != identifier] + [leaf]

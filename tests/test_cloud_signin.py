@@ -102,7 +102,7 @@ def test_oauth_page_signs_in_then_browses_and_saves_folder(qapp, tmp_path):
     assert page.cloud_root_edit.text() == "Games"
     page.save_root_button.click()
     spin(qapp, lambda: not service.busy)
-    assert config.get_app_config().connections[0].root == "Games"
+    assert config.get_app_config().connections[0].root == "Games/EverySync"
     assert config.get_app_config().connections[0].name == "OneDrive online"
     assert page.folder_group.isHidden()
 

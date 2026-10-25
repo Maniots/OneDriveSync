@@ -57,7 +57,7 @@ class BackupService:
         folder = next((folder for folder in config.folders if folder.id == folder_id), None) if config else None
         if folder is None or folder.backup is None:
             raise ValueError("Backup folder is not configured")
-        directory = Path(os.path.abspath(expand_env_vars(folder.backup.backup_path))) / folder_id
+        directory = Path(os.path.abspath(expand_env_vars(folder.backup.backup_path))) / (folder.backup.directory_name or folder_id)
         self._reject_links(directory)
         return directory
 
@@ -144,7 +144,7 @@ class BackupService:
             target = Path(os.path.abspath(target_path))
             self._reject_links(target)
             config = self._config_service.get_app_config()
-            managed_directories = [folder.backup.backup_path_resolved / folder.id
+            managed_directories = [folder.backup.directory_for(folder.id)
                                    for folder in config.folders if folder.backup]
             if any(target.resolve().is_relative_to(directory.resolve()) for directory in managed_directories):
                 raise ValueError("Restore cannot overwrite managed backup archives")

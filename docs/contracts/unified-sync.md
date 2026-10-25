@@ -18,6 +18,13 @@ Each `job_id` refers to exactly one existing `FolderSyncConfig` or
 `RemoteJobConfig`. Existing folders and remote jobs remain the execution leaves;
 their IDs, settings, backup identities, paths and history are preserved.
 
+New UI destinations compose `EverySync/<sync name>` below the selected parent;
+backups use the sibling `EverySync Backups/<sync name>` tree. Existing saved
+destinations keep their paths unless the destination is changed. Local
+`BackupSettings.directory_name` optionally supplies the safe single-component
+backup directory; its absence retains the legacy folder-ID directory. Runtime
+and configuration overlap checks use the same effective backup directory.
+
 Boolean fields require actual booleans; names/local paths require nonblank
 strings. Destination `job_id` preserves the referenced legacy ID syntax rather
 than imposing new safe-ID rules on existing folder IDs.

@@ -360,7 +360,7 @@ def test_synchronization_actions_persist_filter_and_copy_only_selected_activity(
         before = path.read_bytes()
         page.open_editor(other_group.id)
         editor = page.editor
-        editor.add_destination(LOCAL_STORAGE, "%OneDrive%/other")
+        editor.add_destination(LOCAL_STORAGE, str(service.get_app_config().folders[1].onedrive_path))
         assert not editor.save_activity()  # Duplicate destinations must preserve the saved config.
         assert editor.error_label.text() and path.read_bytes() == before
         editor.reject()

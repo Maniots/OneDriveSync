@@ -134,7 +134,7 @@ class SyncManager:
         if direction == SyncDirection.UPLOAD:
             for folder, pair in zip(folders, roots):
                 if folder.backup and folder.backup.enabled:
-                    pair.append((folder.backup.backup_path_resolved / folder.id).resolve())
+                    pair.append(folder.backup.directory_for(folder.id).resolve())
         if any(a.is_relative_to(b) or b.is_relative_to(a)
                for i, pair in enumerate(roots) for other in roots[i + 1:]
                for a in pair for b in other):

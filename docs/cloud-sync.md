@@ -6,6 +6,8 @@ EverySync can connect directly to storage through its bundled rclone engine. **S
 
 Open **Synchronizations → Add synchronization**. Choose a PC folder, add the destinations to receive it, and arrange download priority using **Move up / Move down**. Each destination can participate in upload, download or both. Cloud accounts and folders on this PC/network share the same editor. Local ZIP backups and cloud snapshots remain separate recovery mechanisms, accessible from **Backups and restore**.
 
+New destinations follow one folder tree: `<selected parent>/EverySync/<sync name>`, with backups beside it in `<selected parent>/EverySync Backups/<sync name>`. Choose the parent folder; the app adds these names automatically and previews the full destination. Selecting `EverySync` itself does not add it twice. Names must be valid single folder names. Existing saved destinations and ZIP backup locations are preserved when editing without changing their destination; no files are moved automatically.
+
 **Send to destinations** attempts all enabled upload destinations and reports each result. A partial upload is not reported as a complete success. **Download to this PC** chooses one whole-folder source in saved order; it never assembles individual files from different services. Manual direction buttons do not alter scheduled startup/shutdown directions or require a scheduled trigger to be enabled.
 
 The default download fallback is a confirmed missing activity folder. An existing empty folder is reported as empty and leaves PC data unchanged. Access errors, malformed listings, incomplete copies and known prior copies stop download. The advanced **Try the next source when a service is unavailable** option permits fallback only for recognized transport unavailability, not authentication or arbitrary provider errors. Once downloading starts, an error stops that operation; it never continues with another source in the same PC folder.
@@ -22,9 +24,9 @@ Groups that include ordinary PC/network folder destinations require **Copy subdi
 
 1. Open **Connections**, select a provider and give the connection a name.
 2. For **OneDrive**, **Google Drive** or **Dropbox**, choose **Sign in with Microsoft / Google / Dropbox** and authorize access in your browser. If the account has multiple drives, choose the one you want in the app. Technical browser questions are handled automatically. Google sign-in requires a release configured with the EverySync Google application; unavailable builds explain this before setup starts.
-3. After sign-in, open folders in **Choose your cloud folder**, or enter a relative folder path such as `EverySync`. Choose **Use this folder**. The app verifies the folder before saving the account; the checkbox allows creation if missing. You can cancel before saving. Personal OAuth application credentials are optional under **Advanced settings**.
+3. After sign-in, choose a parent folder in **Choose your cloud folder**, or leave `EverySync` to use it at the account root. Choose **Use this folder**. The app adds `EverySync` if needed and verifies it before saving the account; the checkbox allows creation if missing. You can cancel before saving. Personal OAuth application credentials are optional under **Advanced settings**.
 4. For other providers, choose the root folder or existing bucket/container, fill in the provider fields and choose **Connect account**. Object-storage roots use `bucket-name/prefix`. Passwords are masked. Select a saved account and choose **Test connection** to read its root without writing a test file. Jobs stay below the chosen root.
-5. Open **Synchronizations**, choose the PC application folder, add this connection as a destination and enter its folder below the root, such as `ExampleGame/Saves`. Add other destinations and arrange their download priority, then save.
+5. Open **Synchronizations**, name the synchronization and choose the PC application folder. Add this connection as a destination: the app uses `EverySync/<sync name>` automatically. Add other destinations and arrange their download priority, then save. Existing connections using a different root get the same managed tree inside that root.
 6. Close the application that owns the files. Enable **Settings → Dry Run**, apply it and preview a run. Turn dry run off for actual transfers.
 
 Cloud folders can be created during setup with the explicit checkbox. Buckets and containers must already exist. Local/network roots must be existing directories.
@@ -83,10 +85,10 @@ This baseline and lock are local to one PC. They do not coordinate other devices
 With snapshots enabled, an upload first copies and verifies the complete existing remote job folder under:
 
 ```text
-<connection root>/.everysync/backups/<activity ID>/<run ID>
+<selected parent>/EverySync Backups/<sync name>/<run ID>
 ```
 
-These are full remote copies, separate from the legacy ZIP backups on the Backups page. Snapshot failure blocks the overwrite. Only completed, verified snapshots appear in **Cloud Sync → Snapshots / restore**. Restore requires an empty local folder and verifies its contents against the published snapshot fingerprint.
+These are full remote copies, separate from ZIP backups on the Backups page. Snapshot failure blocks the overwrite. Only completed, verified snapshots appear in **Synchronizations → Backups and restore**. Restore requires an empty local folder and verifies its contents against the published snapshot fingerprint. Each new snapshot records its folder name so renaming the activity does not hide earlier snapshots. Previously recorded snapshots under `<connection root>/.everysync/backups/<activity ID>/<run ID>` remain restorable. Existing activities with display names unsuitable as folder names continue using that older layout. Existing connections whose root is not `EverySync` store the new backup tree inside their root.
 
 Remote snapshots have **no automatic retention or pruning** in this version. Remove unwanted snapshot folders on the provider when you no longer need them. Deleting an activity/disconnecting an account retains live files and snapshots; restore through EverySync requires the original job/connection configuration and its state.
 

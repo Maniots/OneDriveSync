@@ -149,14 +149,15 @@ Add an entry like this to the `folders` array in `config.json`. Paths can use Wi
   "name": "Example app saves",
   "enabled": true,
   "local_path": "%APPDATA%\\ExampleApp\\Saves",
-  "onedrive_path": "%OneDrive%\\EverySync\\ExampleApp\\Saves",
+  "onedrive_path": "%OneDrive%\\EverySync\\Example app saves",
   "minimum_sync_percentage": 80,
   "verify_after_sync": true,
   "create_destination": true,
   "backup": {
     "enabled": true,
-    "backup_path": "%OneDrive%\\EverySync\\Backups",
-    "retention_days": 7
+    "backup_path": "%OneDrive%\\EverySync Backups",
+    "retention_days": 7,
+    "directory_name": "Example app saves"
   }
 }
 ```
@@ -170,7 +171,8 @@ Start from [the empty default configuration](packaging/default-config.json) when
 | `create_destination` | Allows a missing destination directory to be created. |
 | `general.dry_run` | Previews copies without changing synchronized files or creating backup archives. Logs and run history may still be written. |
 | `backup.enabled` | Creates a ZIP of the current OneDrive destination before an upload. Backups are opt-in per folder. |
-| `backup.backup_path` | Must resolve inside the folder identified by `%OneDrive%`. Archives are grouped by folder ID. |
+| `backup.backup_path` | Must resolve inside the folder identified by `%OneDrive%`. New destinations use the sibling `EverySync Backups` tree. |
+| `backup.directory_name` | New destinations use the synchronization name. When omitted, existing configurations keep their folder-ID directory. |
 | `backup.retention_days` | Removes backup archives older than the configured retention period. |
 
 Backups run before uploads; an empty destination has nothing to archive. If backup creation fails, that folder's upload stops while other folders can continue. Download-mode copies can overwrite local files, so check the direction before running them.

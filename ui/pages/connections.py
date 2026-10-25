@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, Q
 from src.cloud_models import ConnectionConfig
 from src.cloud_providers import PROVIDER_SETUP, OAUTH_PROVIDERS, SIGN_IN_LABELS
 from src.cloud_oauth import load_oauth_apps
+from src.storage_layout import connection_sync_root
 from ..themes import spacing
 
 
@@ -71,7 +72,7 @@ class ConnectionsPage(QWidget):
         self.empty_accounts_label = QLabel("No accounts connected yet. Choose a service below to sign in.")
         self.empty_accounts_label.setWordWrap(True)
         layout.addWidget(self.empty_accounts_label)
-        self.folder_explanation = QLabel("Cloud folder is the parent folder EverySync uses for this account. In Synchronizations, choose the PC folders and destinations to use inside it.")
+        self.folder_explanation = QLabel("New destinations use EverySync/<sync name>. Backups use the sibling folder EverySync Backups/<sync name>. Choose synchronization names and PC folders in Synchronizations.")
         self.folder_explanation.setWordWrap(True)
         layout.addWidget(self.folder_explanation)
         actions = QHBoxLayout()
@@ -124,7 +125,7 @@ class ConnectionsPage(QWidget):
         self.options_widget = QWidget()
         self.options_form = QFormLayout(self.options_widget)
         setup.addRow(self.options_widget)
-        self.create_root = QCheckBox("Create the root folder if missing (OneDrive, Drive, Dropbox, WebDAV)")
+        self.create_root = QCheckBox("Create the EverySync folder if missing")
         self.create_root.setChecked(True)
         setup.addRow(self.create_root)
         self.connect_button = QPushButton("Connect account")
@@ -149,7 +150,7 @@ class ConnectionsPage(QWidget):
         self.question_group.hide()
         self.folder_group = QGroupBox("Choose your cloud folder")
         folder_layout = QVBoxLayout(self.folder_group)
-        folder_hint = QLabel("Select a folder, double-click to browse inside it, or enter a new folder path.")
+        folder_hint = QLabel("Choose where to keep EverySync. Destinations use EverySync/<sync name>; backups use EverySync Backups/<sync name> beside it. Selecting EverySync itself keeps that folder.")
         folder_hint.setWordWrap(True)
         folder_layout.addWidget(folder_hint)
         self.folder_location = QLabel("Your cloud storage")
@@ -173,7 +174,7 @@ class ConnectionsPage(QWidget):
         folder_layout.addLayout(folder_nav)
         self.cloud_root_edit = QLineEdit()
         self.cloud_root_edit.setAccessibleName("Selected cloud folder path")
-        self.cloud_root_edit.setPlaceholderText("EverySync or Games/Saves")
+        self.cloud_root_edit.setPlaceholderText("EverySync or a parent folder")
         folder_layout.addWidget(QLabel("Folder to synchronize"))
         folder_layout.addWidget(self.cloud_root_edit)
         self.folder_create = QCheckBox("Create this folder if it does not exist")
@@ -229,7 +230,7 @@ class ConnectionsPage(QWidget):
         self.root_edit.setPlaceholderText("Choose an existing folder" if provider == "local" else
                                          "bucket-name/prefix" if provider in {"s3", "b2"} else
                                          "container-name/prefix" if provider == "azureblob" else "EverySync")
-        self.create_root.setEnabled(provider in {"onedrive", "drive", "dropbox", "webdav"})
+        self.create_root.setEnabled(True)
         self.update_actions()
 
     def browse_root(self):
@@ -332,7 +333,7 @@ class ConnectionsPage(QWidget):
             oauth = provider in OAUTH_PROVIDERS
             self.pending = ConnectionConfig("c_" + uuid4().hex,
                 self.name_edit.text().strip() or (PROVIDER_SETUP[provider].label if oauth else ""),
-                provider, "EverySync" if oauth else self.root_edit.text().strip())
+                provider, "EverySync" if oauth else connection_sync_root(self.root_edit.text().strip(), local=provider == "local"))
             self.pending_parameters = {key: edit.text() for key, edit in self.option_inputs.items() if edit.text()}
             self.question = None
             self.service.configure_connection(self.pending, self.pending_parameters,
@@ -496,7 +497,7 @@ class ConnectionsPage(QWidget):
 
     def save_cloud_root(self):
         try:
-            self.service.choose_connection_root(self.cloud_root_edit.text().strip(), create_root=self.folder_create.isChecked())
+            self.service.choose_connection_root(connection_sync_root(self.cloud_root_edit.text().strip()), create_root=self.folder_create.isChecked())
             self.status_label.setText("Verifying your cloud folder…")
         except (ValueError, RuntimeError) as error:
             self.show_error(str(error))
