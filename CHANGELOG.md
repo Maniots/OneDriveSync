@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Fix account disconnection being blocked by background profile loading during confirmation. Reload accounts rereads saved connections and retries account details; verification and Microsoft profile consent update synchronization account labels immediately.
+
 - Replace separate Folders and Cloud Sync navigation with one Synchronizations workspace and a guided editor for PC folders and ordered destinations.
 - Explicit synchronization groups upload to all enabled destinations and download from one whole source in user-defined priority order. Results distinguish partial uploads, missing copies and per-destination failures.
 - Add verified per-PC copy evidence, conservative fallback and pending-work guards. Unknown-copy downloads and fallback on typed service unavailability require explicit advanced options; incomplete and known prior copies stay blocked.

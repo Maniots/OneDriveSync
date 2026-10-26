@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, Q
 from src.cloud_models import ConnectionConfig
 from src.cloud_providers import PROVIDER_SETUP, OAUTH_PROVIDERS, SIGN_IN_LABELS
 from src.cloud_oauth import load_oauth_apps
+from src.exceptions import OneDrivePCSyncError
 from src.storage_layout import connection_sync_root
 from ..themes import spacing
 
@@ -35,6 +36,7 @@ class ConnectionsPage(QWidget):
         self.question = None
         self.option_inputs = {}
         self.folder_path = ""
+        self._confirming_disconnect = False
         self._identity_attempted = set()
         self._identity_timer = QTimer(self)
         self._identity_timer.setSingleShot(True)
@@ -76,6 +78,9 @@ class ConnectionsPage(QWidget):
         self.folder_explanation.setWordWrap(True)
         layout.addWidget(self.folder_explanation)
         actions = QHBoxLayout()
+        self.refresh_button = QPushButton("Reload accounts")
+        self.refresh_button.setToolTip("Reload saved connections and retry account details")
+        self.refresh_button.clicked.connect(self.reload_accounts)
         self.test_button = QPushButton("Verify access")
         self.test_button.setToolTip("Check that the cloud folder is readable and refresh the selected account's details")
         self.remove_button = QPushButton("Disconnect account")
@@ -87,6 +92,7 @@ class ConnectionsPage(QWidget):
         actions.addWidget(self.test_button)
         actions.addWidget(self.authorize_button)
         actions.addWidget(self.remove_button)
+        actions.addWidget(self.refresh_button)
         actions.addStretch()
         layout.addLayout(actions)
         self.setup_group = QGroupBox("Connect storage")
@@ -311,7 +317,8 @@ class ConnectionsPage(QWidget):
         self._identity_timer.start(0)
 
     def load_account_details(self):
-        if not self.isVisible() or self.pending is not None or self.service.pending_connection is not None:
+        if (not self.isVisible() or self._confirming_disconnect
+                or self.pending is not None or self.service.pending_connection is not None):
             return
         if self.service.busy or (self.service.sync_service is not None and self.service.sync_service.is_syncing):
             return
@@ -326,6 +333,19 @@ class ConnectionsPage(QWidget):
         except ValueError:
             self._identity_attempted.difference_update(missing)
         self.refresh()
+
+    def reload_accounts(self):
+        try:
+            self.service.ensure_idle()
+            if self.pending is not None or self.service.pending_connection is not None:
+                raise ValueError("Finish or cancel account setup before reloading accounts.")
+            self.config_service.reload()
+            self._identity_attempted.clear()
+            started = self.service.refresh_account_identities(force=True)
+            self.status_label.setText("Refreshing account details…" if started else "Connected accounts updated.")
+            self.refresh()
+        except (OneDrivePCSyncError, ValueError, OSError) as error:
+            self.show_error(str(error))
 
     def connect_account(self):
         try:
@@ -436,7 +456,8 @@ class ConnectionsPage(QWidget):
         self.refresh()
 
     def update_actions(self, *args):
-        busy = self.service.busy or (self.service.sync_service is not None and self.service.sync_service.is_syncing)
+        busy = (self._confirming_disconnect or self.service.busy
+                or (self.service.sync_service is not None and self.service.sync_service.is_syncing))
         self.setup_group.setEnabled(not busy and self.pending is None)
         self.question_group.setEnabled(not busy)
         self.folder_group.setEnabled(not busy)
@@ -444,6 +465,7 @@ class ConnectionsPage(QWidget):
         selected = self.selected() is not None
         self.test_button.setEnabled(not busy and self.pending is None and selected)
         self.remove_button.setEnabled(not busy and self.pending is None and selected)
+        self.refresh_button.setEnabled(not busy and self.pending is None and self.service.pending_connection is None)
         microsoft = self.selected() is not None and self.selected().provider == "onedrive"
         self.authorize_button.setVisible(microsoft)
         self.authorize_button.setEnabled(not busy and self.pending is None and microsoft)
@@ -556,9 +578,21 @@ class ConnectionsPage(QWidget):
 
     def remove_selected(self):
         connection = self.selected()
-        if connection and QMessageBox.question(self, "Disconnect account", "Disconnect this account? Remote files will be kept.",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No) == QMessageBox.StandardButton.Yes:
-            try:
+        if connection is None:
+            return
+        # The modal dialog runs a nested event loop. Keep automatic profile
+        # requests from taking the cloud worker before the user confirms.
+        self._confirming_disconnect = True
+        self._identity_timer.stop()
+        self.update_actions()
+        try:
+            answer = QMessageBox.question(self, "Disconnect account", "Disconnect this account? Remote files will be kept.",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
+            if answer == QMessageBox.StandardButton.Yes:
                 self.service.remove_connection(connection.id)
-            except ValueError as error:
-                self.show_error(str(error))
+                self.status_label.setText("Disconnecting account…")
+        except ValueError as error:
+            self.show_error(str(error))
+        finally:
+            self._confirming_disconnect = False
+            self.update_actions()

@@ -80,8 +80,8 @@ class ConfigurationService(QObject):
         self.changed.emit(app_config)
 
     def reload(self) -> None:
-        """Reload the configuration from disk."""
-        self._load_config()
+        """Reload from disk, retaining the current configuration on failure."""
+        self._app_config = self._config_manager.load()
         self.changed.emit(self._app_config)
 
     def get_shutdown_monitor_status(self) -> dict:

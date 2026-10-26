@@ -497,7 +497,7 @@ class SynchronizationsPage(QWidget):
             self.status_label.setText(str(error))
 
     def cloud_completed(self, action, value):
-        if action == "accounts":
+        if action in {"accounts", "test", "authorize_account"}:
             self.refresh()
         elif action == "snapshots" and self._snapshot_job:
             job_id, self._snapshot_job = self._snapshot_job, None

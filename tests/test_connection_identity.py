@@ -1,5 +1,6 @@
 """Connected-account details must be real, asynchronous and distinct from folders."""
 from dataclasses import replace
+import json
 import threading
 
 import pytest
@@ -307,3 +308,126 @@ def test_local_storage_has_no_cloud_identity_and_empty_state_is_explicit(qapp, t
     page.refresh()
     assert "no cloud account" in page.connection_table.item(0, 1).text().lower()
     assert not service.refresh_account_identities()
+
+
+@pytest.mark.parametrize("confirmed", [True, False])
+def test_disconnect_confirmation_cannot_start_background_account_loading(accounts, qapp, confirmed):
+    from PySide6.QtCore import QTimer
+    from PySide6.QtWidgets import QMessageBox
+
+    config, service, _, profiles, google, microsoft = accounts
+    release = threading.Event()
+    deleted = []
+    factory = service.transport_factory
+
+    def client_factory(*args, **kwargs):
+        client = factory(*args, **kwargs)
+        client.call = lambda method, payload: deleted.append((method, payload)) or {}
+        return client
+
+    def blocked(client):
+        release.wait(3)
+        return {"email": "loaded@example.test"}
+
+    service.transport_factory = client_factory
+    profiles[google.id] = blocked
+    page = ConnectionsPage(config, service)
+    page.connection_table.selectRow(0)
+    page.show()
+
+    def confirm():
+        dialog = qapp.activeModalWidget()
+        assert isinstance(dialog, QMessageBox)
+        dialog.button(QMessageBox.StandardButton.Yes if confirmed else QMessageBox.StandardButton.No).click()
+
+    QTimer.singleShot(40, confirm)
+    try:
+        page.remove_button.click()
+    finally:
+        release.set()
+    spin(qapp, lambda: not service.busy)
+    if not confirmed:
+        assert config.get_app_config().connections == [google, microsoft]
+        assert not deleted
+        assert page.connection_table.rowCount() == 2
+        assert page.selected_id() == google.id
+        assert page.remove_button.isEnabled()
+        return
+    assert config.get_app_config().connections == [microsoft]
+    assert deleted == [("config/delete", {"name": "es_google"})]
+    assert page.connection_table.rowCount() == 1
+    assert page.connection_table.item(0, 0).data(Qt.ItemDataRole.UserRole) == microsoft.id
+    assert google.id not in service.account_identities
+    assert page.selected_id() is None
+    assert not page.remove_button.isEnabled()
+
+
+def test_reload_accounts_reads_saved_connections_and_retries_cached_profiles(accounts, qapp, tmp_path):
+    config, service, calls, profiles, google, microsoft = accounts
+    profiles[google.id] = CloudSyncError("Profile temporarily unavailable")
+    service.refresh_account_identities()
+    spin(qapp, lambda: not service.busy)
+    page = ConnectionsPage(config, service)
+    page.connection_table.selectRow(0)
+    assert "unavailable" in page.connection_table.item(0, 1).text().lower()
+
+    path = tmp_path / "config.json"
+    saved = json.loads(path.read_text())
+    saved["connections"][0]["root"] = "Changed/EverySync"
+    path.write_text(json.dumps(saved))
+    profiles[google.id] = {"email": "reloaded@example.test"}
+
+    page.refresh_button.click()
+    spin(qapp, lambda: not service.busy)
+    assert page.connection_table.item(0, 1).text() == "reloaded@example.test"
+    assert page.connection_table.item(0, 2).text() == "Changed/EverySync"
+    assert page.selected_id() == google.id
+    assert calls == [google.id, microsoft.id, google.id, microsoft.id]
+    assert page.refresh_button.isEnabled()
+    assert "updated" in page.status_label.text().lower()
+
+
+def test_reload_failure_keeps_accounts_visible_and_allows_retry(accounts, qapp, tmp_path):
+    config, service, calls, _, google, microsoft = accounts
+    page = ConnectionsPage(config, service)
+    page.connection_table.selectRow(0)
+    path = tmp_path / "config.json"
+    saved = path.read_bytes()
+    previous = config.get_app_config()
+    path.write_text("{")
+
+    page.refresh_button.click()
+    assert config.get_app_config() is previous
+    assert page.connection_table.rowCount() == 2
+    assert page.selected_id() == google.id
+    assert "not valid JSON" in page.status_label.text()
+    assert not service.busy
+    assert not calls
+    assert page.refresh_button.isEnabled()
+
+    path.write_bytes(saved)
+    page.refresh_button.click()
+    spin(qapp, lambda: not service.busy)
+    assert calls == [google.id, microsoft.id]
+    assert page.selected_id() == google.id
+
+
+@pytest.mark.parametrize("action", ["test", "authorize_account"])
+def test_account_actions_update_synchronization_table_immediately(accounts, qapp, tmp_path, action):
+    from ui.pages.synchronizations import SynchronizationsPage
+
+    config, service, _, profiles, _, microsoft = accounts
+    job = RemoteJobConfig("saves", "Game saves", str(tmp_path), microsoft.id, "Game")
+    config.save(replace(config.get_app_config(), remote_jobs=[job]))
+    page = SynchronizationsPage(config, service)
+    assert "Work" in page.destination_table.cellWidget(0, 0).text()
+    profiles[microsoft.id] = {"email": "updated@example.test"}
+    if action == "test":
+        service.test_connection(microsoft)
+    else:
+        client = service.transport_factory()
+        client.authorize_account_identity = lambda connection: profiles[connection.id]
+        service.transport_factory = lambda *args, **kwargs: client
+        service.authorize_account_identity(microsoft)
+    spin(qapp, lambda: not service.busy)
+    assert "updated@example.test" in page.destination_table.cellWidget(0, 0).text()

@@ -26,7 +26,8 @@ EverySync copies a selected PC folder to destinations you choose: folders on thi
 Microsoft and Dropbox account details load in the background using the saved
 sign-in. A provider may return only a display name; unavailable details are stated
 explicitly. Select a row and choose **Verify access** to check its folder and retry
-account details. For an existing OneDrive connection whose account details are
+account details. Choose **Reload accounts** to reread saved connections and retry
+all account details while keeping the selected row. For an existing OneDrive connection whose account details are
 unavailable, choose **Show Microsoft account** and allow profile access in the
 browser; its cloud folder and synchronizations are kept. New Microsoft sign-ins
 include profile access. Use **Disconnect account** to remove the connection. The cloud
