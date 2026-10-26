@@ -10,7 +10,7 @@ Sync selected game saves, settings and application folders across local and clou
 
 [![Windows build](https://github.com/Maniots/OneDriveSync/actions/workflows/windows-release.yml/badge.svg)](https://github.com/Maniots/OneDriveSync/actions/workflows/windows-release.yml)
 
-**[Download for Windows](https://github.com/Maniots/OneDriveSync/releases/latest)** · [What's new](CHANGELOG.md) · [Report an issue](https://github.com/Maniots/OneDriveSync/issues)
+**[Download for Windows](https://github.com/Maniots/OneDriveSync/releases/latest)** · [Website](https://maniots.github.io/EverySync-site/) · [Privacy policy](https://maniots.github.io/EverySync-site/privacy.html) · [What's new](CHANGELOG.md) · [Report an issue](https://github.com/Maniots/OneDriveSync/issues)
 
 Windows 10+ · x64 · No Python required to install
 

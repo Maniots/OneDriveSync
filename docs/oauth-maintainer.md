@@ -17,6 +17,15 @@ from the credentials file alone.
    the EverySync project and enable Google Drive API.
 2. Configure the consent screen with EverySync's identity, support contact,
    privacy information and intended audience. For development, add test users.
+   Public Branding URLs:
+   - Homepage: https://maniots.github.io/EverySync-site/
+   - Privacy policy: https://maniots.github.io/EverySync-site/privacy.html
+   These are maintained in [EverySync-site](https://github.com/Maniots/EverySync-site),
+   linked here as the `website` submodule, and deployed independently through
+   GitHub Pages. Initialize a local website checkout with
+   `git submodule update --init website`. Commit and push website edits in that
+   repository, then commit its updated submodule pointer here. Page publication
+   does not establish Google approval or Search Console domain ownership.
 3. Create OAuth credentials with application type **Desktop app**. EverySync
    uses Google's supported loopback callback on `127.0.0.1` with an ephemeral
    port and S256 PKCE. Do not register this as a web or confidential application.
