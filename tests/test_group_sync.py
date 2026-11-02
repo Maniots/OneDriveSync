@@ -74,6 +74,21 @@ def test_mixed_upload_verifies_every_destination_and_keeps_leaf_ids(setup):
     assert all(item["status"] == "complete" for item in ledger["destinations"].values())
 
 
+def test_disconnected_destination_does_not_block_other_group_destinations(setup):
+    config, local, first, second, state = setup
+    (local / "save").write_text("available")
+    disconnected = replace(config.remote_jobs[0], connection_id="", enabled=False)
+    config = replace(config, connections=[], remote_jobs=[disconnected])
+
+    results = GroupSyncRunner(config, state, transport_factory=lambda root: FilesTransport()).run(
+        config.sync_groups[0], SyncDirection.UPLOAD)
+
+    assert [item.folder_id for item in results] == ["folder", "group"]
+    assert all(item.succeeded for item in results)
+    assert (first / "save").read_text() == "available"
+    assert not second.exists()
+
+
 def test_partial_upload_cannot_download_old_copy_even_with_unknown_opt_in(setup):
     config, local, first, second, state = setup
     (local / "save").write_text("good")

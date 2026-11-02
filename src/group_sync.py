@@ -156,7 +156,7 @@ class GroupSyncRunner:
         pending_downloads = []
         for destination in group.destinations:
             leaf = leaves[destination.job_id]
-            if hasattr(leaf, "connection_id"):
+            if hasattr(leaf, "connection_id") and leaf.connection_id:
                 item = cloud_state.job(leaf.id, self.cloud._identity(leaf, self.cloud._connection(leaf)))
                 pending = item.get("pending")
                 if pending and pending["direction"] != direction.value:
@@ -192,7 +192,9 @@ class GroupSyncRunner:
             if not group.enabled:
                 raise CloudSyncError("This synchronization is disabled.")
             leaves = {item.id: item for item in [*self.config.folders, *self.config.remote_jobs]}
-            identities = {d.job_id: destination_identity(self.config, leaves[d.job_id]) for d in group.destinations}
+            identities = {d.job_id: destination_identity(self.config, leaves[d.job_id])
+                          for d in group.destinations if not (
+                              hasattr(leaves[d.job_id], "connection_id") and not leaves[d.job_id].connection_id)}
             ledger, cloud_state = GroupState(self.root), CloudState(self.root)
             record = self._preflight(group, direction, leaves, identities, ledger, cloud_state)
             selected = [leaves[d.job_id] for d in group.destinations

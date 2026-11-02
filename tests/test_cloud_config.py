@@ -41,6 +41,38 @@ def test_cloud_roundtrip_and_local_fixture(tmp_path):
     assert manager.load().connections == [local]
 
 
+def test_disabled_disconnected_job_roundtrips_and_keeps_group_membership(tmp_path):
+    from src.cloud_models import RemoteJobConfig
+
+    raw = cloud_raw(tmp_path)
+    raw["connections"] = []
+    raw["remote_jobs"][0].update(connection_id="", enabled=False)
+    raw["sync_groups"] = [{
+        "id": "games",
+        "name": "Game saves",
+        "local_path": str(tmp_path / "saves"),
+        "destinations": [{"job_id": "saves"}],
+    }]
+    manager = write_config(tmp_path, raw)
+
+    config = manager.load()
+
+    assert config.remote_jobs == [
+        RemoteJobConfig("saves", "Game saves", str(tmp_path / "saves"), "", "Games/Saves", enabled=False)
+    ]
+    assert config.sync_groups[0].destinations[0].job_id == "saves"
+    manager.save(config)
+    assert manager.load() == config
+
+
+def test_enabled_job_cannot_be_disconnected(tmp_path):
+    raw = cloud_raw(tmp_path)
+    raw["remote_jobs"][0]["connection_id"] = ""
+
+    with pytest.raises(ConfigurationError, match="connection"):
+        write_config(tmp_path, raw).load()
+
+
 def test_legacy_config_shape_and_arbitrary_folder_ids_survive(tmp_path):
     raw = {"folders": [{"id": "Old Folder.ID-1", "local_path": str(tmp_path / "a"), "onedrive_path": str(tmp_path / "b")}]}
     manager = write_config(tmp_path, raw)
@@ -56,6 +88,7 @@ def test_legacy_config_shape_and_arbitrary_folder_ids_survive(tmp_path):
     lambda r: r["connections"].append(r["connections"][0].copy()),
     lambda r: r["remote_jobs"].append(r["remote_jobs"][0].copy()),
     lambda r: r["remote_jobs"][0].update(connection_id="missing"),
+    lambda r: r["remote_jobs"][0].update(connection_id=None, enabled=False),
     lambda r: r["connections"][0].update(id="Bad-ID"),
     lambda r: r["connections"][0].update(provider="unknown"),
     lambda r: r["connections"][0].update(token="secret"),

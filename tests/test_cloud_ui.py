@@ -71,22 +71,116 @@ def test_provider_fields_mask_secrets_and_guide_oauth(qapp, tmp_path):
     assert page.provider_combo.findData("s3") >= 0
 
 
-def test_delete_connection_in_use_preserves_configuration(qapp, tmp_path):
+def test_disconnect_detaches_and_disables_jobs_without_removing_groups(qapp, tmp_path):
+    from src.sync_groups import SyncDestinationConfig, SyncGroupConfig
+
     config = configuration(tmp_path)
-    local, remote = tmp_path / "local", tmp_path / "remote"
+    local = tmp_path / "local"
     local.mkdir()
-    remote.mkdir()
-    connection = ConnectionConfig("nas", "NAS", "local", str(remote))
-    job = RemoteJobConfig("saves", "Saves", str(local), "nas", "Game")
+    connection = ConnectionConfig("drive", "Google Drive", "drive", "EverySync")
+    first = RemoteJobConfig("saves", "Saves", str(local), "drive", "Game", backup_enabled=False)
+    second = replace(first, id="settings", name="Settings", remote_path="Settings", verify_after_sync=False)
+    group = SyncGroupConfig("games", "Game data", str(local), [
+        SyncDestinationConfig(first.id), SyncDestinationConfig(second.id, download_enabled=False)])
+    config.save(replace(config.get_app_config(), connections=[connection], remote_jobs=[first, second],
+                        sync_groups=[group]))
+    factory = SetupFactory([])
+    service = CloudService(config, transport_factory=factory, parent=qapp)
+
+    service.remove_connection("drive")
+    spin(qapp, lambda: not service.busy)
+
+    saved = config.get_app_config()
+    assert saved.connections == []
+    assert saved.remote_jobs == [replace(first, connection_id="", enabled=False),
+                                 replace(second, connection_id="", enabled=False)]
+    assert saved.sync_groups == [group]
+    assert factory.deleted == ["es_drive"]
+
+
+def test_disconnect_credential_failure_preserves_connection_and_jobs(qapp, tmp_path):
+    config = configuration(tmp_path)
+    local = tmp_path / "local"
+    local.mkdir()
+    connection = ConnectionConfig("drive", "Google Drive", "drive", "EverySync")
+    job = RemoteJobConfig("saves", "Saves", str(local), "drive", "Game")
     config.save(replace(config.get_app_config(), connections=[connection], remote_jobs=[job]))
-    service = CloudService(config)
-    try:
-        service.remove_connection("nas")
-    except ValueError as error:
-        assert "job" in str(error).lower()
-    else:
-        raise AssertionError("Connection used by a job was removed")
+    factory = SetupFactory([])
+    factory.delete_failures = 1
+    service = CloudService(config, transport_factory=factory, parent=qapp)
+    errors = []
+    service.failed.connect(errors.append)
+
+    service.remove_connection("drive")
+    spin(qapp, lambda: not service.busy)
+
     assert config.get_app_config().connections == [connection]
+    assert config.get_app_config().remote_jobs == [job]
+    assert errors == ["Cleanup unavailable"]
+
+
+def test_disconnect_abandons_pending_job_state_only_after_credential_removal(qapp, tmp_path):
+    from datetime import datetime, timezone
+    from src.cloud_state import CloudState
+
+    config = configuration(tmp_path)
+    local = tmp_path / "local"
+    local.mkdir()
+    connection = ConnectionConfig("drive", "Google Drive", "drive", "EverySync")
+    job = RemoteJobConfig("saves", "Saves", str(local), connection.id, "Game")
+    config.save(replace(config.get_app_config(), connections=[connection], remote_jobs=[job]))
+    state = CloudState(config.cloud_root)
+    record = state.job(job.id, {"provider": connection.provider, "connection_id": connection.id,
+        "root": connection.root, "remote_path": job.remote_path, "local_path": str(job.local_path_resolved)})
+    record["pending"] = {"direction": "upload", "created_at": datetime.now(timezone.utc).isoformat()}
+    state.save()
+    factory = SetupFactory([])
+    service = CloudService(config, transport_factory=factory, parent=qapp)
+
+    service.remove_connection(connection.id)
+    spin(qapp, lambda: not service.busy)
+
+    assert config.get_app_config().connections == []
+    assert config.get_app_config().remote_jobs == [replace(job, connection_id="", enabled=False)]
+    assert CloudState(config.cloud_root).data["jobs"][job.id]["pending"] is None
+    assert factory.deleted == ["es_drive"]
+
+
+def test_disconnect_preserves_other_destinations_pending_group_recovery(qapp, tmp_path):
+    from src.config import SyncDirection
+    from src.group_state import GroupState
+    from src.sync_groups import SyncDestinationConfig, SyncGroupConfig, destination_identity
+
+    config = configuration(tmp_path)
+    local = tmp_path / "local"
+    local.mkdir()
+    removed = ConnectionConfig("drive", "Google Drive", "drive", "EverySync")
+    retained = ConnectionConfig("dropbox", "Dropbox", "dropbox", "EverySync")
+    first = RemoteJobConfig("first", "First", str(local), removed.id, "First")
+    second = RemoteJobConfig("second", "Second", str(local), retained.id, "Second")
+    group = SyncGroupConfig("games", "Game data", str(local), [
+        SyncDestinationConfig(first.id), SyncDestinationConfig(second.id)])
+    config.save(replace(config.get_app_config(), connections=[removed, retained], remote_jobs=[first, second],
+                        sync_groups=[group]))
+    current = config.get_app_config()
+    identities = {job.id: destination_identity(current, job) for job in current.remote_jobs}
+    ledger = GroupState(config.cloud_root)
+    record = ledger.bind(group, identities)
+    record["generation"] = "generation"
+    record["pending"] = GroupState.pending(SyncDirection.UPLOAD, identities)
+    record["destinations"] = {job.id: {"identity": identities[job.id], "generation": "generation",
+        "status": "incomplete", "inventory": {}} for job in current.remote_jobs}
+    ledger.save()
+    factory = SetupFactory([])
+    service = CloudService(config, transport_factory=factory, parent=qapp)
+
+    service.remove_connection(removed.id)
+    spin(qapp, lambda: not service.busy)
+
+    pending = GroupState(config.cloud_root).data["groups"][group.id]
+    assert set(pending["pending"]["identities"]) == {second.id}
+    assert set(pending["destinations"]) == {second.id}
+    assert pending["destinations"][second.id]["status"] == "incomplete"
 
 
 def test_main_window_has_one_synchronization_workspace(qapp, tmp_path):

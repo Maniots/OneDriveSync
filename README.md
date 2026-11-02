@@ -32,6 +32,9 @@ unavailable, choose **Show Microsoft account** and allow profile access in the
 browser; its cloud folder and synchronizations are kept. New Microsoft sign-ins
 include profile access. Use **Disconnect account** to remove the connection. The cloud
 folder is the parent folder used by destinations you add in **Synchronizations**.
+Jobs that used a disconnected account are kept, disabled and marked **Account not
+connected**. Edit one to assign another account before enabling it again; remote
+files are not removed by disconnection.
 
 | Mode | Default direction | Purpose |
 | --- | --- | --- |
@@ -59,7 +62,7 @@ The setup installs for the current Windows user and includes an uninstaller. Dow
 | **Synchronizations** | Add, edit, enable, disable, search and filter activities, including existing single-destination folders. |
 | **Connections** | Connect storage with guided provider fields/browser sign-in, test access and disconnect. |
 | **Synchronizations → Send / Download** | Upload to enabled destinations or download from one source in priority order. Manual buttons use their stated direction, independently of scheduled trigger settings. Existing bidirectional singletons retain **Synchronize both folders**. |
-| **Synchronizations → Remove** | Confirm removal while keeping files, history and stored backups. Group destinations remain as disabled activities for backup access; remove those separately to forget them and allow account disconnection. |
+| **Synchronizations → Remove** | Confirm removal while keeping files, history and stored backups. Group destinations remain as disabled activities for backup access; removing an account instead keeps its linked jobs as disabled, disconnected activities. |
 | **Synchronizations → More** | Refresh results or bypass an existing single-destination activity's file-count threshold for one confirmed configured run. Other checks and backups still apply; explicit groups cannot bypass generation guards. |
 | **Synchronizations → Backups and restore** | Access local ZIP archives or a selected destination's verified cloud snapshots. |
 | **Backups** | Browse, open, restore or delete backup archives. |

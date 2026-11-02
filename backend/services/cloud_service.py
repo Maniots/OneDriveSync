@@ -102,6 +102,8 @@ class CloudService(QObject):
             elif task.action == "accounts" and task.cancel_event.is_set():
                 self.failed.emit("Account operation cancelled.")
             elif task.error:
+                if task.action == "remove":
+                    self._rollback_failed_removal(task)
                 if task.action == "accounts":
                     current = {c.id for c in self.config_service.get_app_config().connections}
                     self.account_identities.update({identifier: {"status": "unavailable"}
@@ -124,7 +126,7 @@ class CloudService(QObject):
                     self._authorized = False
                     self._drive_choices = None
                 elif task.action == "remove":
-                    self.config_service.save(replace(config, connections=[c for c in config.connections if c.id != value]))
+                    self._clear_disconnected_pending_state(task.disconnected_job_ids)
                     self.account_identities.pop(value, None)
                 elif task.action == "accounts":
                     current = {c.id for c in config.connections}
@@ -356,17 +358,80 @@ class CloudService(QObject):
     def remove_connection(self, connection_id):
         self.ensure_idle()
         config = self.config_service.get_app_config()
-        if any(job.connection_id == connection_id for job in config.remote_jobs):
-            raise ValueError("Remove the jobs using this connection before disconnecting it.")
         connection = next((item for item in config.connections if item.id == connection_id), None)
         if connection is None:
             raise ValueError("Select a connection first.")
+        job_ids = {job.id for job in config.remote_jobs if job.connection_id == connection_id}
+        candidate = replace(
+            config,
+            connections=[item for item in config.connections if item.id != connection_id],
+            remote_jobs=[replace(job, connection_id="", enabled=False)
+                         if job.connection_id == connection_id else job for job in config.remote_jobs],
+        )
+        self.config_service.save(candidate, validate_pending=False)
         def remove(cancel_event):
             if connection.provider != "local":
                 with self.transport_factory(self.config_service.cloud_root, cancel_event=cancel_event) as client:
                     client.call("config/delete", {"name": "es_" + connection_id})
             return connection_id
-        self._submit("remove", remove)
+        try:
+            self._submit("remove", remove)
+            self._task.rollback_connection = connection
+            self._task.rollback_jobs = {job.id: job for job in config.remote_jobs if job.id in job_ids}
+            self._task.disconnected_job_ids = job_ids
+        except Exception:
+            self.config_service.save(config, validate_pending=False)
+            raise
+
+    def _rollback_failed_removal(self, task):
+        latest = self.config_service.get_app_config()
+        connection = task.rollback_connection
+        connections = (latest.connections if any(item.id == connection.id for item in latest.connections)
+                       else [*latest.connections, connection])
+        jobs = []
+        for job in latest.remote_jobs:
+            original = task.rollback_jobs.get(job.id)
+            jobs.append(replace(job, connection_id=connection.id, enabled=original.enabled)
+                        if original is not None and not job.connection_id else job)
+        self.config_service.save(replace(latest, connections=connections, remote_jobs=jobs), validate_pending=False)
+
+    def _clear_disconnected_pending_state(self, job_ids):
+        if not job_ids:
+            return
+        from src.cloud_state import CloudState
+        from src.group_state import GroupState
+
+        state = CloudState(self.config_service.cloud_root)
+        state_changed = False
+        for job_id in job_ids:
+            record = state.data["jobs"].get(job_id)
+            if record is not None and record["pending"] is not None:
+                record["pending"] = None
+                state_changed = True
+        if state_changed:
+            state.save()
+
+        ledger = GroupState(self.config_service.cloud_root)
+        ledger_changed = False
+        for record in ledger.data["groups"].values():
+            for job_id in job_ids:
+                ledger_changed = record["destinations"].pop(job_id, None) is not None or ledger_changed
+            pending = record["pending"]
+            if pending is None:
+                continue
+            removed_pending = set(pending["identities"]) & job_ids
+            for job_id in removed_pending:
+                del pending["identities"][job_id]
+            ledger_changed = bool(removed_pending) or ledger_changed
+            selected_removed = pending.get("selected_id") in job_ids
+            surviving_incomplete = any(item["status"] == "incomplete"
+                                       for item in record["destinations"].values())
+            if selected_removed or not pending["identities"] or (
+                    pending["direction"] == "upload" and not surviving_incomplete):
+                record["pending"] = None
+                ledger_changed = True
+        if ledger_changed:
+            ledger.save()
 
     def list_snapshots(self, job_id):
         self._submit("snapshots", lambda event: CloudSyncRunner(self.config_service.get_app_config(),

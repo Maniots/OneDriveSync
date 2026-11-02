@@ -137,6 +137,8 @@ class ConfigManager:
             job_ids.add(job.id)
             connection = connections.get(job.connection_id)
             if connection is None:
+                if not job.connection_id and not job.enabled:
+                    continue
                 raise ConfigurationError("Remote job references an unknown connection")
             if connection.provider == "local":
                 remote_root = validate_local_path(connection.root)
@@ -380,7 +382,7 @@ class ConfigManager:
 
         return raw
 
-    def save(self, app_config: AppConfig) -> None:
+    def save(self, app_config: AppConfig, *, validate_pending: bool = True) -> None:
         """Validate and atomically save the given AppConfig as JSON.
 
         This method converts the AppConfig to a raw dictionary (with original
@@ -410,7 +412,8 @@ class ConfigManager:
                 previous = None
             else:
                 previous = self.load()
-            validate_pending_edits(previous, candidate, self._config_path.with_suffix(".cloud"))
+            if validate_pending:
+                validate_pending_edits(previous, candidate, self._config_path.with_suffix(".cloud"))
             os.replace(temporary_path, self._config_path)
         except (OSError, TypeError, ValueError) as exc:
             raise ConfigurationError(

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Allow accounts to be disconnected while they are used by synchronization jobs. Linked jobs and group membership are preserved, the jobs are disabled and shown as disconnected until another account is assigned, and remote files are not removed.
+
 - Fix account disconnection being blocked by background profile loading during confirmation. Reload accounts rereads saved connections and retries account details; verification and Microsoft profile consent update synchronization account labels immediately.
 
 - Replace separate Folders and Cloud Sync navigation with one Synchronizations workspace and a guided editor for PC folders and ordered destinations.

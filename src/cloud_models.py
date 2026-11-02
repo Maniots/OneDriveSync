@@ -142,7 +142,12 @@ class RemoteJobConfig:
 
     def __post_init__(self) -> None:
         validate_id(self.id)
-        validate_id(self.connection_id)
+        if not isinstance(self.connection_id, str):
+            raise ValueError("A remote job connection ID must be a string")
+        if self.connection_id:
+            validate_id(self.connection_id)
+        elif self.enabled is not False:
+            raise ValueError("A remote job without a connection must be disabled")
         _validate_name(self.name)
         validate_local_path(self.local_path)
         validate_relative_path(self.remote_path)

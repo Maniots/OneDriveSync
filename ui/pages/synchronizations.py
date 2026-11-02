@@ -189,8 +189,9 @@ class SynchronizationsPage(QWidget):
                 last = self.history.get(identifier)
                 status = self.history_text(last) if activity.enabled else "Disabled"
                 first = targets[0][0]
-                destinations = (PROVIDER_SETUP[next(connection.provider for connection in config.connections
-                                if connection.id == first.connection_id)].label
+                connection = (next((item for item in config.connections if item.id == first.connection_id), None)
+                              if isinstance(first, RemoteJobConfig) else None)
+                destinations = (PROVIDER_SETUP[connection.provider].label if connection else "Account not connected"
                                 if isinstance(first, RemoteJobConfig) else "Folder on PC / network")
                 if len(targets) > 1:
                     destinations += f" + {len(targets) - 1} more"
@@ -223,7 +224,9 @@ class SynchronizationsPage(QWidget):
         if not isinstance(leaf, RemoteJobConfig):
             return "Folder on PC / network"
         config = self.config_service.get_app_config()
-        connection = next(item for item in config.connections if item.id == leaf.connection_id)
+        connection = next((item for item in config.connections if item.id == leaf.connection_id), None)
+        if connection is None:
+            return "Account not connected"
         provider = PROVIDER_SETUP[connection.provider].label
         identity = self.service.account_identities.get(connection.id, {})
         account = identity.get("email") or identity.get("name")
@@ -233,7 +236,10 @@ class SynchronizationsPage(QWidget):
     def destination_path(self, leaf):
         if not isinstance(leaf, RemoteJobConfig):
             return str(leaf.onedrive_path)
-        connection = next(item for item in self.config_service.get_app_config().connections if item.id == leaf.connection_id)
+        connection = next((item for item in self.config_service.get_app_config().connections
+                           if item.id == leaf.connection_id), None)
+        if connection is None:
+            return leaf.remote_path
         return f"{connection.root.rstrip('/')}/{leaf.remote_path}"
 
     def filter_activities(self, *_):
@@ -312,6 +318,8 @@ class SynchronizationsPage(QWidget):
 
     def copy_status(self, activity, leaf, history):
         config = self.config_service.get_app_config()
+        if isinstance(leaf, RemoteJobConfig) and not leaf.connection_id:
+            return "Account not connected"
         if not any(group.id == activity.id for group in config.sync_groups):
             return self.history_text(history)
         if self.evidence_error:
@@ -338,6 +346,7 @@ class SynchronizationsPage(QWidget):
         paused = bool(self.sync_service and self.sync_service.is_paused)
         enabled = selected and entry[0].enabled
         targets = entry[1] if entry else []
+        disconnected = bool(selected and isinstance(entry[0], RemoteJobConfig) and not entry[0].connection_id)
         bidirectional = any(getattr(leaf, "bidirectional", False) for leaf, _ in targets)
         self.upload_button.setText("Synchronize both folders" if bidirectional else "Send to destinations")
         self.download_button.setVisible(not bidirectional)
@@ -346,13 +355,18 @@ class SynchronizationsPage(QWidget):
         self.download_button.setEnabled(can_run and any(leaf.enabled and (target is None or target.download_enabled) for leaf, target in targets))
         for button in (self.edit_button, self.enabled_button, self.remove_button, self.backup_button, self.more_button):
             button.setEnabled(selected and idle)
+        if disconnected:
+            self.enabled_button.setEnabled(False)
+            self.backup_button.setEnabled(False)
         self.add_button.setEnabled(idle)
         self.enabled_button.setText("Disable" if enabled else "Enable")
         explicit = selected and hasattr(entry[0], "destinations")
         self.stop_button.setVisible(explicit)
         self.stop_button.setEnabled(bool(explicit and self.sync_service and self.sync_service.is_syncing
                                         and not self.sync_service.cancellation_event.is_set()))
-        if paused:
+        if disconnected:
+            self.status_label.setText("Account not connected. Edit this synchronization to assign another account.")
+        elif paused:
             self.status_label.setText("Synchronization is paused. Resume it to send or download files.")
         elif self.sync_service and self.sync_service.is_syncing:
             self.status_label.setText("Synchronization in progress…")
@@ -437,6 +451,9 @@ class SynchronizationsPage(QWidget):
         if not entry or self.busy():
             return
         activity = entry[0]
+        if isinstance(activity, RemoteJobConfig) and not activity.connection_id:
+            self.status_label.setText("Assign an account before enabling this synchronization.")
+            return
         config = self.config_service.get_app_config()
         try:
             self.service.ensure_idle()

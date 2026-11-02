@@ -159,6 +159,43 @@ def test_connection_named_folder_is_not_reinterpreted_as_a_filesystem_destinatio
     assert saved.sync_groups == []
 
 
+def test_disconnected_job_remains_visible_but_cannot_run_or_be_enabled(qapp, tmp_path, sync_service_factory):
+    config, local, _ = configuration(tmp_path)
+    job = RemoteJobConfig("online", "Online saves", str(local), "", "Game/Saves", enabled=False)
+    config.save(replace(config.get_app_config(), remote_jobs=[job]))
+    sync = sync_service_factory(config)
+
+    page = SynchronizationsPage(config, CloudService(config, sync_service=sync))
+    for index in range(page.activity_list.topLevelItemCount()):
+        item = page.activity_list.topLevelItem(index)
+        if item.data(0, Qt.ItemDataRole.UserRole) == job.id:
+            page.activity_list.setCurrentItem(item)
+            break
+
+    assert "Account not connected" in page.destination_table.cellWidget(0, 0).text()
+    assert page.destination_table.item(0, 1).text() == job.remote_path
+    assert not page.upload_button.isEnabled()
+    assert not page.download_button.isEnabled()
+    assert not page.enabled_button.isEnabled()
+
+
+def test_editor_reassigns_disconnected_job_without_recreating_it(qapp, tmp_path):
+    config, local, _ = configuration(tmp_path)
+    replacement = ConnectionConfig("drive", "Google Drive", "drive", "EverySync")
+    job = RemoteJobConfig("online", "Online saves", str(local), "", "Game/Saves", enabled=False,
+                          minimum_sync_percentage=35, verify_after_sync=False, backup_enabled=False)
+    config.save(replace(config.get_app_config(), connections=[replacement], remote_jobs=[job]))
+    editor = SynchronizationEditor(config, job.id)
+
+    assert "Account disconnected" in editor.destination_table.item(0, 1).text()
+    editor.drafts[0]["storage"] = replacement.id
+    editor.refresh_destinations()
+    assert editor.save_activity()
+
+    saved = config.get_app_config().remote_jobs[0]
+    assert saved == replace(job, connection_id=replacement.id)
+
+
 def test_removed_single_destination_no_longer_prevents_disconnect(qapp, tmp_path, monkeypatch):
     from PySide6.QtWidgets import QMessageBox
     config, local, _ = configuration(tmp_path)
