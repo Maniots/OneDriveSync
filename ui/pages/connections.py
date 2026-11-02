@@ -586,7 +586,8 @@ class ConnectionsPage(QWidget):
         self._identity_timer.stop()
         self.update_actions()
         try:
-            answer = QMessageBox.question(self, "Disconnect account", "Disconnect this account? Remote files will be kept.",
+            answer = QMessageBox.question(self, "Disconnect account",
+                "Disconnect this account? Linked synchronization jobs will be kept but disabled. Remote files will be kept.",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
             if answer == QMessageBox.StandardButton.Yes:
                 self.service.remove_connection(connection.id)

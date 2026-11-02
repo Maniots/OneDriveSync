@@ -60,7 +60,7 @@ class ConfigurationService(QObject):
         """Keep credentials and retry state beside the selected configuration."""
         return self._config_manager.config_path.with_suffix(".cloud")
 
-    def save(self, app_config: AppConfig) -> None:
+    def save(self, app_config: AppConfig, *, validate_pending: bool = True) -> None:
         """Save the given AppConfig to the configuration file.
 
         This method delegates to the ConfigManager to perform the actual
@@ -72,7 +72,7 @@ class ConfigurationService(QObject):
         Raises:
             ConfigurationError: If the configuration cannot be saved.
         """
-        self._config_manager.save(app_config)
+        self._config_manager.save(app_config, validate_pending=validate_pending)
         # Update the cached configuration to the saved one.
         self._app_config = app_config
         from src.logger import set_log_level

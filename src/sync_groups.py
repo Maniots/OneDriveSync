@@ -113,6 +113,8 @@ def validate_groups(config: AppConfig) -> None:
             else:
                 connection = connections.get(leaf.connection_id)
                 if connection is None:
+                    if not leaf.connection_id and not leaf.enabled:
+                        continue
                     raise ConfigurationError("A group destination references an unknown connection")
                 if connection.provider == "local":
                     root = validate_local_path(connection.root)

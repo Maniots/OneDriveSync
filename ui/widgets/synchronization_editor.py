@@ -388,6 +388,11 @@ class SynchronizationEditor(QWizard):
         if original is not None:
             original_path = original.remote_path if isinstance(original, RemoteJobConfig) else str(original.onedrive_path)
             original_storage = original.connection_id if isinstance(original, RemoteJobConfig) else LOCAL_STORAGE
+            if (isinstance(original, RemoteJobConfig) and not original.connection_id
+                    and draft["storage"] != LOCAL_STORAGE and draft["path"] == original_path):
+                if not any(c.id == draft["storage"] for c in config.connections):
+                    raise ValueError("The destination account was disconnected. Choose another destination.")
+                return draft["path"]
             if draft["storage"] == original_storage and draft["path"] == original_path:
                 return draft["path"]
         name = self.name_edit.text().strip()
