@@ -14,6 +14,24 @@ import time
 from pathlib import Path
 
 
+def wait_for_monitor_completion(output: Path, status_path: Path, process, timeout: float = 60) -> dict:
+    """Wait for a slow WM_QUERYENDSESSION handler after SendMessageTimeout returns."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if output.is_file() and status_path.is_file():
+            try:
+                status = json.loads(status_path.read_text())
+            except (OSError, json.JSONDecodeError):
+                status = None
+            if status and status.get("last_shutdown_sync"):
+                return status
+        exit_code = process()
+        if exit_code is not None:
+            raise AssertionError(f"Monitor exited with {exit_code} before completing its synchronization")
+        time.sleep(0.1)
+    raise AssertionError(f"Monitor did not complete its synchronization within {timeout:g} seconds")
+
+
 def verify(executable: Path, root: Path) -> dict:
     import win32con
     import win32gui
@@ -111,9 +129,12 @@ def verify(executable: Path, root: Path) -> dict:
             time.sleep(0.1)
         assert hwnd, f"Monitor window not created (exit={monitor.poll()})"
         win32gui.SendMessageTimeout(hwnd, 0x0011, 0, 0, win32con.SMTO_ABORTIFHUNG, 15000)
-        assert (cloud / "monitor-save.txt").read_text() == "monitor save"
-        status = json.loads((config_path.parent / "shutdown_monitor_status.json").read_text())
+        monitor_output = cloud / "monitor-save.txt"
+        status = wait_for_monitor_completion(
+            monitor_output, config_path.parent / "shutdown_monitor_status.json", monitor.poll)
+        assert monitor_output.read_text() == "monitor save"
         assert status["last_detected_event"] and status["last_shutdown_sync"]
+        assert status["last_error"] is None
         win32gui.PostMessage(hwnd, 0x0016, 1, 0)
         assert monitor.wait(timeout=10) == 0
     finally:
